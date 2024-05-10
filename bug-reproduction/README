@@ -1,0 +1,6 @@
+mavlink2_v2.py -> Contains a simple mission that will take off the flight and then land
+Needs to have an additional out interface out in the SITL
+```
+./Tools/autotest/sim_vehicle.py -v ArduCopter -D  -l 51.8752066,14.6487840,54.15,0 --out=127.0.0.1:1337 -M --gdb -B 'GCS_MAVLINK::handle_command_long_packet'
+```
+The out thing needs to be there.
