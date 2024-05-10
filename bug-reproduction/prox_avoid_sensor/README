@@ -1,0 +1,24 @@
+Buggy version:
+commit be8f747b7a471b99336c8e49ce0393710e3fe162 (HEAD)
+Author: Peter Barker <pbarker@barker.dropbear.id.au>
+Date:   Sat Feb 13 19:29:20 2021 +1100
+
+    autotest: adjust timeout for Valgrind; disable for gdb
+
+
+Patched version:
+commit 98287a1b2fb98a0670d914db11be56e44a751e63 (HEAD)
+Author: Rishabh <f20171602@hyderabad.bits-pilani.ac.in>
+Date:   Thu Feb 11 17:35:52 2021 +0530
+
+    AC_Avoid: Use previous avoidance vel for limiting accel
+
+
+Parameters:
+
+In Buggy
+PRX_TYPE = 2
+
+In Patched
+AVOID_ACCEL_MAX  3.000000
+
