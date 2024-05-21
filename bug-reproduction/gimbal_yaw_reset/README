@@ -1,0 +1,8 @@
+Buggy commit: c7ddc9867dea71a59d29c9c048fb404ac3671cf6 
+Fixed commit: 38665a7935c39cbdd70b33f3ef1cc7c35a3ceba5
+
+Need following parameters
+- MNT_TYPE = 4 STorm32 Mavlink
+Also specifically need to make sure that MAX_PAN < MIN_PAN to disable yaw based operations on the gimbal, hence following config
+- MNT_ANGMAX_PAN   -100
+- MNT_ANGMIN_PAN   0

@@ -42,8 +42,11 @@ master.mav.command_long_send(
 #     0,
 #     0, 0, 0, 0, 0, 0, 2
 #
-ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
-ack_msg = ack_msg.to_dict()
-print(ack_msg)
-
 print("Command sent!")
+ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
+if ack_msg: 
+    ack_msg = ack_msg.to_dict()
+    print(ack_msg)
+else:
+    print("No message man")
+
