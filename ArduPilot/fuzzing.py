@@ -20,6 +20,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../ma
 from pymavlink import mavutil, mavwp
 from pymavlink import mavextra
 from pymavlink import mavexpression
+from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 import read_inputs
 import shared_variables
 
@@ -384,6 +385,57 @@ def verify_real_number(item):
         return True
     else:
         return False
+
+
+def current_milli_time(start_time):
+    return int(round(time.time() * 1000) - start_time)
+
+
+def setup_rangefinder():
+    """
+    Basically should be able to get spawn a new thread for sending sample messages
+    2024-05-23T08:22:11-0400: silipwn: For now we only focus on getting correct messages
+    """
+    DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
+    MAX_DEPTH = 9999  # arbitrary large number
+    hz = 25
+    itr = 0
+    conn = mavutil.mavlink_connection(
+        "localhost:14551", source_system=1, source_component=93, baud=921600
+    )
+    start_time = int(round(time.time() * 1000))
+    cur_ms_time = current_milli_time(start_time)
+    while itr <= hz:
+        full_range = DEPTH_RANGE[1]
+        # Uniformly send values
+        x = y = z = [0.00] * 9
+        for i in range(9):
+            x[i] = random.uniform(-full_range, full_range)
+            y[i] = random.uniform(-full_range, full_range)
+            z[i] = random.uniform(-full_range, full_range)
+        for i in range(9):
+            msg = mavlink2.MAVLink_obstacle_distance_3d_message(
+                time,  # us Timestamp (UNIX time or time since system boot)
+                0,  # not implemented in ArduPilot
+                12,  # Set the frame to MAV_FRAME_BODY_FRD
+                65535,  # unknown ID of the object. We are not really detecting the type of obstacle
+                float(value[0][i]),  # X in NEU body frame
+                float(value[1][i]),  # Y in NEU body frame
+                float(value[2][i]),  # Z in NEU body frame
+                float(DEPTH_RANGE[0]),  # min range of sensor
+                float(DEPTH_RANGE[1]),  # max range of sensor
+            )
+            conn.mav.send(msg)
+        time.sleep(1 / hz)
+        itr += 1
+    pass
+
+
+def randomize_rangefinder_msg():
+    """
+    Should ideally randomize the MAVLINK MSGS to be sent
+    """
+    pass
 
 
 # ------------------------------------------------------------------------------------
@@ -2828,6 +2880,10 @@ def pick_up_cmd():
     elif input_type == 3:
         execute_env(num=random.randint(0, len(read_inputs.env_name) - 1))
 
+    # 4) Add RangeFinder
+    elif input_type == 4:
+        randomize_rangefinder_msg()
+
 
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
@@ -3100,7 +3156,7 @@ def main(argv):
             Armed = 0
             for i in range(1, 5):
                 print(
-                    "@@@@@@@@@@ Drone losts control. It is in mayday and going down @@@@@@@@@@"
+                    "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
                 )
 
     print("-------------------- Fuzzing End --------------------")
