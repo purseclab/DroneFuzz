@@ -14,7 +14,7 @@ print(os.getcwd())
 if ARDUPILOT_HOME is None:
     raise Exception("ARDUPILOT_HOME environment variable is not set!")
 
-c = ARDUPILOT_HOME + "Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w"
+c = ARDUPILOT_HOME + "Tools/autotest/sim_vehicle.py -v ArduCopter -w --out=udp:127.0.0.1:1337"
 # c = '~/ardupilot_pgfuzz/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'
 
 # handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
