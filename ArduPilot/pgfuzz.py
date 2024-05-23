@@ -14,12 +14,12 @@ if ARDUPILOT_HOME is None:
 
 open("restart.txt", "w").close()
 
-c = "gnome-terminal -- python2 " + PGFUZZ_HOME + "ArduPilot/open_simulator.py &"
+c = "gnome-terminal -- bash -c 'python2 " + PGFUZZ_HOME + "ArduPilot/open_simulator.py; exec bash'"
 handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
 print(c)
 
 time.sleep(90)
-c = "gnome-terminal -- python2 " + PGFUZZ_HOME + "ArduPilot/fuzzing.py &"
+c = "gnome-terminal -- bash -c 'python2 " + PGFUZZ_HOME + "ArduPilot/fuzzing.py; exec bash'"
 handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
 print(c)
 
@@ -31,5 +31,5 @@ while True:
     if f.read() == "restart":
         f.close()
         open("restart.txt", "w").close()
-        c = "gnome-terminal -- python2 " + PGFUZZ_HOME + "ArduPilot/open_simulator.py &"
+        c = "gnome-terminal -- bash -c 'python2 " + PGFUZZ_HOME + "ArduPilot/open_simulator.py; exec bash'"
         handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
