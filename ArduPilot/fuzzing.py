@@ -1,8 +1,8 @@
 """
-        Author: Hyungsub Kim
-        Date: 05/20/2020
-        Name of file: fuzzing.py
-        Goal: Main loop of PGFUZZ
+Author: Hyungsub Kim
+Date: 05/20/2020
+Name of file: fuzzing.py
+Goal: Main loop of PGFUZZ
 """
 
 # !onsusr/bin/env python
@@ -16,7 +16,7 @@ import threading
 import subprocess
 
 # Tell python where to find mavlink so we can import it
-sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), '../mavlink'))
+sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
 from pymavlink import mavutil, mavwp
 from pymavlink import mavextra
 from pymavlink import mavexpression
@@ -32,7 +32,7 @@ import sys, os, getopt
 
 # ------------------------------------------------------------------------------------
 # Global variables
-master = mavutil.mavlink_connection('udp:127.0.0.1:14551')
+master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -157,19 +157,21 @@ RV_alive = 0
 Precondition_path = ""
 # Current_policy = "A.CHUTE"
 # Current_policy_P_length = 5
-#Current_policy = "A.RTL1"
-#Current_policy_P_length = 4
-#Current_policy = "A.RTL2"
-#Current_policy_P_length = 5
-#Current_policy = "A.RTL3"
-#Current_policy_P_length = 4
-#Current_policy = "A.RTL4"
-#Current_policy_P_length = 3
+# Current_policy = "A.RTL1"
+# Current_policy_P_length = 4
+# Current_policy = "A.RTL2"
+# Current_policy_P_length = 5
+# Current_policy = "A.RTL3"
+# Current_policy_P_length = 4
+# Current_policy = "A.RTL4"
+# Current_policy_P_length = 3
 Current_policy = "A.FLIP1"
 Current_policy_P_length = 5
 
 # Debug parameter
 PRINT_DEBUG = 0
+
+
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
@@ -178,7 +180,6 @@ def check_liveness():
 
     end_flag = 0
     while end_flag == 0:
-
         if heartbeat_cnt < 1:
             store_mutated_inputs()
             # The RV software is crashed
@@ -194,16 +195,19 @@ def check_liveness():
 
 # ------------------------------------------------------------------------------------
 def set_preconditions(filepath):
-    for line in open(filepath, 'r').readlines():
-        row = line.rstrip().split(' ')
+    for line in open(filepath, "r").readlines():
+        row = line.rstrip().split(" ")
 
-        master.mav.param_set_send(master.target_system, master.target_component,
-                                  row[0],
-                                  float(row[1]),
-                                  mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+        master.mav.param_set_send(
+            master.target_system,
+            master.target_component,
+            row[0],
+            float(row[1]),
+            mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+        )
         time.sleep(1)
 
-        print("[Set_preconditions] %s = %s" % (row[0], row[1]))
+        print(("[Set_preconditions] %s = %s" % (row[0], row[1])))
 
 
 # ------------------------------------------------------------------------------------
@@ -213,7 +217,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "a")
         guidance_log.write(print_log)
         guidance_log.close()
-        print("[write_guidance_log] appending: %s" % print_log)
+        print(("[write_guidance_log] appending: %s" % print_log))
 
     elif action == "write":
         guidance_log = open("guidance_log.txt", "w")
@@ -222,7 +226,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "w")
         guidance_log.write(print_log)
         guidance_log.close()
-        print("[write_guidance_log] re-writing: %s" % print_log)
+        print(("[write_guidance_log] re-writing: %s" % print_log))
 
 
 # ------------------------------------------------------------------------------------
@@ -257,17 +261,26 @@ def re_launch():
     Baro_status = 1
     PreArm_error = 0
 
-    print("#-----------------------------------------------------------------------------")
-    print("#-----------------------------------------------------------------------------")
-    print("#------------------------- RE-LAUNCH the vehicle -----------------------------")
-    print("#-----------------------------------------------------------------------------")
-    print("#-----------------------------------------------------------------------------")
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
+    print(
+        "#------------------------- RE-LAUNCH the vehicle -----------------------------"
+    )
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
 
     # Step 1. land the vehicle
     master.mav.set_mode_send(
-        master.target_system,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        9)
+        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
+    )
 
     # Wait for finishing the landing
     while True:
@@ -284,7 +297,12 @@ def re_launch():
     # Refer to https://discuss.ardupilot.org/t/arming-problem-fs-thr-value/806/2
     goal_throttle = required_min_thr + 20
 
-    print("[re-launch] min_thr:%d, target throttle:%d" % (required_min_thr, goal_throttle))
+    print(
+        (
+            "[re-launch] min_thr:%d, target throttle:%d"
+            % (required_min_thr, goal_throttle)
+        )
+    )
     set_rc_channel_pwm(1, 1500)
     set_rc_channel_pwm(2, 1500)
     set_rc_channel_pwm(4, 1500)
@@ -307,9 +325,8 @@ def re_launch():
 
     # Step 4. re-take off the vehicle
     master.mav.set_mode_send(
-        master.target_system,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        4)
+        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
+    )
 
     # Wait for finishing the landing
     while True:
@@ -325,7 +342,14 @@ def re_launch():
         master.target_component,
         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
         0,
-        1, 0, 0, 0, 0, 0, 0)
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
 
     time.sleep(3)
 
@@ -340,7 +364,8 @@ def re_launch():
         0,  # param4
         0,  # param5
         0,  # param6
-        100)  # param7- altitude
+        100,
+    )  # param7- altitude
 
     time.sleep(25)
     goal_throttle = 1500
@@ -348,12 +373,12 @@ def re_launch():
 
 # ------------------------------------------------------------------------------------
 def verify_real_number(item):
-    """ Method to find if an 'item'is real number"""
+    """Method to find if an 'item'is real number"""
 
     item = str(item).strip()
     if not (item):
         return False
-    elif (item.isdigit()):
+    elif item.isdigit():
         return True
     elif re.match(r"\d+\.*\d*", item) or re.match(r"-\d+\.*\d*", item):
         return True
@@ -367,7 +392,12 @@ def change_parameter(selected_param):
     global Current_input
     global Current_input_val
 
-    print("# [Change_parameter()] selected params: %s" % read_inputs.param_name[selected_param])
+    print(
+        (
+            "# [Change_parameter()] selected params: %s"
+            % read_inputs.param_name[selected_param]
+        )
+    )
 
     no_range = 0
     param_name = read_inputs.param_name[selected_param]
@@ -380,23 +410,45 @@ def change_parameter(selected_param):
     param_value = 0
 
     # Step 1. Check whether the selected parameter has an valid range or not
-    if range_min == 'X':
+    if range_min == "X":
         no_range = 1
         param_value = random.randint(PARAM_MIN, PARAM_MAX)
-        print("[param] selected params: %s, there is no min of valid range, random param value:%d" % (
-        read_inputs.param_name[selected_param], param_value))
+        print(
+            (
+                "[param] selected params: %s, there is no min of valid range, random param value:%d"
+                % (read_inputs.param_name[selected_param], param_value)
+            )
+        )
 
     elif verify_real_number(range_min) == True:
         no_range = 0
         if range_min.isdigit() == True and range_max.isdigit() == True:
             param_value = random.randint(int(range_min), int(range_max))
-            print("# [Change_parameter()] selected params: %s, min: %f, max: %f, random digit param value:%d" % (
-            read_inputs.param_name[selected_param], float(range_min), float(range_max), param_value))
+            print(
+                (
+                    "# [Change_parameter()] selected params: %s, min: %f, max: %f, random digit param value:%d"
+                    % (
+                        read_inputs.param_name[selected_param],
+                        float(range_min),
+                        float(range_max),
+                        param_value,
+                    )
+                )
+            )
 
         elif range_min.isdigit() == False or range_max.isdigit() == False:
             param_value = random.uniform(float(range_min), float(range_max))
-            print("# [Change_parameter()] selected params: %s, min: %f, max: %f, random real param value:%f" % (
-            read_inputs.param_name[selected_param], float(range_min), float(range_max), param_value))
+            print(
+                (
+                    "# [Change_parameter()] selected params: %s, min: %f, max: %f, random real param value:%f"
+                    % (
+                        read_inputs.param_name[selected_param],
+                        float(range_min),
+                        float(range_max),
+                        param_value,
+                    )
+                )
+            )
 
     # Step 2. Change the parameter value
 
@@ -405,17 +457,25 @@ def change_parameter(selected_param):
     if param_name == "FS_THR_VALUE":
         param_value = random.randint(925, 975)
         required_min_thr = param_value
-        print("# Required minimum throttle is %d" % param_value)
+        print(("# Required minimum throttle is %d" % param_value))
 
     if Current_input_val != "null":
         param_value = float(Current_input_val)
-        print("@@@[Reuse stored input pair] (%s, %s)@@@" % (param_name, Current_input_val))
+        print(
+            (
+                "@@@[Reuse stored input pair] (%s, %s)@@@"
+                % (param_name, Current_input_val)
+            )
+        )
 
     # 2) Set parameter value
-    master.mav.param_set_send(master.target_system, master.target_component,
-                              param_name,
-                              param_value,
-                              mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+    master.mav.param_set_send(
+        master.target_system,
+        master.target_component,
+        param_name,
+        param_value,
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+    )
 
     # Log change parameter values
 
@@ -458,6 +518,7 @@ def handle_heartbeat(msg):
 
 # print("Mode: %s" % current_flight_mode)
 
+
 # ------------------------------------------------------------------------------------
 def handle_rc_raw(msg):
     global current_rc_1
@@ -470,21 +531,34 @@ def handle_rc_raw(msg):
     current_rc_3 = msg.chan3_raw
     current_rc_4 = msg.chan4_raw
 
-    #print("RC1:%d, RC2:%d, RC3:%d, RC3:%d" %(current_rc_1, current_rc_2, current_rc_3, current_rc_4))
+    # print("RC1:%d, RC2:%d, RC3:%d, RC3:%d" %(current_rc_1, current_rc_2, current_rc_3, current_rc_4))
 
-    channels = (msg.chan1_raw, msg.chan2_raw, msg.chan3_raw, msg.chan4_raw,
-                msg.chan5_raw, msg.chan6_raw, msg.chan7_raw, msg.chan8_raw)
+    channels = (
+        msg.chan1_raw,
+        msg.chan2_raw,
+        msg.chan3_raw,
+        msg.chan4_raw,
+        msg.chan5_raw,
+        msg.chan6_raw,
+        msg.chan7_raw,
+        msg.chan8_raw,
+    )
 
 
 # ------------------------------------------------------------------------------------
 def handle_hud(msg):
-
-    hud_data = (msg.airspeed, msg.groundspeed, msg.heading,
-                msg.throttle, msg.alt, msg.climb)
+    hud_data = (
+        msg.airspeed,
+        msg.groundspeed,
+        msg.heading,
+        msg.throttle,
+        msg.alt,
+        msg.climb,
+    )
     # print "Aspd\tGspd\tHead\tThro\tAlt\tClimb"
     # print "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f" % hud_data
 
-    #print("[Debug] Alt: %f, Throttle:%f" %(msg.alt, msg.throttle))
+    # print("[Debug] Alt: %f, Throttle:%f" %(msg.alt, msg.throttle))
 
     global current_altitude
     global previous_altitude
@@ -494,16 +568,17 @@ def handle_hud(msg):
     global yaw_initial
     global ground_speed
 
-    ground_speed = msg.groundspeed # m/s
+    ground_speed = msg.groundspeed  # m/s
     previous_altitude = current_altitude
     current_altitude = msg.alt
 
-    current_heading = (msg.heading - 359)
+    current_heading = msg.heading - 359
     actual_throttle = msg.throttle
 
     if current_flight_mode == "FLIP":
         if yaw_initial == 0:
             yaw_initial = current_heading
+
 
 # ------------------------------------------------------------------------------------
 def handle_attitude(msg):
@@ -523,8 +598,14 @@ def handle_attitude(msg):
     global yawspeed_current
     global yawspeed_previous
 
-    attitude_data = (msg.roll, msg.pitch, msg.yaw, msg.rollspeed,
-                     msg.pitchspeed, msg.yawspeed)
+    attitude_data = (
+        msg.roll,
+        msg.pitch,
+        msg.yaw,
+        msg.rollspeed,
+        msg.pitchspeed,
+        msg.yawspeed,
+    )
     # print "Roll\tPit\tYaw\tRSpd\tPSpd\tYSpd"
     # print "%0.6f\t%0.6f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t" % attitude_data
 
@@ -580,7 +661,14 @@ def handle_target(msg):
 	aspd_error	float	m/s	Current airspeed error
 	xtrack_error	float	m	Current crosstrack error on x-y plane
 	"""
-    reference = (msg.nav_roll, msg.nav_pitch, msg.nav_bearing, msg.alt_error, msg.aspd_error, msg.xtrack_error)
+    reference = (
+        msg.nav_roll,
+        msg.nav_pitch,
+        msg.nav_bearing,
+        msg.alt_error,
+        msg.aspd_error,
+        msg.xtrack_error,
+    )
     # print "\nRF_Roll\tRF_Pitch\tRF_Head\tRF_Alt\tRF_Spd\tRF_XY"
     # print "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t" % reference
 
@@ -594,7 +682,7 @@ def handle_target(msg):
         stable_counter += 1
 
         # Compute moving average of each state
-        alt_series += (current_altitude + msg.alt_error)
+        alt_series += current_altitude + msg.alt_error
         roll_series += msg.nav_roll
         pitch_series += msg.nav_pitch
         heading_series += msg.nav_bearing
@@ -607,7 +695,9 @@ def handle_target(msg):
         heading_series_flip += msg.nav_bearing
         stable_counter_flip += 1
 
+
 # print("Desired heading:%f, current heading:%f" %(msg.nav_bearing, current_heading))
+
 
 # ------------------------------------------------------------------------------------
 def handle_param(msg):
@@ -616,9 +706,9 @@ def handle_param(msg):
     global target_param_value
 
     message = msg.to_dict()
-    if message['param_id'].decode("utf-8") == target_param:
+    if message["param_id"].decode("utf-8") == target_param:
         target_param_ready = 1
-        target_param_value = message['param_value']
+        target_param_value = message["param_value"]
     else:
         target_param_ready = 0
 
@@ -628,7 +718,7 @@ def handle_position(msg):
     position_data = (msg.lat, msg.lon)
 
     # print(msg)
-    #print("lat:%f, lon:%f, vertical speed (cm/s):%d" %(float(msg.lat), float(msg.lon), int(msg.vz)))
+    # print("lat:%f, lon:%f, vertical speed (cm/s):%d" %(float(msg.lat), float(msg.lon), int(msg.vz)))
 
     global position_cnt
     global lat_series
@@ -650,7 +740,8 @@ def handle_position(msg):
     lon_current = msg.lon
 
     vertical_speed = msg.vz
-    relative_alt = msg.relative_alt / 1000 # convert it from mm to meters
+    relative_alt = msg.relative_alt / 1000  # convert it from mm to meters
+
 
 # ------------------------------------------------------------------------------------
 def handle_status(msg):
@@ -667,7 +758,7 @@ def handle_status(msg):
     global mission_cnt
 
     status_data = (msg.severity, msg.text)
-    print("[status_text] %s" % msg.text)
+    print(("[status_text] %s" % msg.text))
 
     # Detecting a depolyed parachute
     if "Parachute: Released" in msg.text:
@@ -721,6 +812,7 @@ def handle_status(msg):
     elif "Got MISSION_ACK" in msg.text:
         mission_cnt = 1
 
+
 # ------------------------------------------------------------------------------------
 def handle_time(msg):
     global system_time
@@ -731,12 +823,14 @@ def handle_time(msg):
 
 # print "[system_time] UNIX time:%d, Boot time:%d" % time_data
 
+
 # ------------------------------------------------------------------------------------
 def handle_mission(msg):
     global mission_cnt
 
     mission_cnt = msg.count
-    print("[Debug][MISSION_COUNT]%d" % mission_cnt)
+    print(("[Debug][MISSION_COUNT]%d" % mission_cnt))
+
 
 # ------------------------------------------------------------------------------------
 def handle_gps(msg):
@@ -760,7 +854,8 @@ def handle_circle_status(msg):
     circle_radius_previous = circle_radius_current
     circle_radius_current = msg.radius
 
-    #print("[Debug-circle mode] radius:%f, X:%d, Y:%d, Z:%f" % (msg.radius, msg.lon, msg.x, msg.y, msg.z))
+    # print("[Debug-circle mode] radius:%f, X:%d, Y:%d, Z:%f" % (msg.radius, msg.lon, msg.x, msg.y, msg.z))
+
 
 # ------------------------------------------------------------------------------------
 def read_loop():
@@ -799,6 +894,7 @@ def read_loop():
         elif msg_type == "ORBIT_EXECUTION_STATUS":
             handle_circle_status(msg)
 
+
 # --------------------- (End) READ Robotic Vehicle's states ------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
@@ -831,14 +927,21 @@ def store_mutated_inputs():
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
     # Print distances
-    print("#---------------------------------%s-------------------------------------------" % policy)
+    print(
+        (
+            "#---------------------------------%s-------------------------------------------"
+            % policy
+        )
+    )
     sys.stdout.write("[Distance] ")
     for i in range(length):
         sys.stdout.write("P%d: %f " % (i + 1, P_dist[i]))
 
     print("")
-    print('[Distance] Global distance: %f' % Global_distance)
-    print("#-----------------------------------------------------------------------------")
+    print(("[Distance] Global distance: %f" % Global_distance))
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
 
     if G_dist < 0:
         store_mutated_inputs()
@@ -857,10 +960,9 @@ def print_distance(G_dist, P_dist, length, policy, guid):
             global Current_input_val
 
             for i in range(Current_policy_P_length):
-
                 log_flag = -1
                 guide_line = ""
-                fp = open("guidance_log.txt", 'r')
+                fp = open("guidance_log.txt", "r")
 
                 if Previous_distance[i] < P_dist[i]:
                     log_flag = 0
@@ -869,12 +971,25 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                         guide_line += line
 
                         if Current_input in line:
-                            row = line.rstrip().split(' ')
+                            row = line.rstrip().split(" ")
                             if int(row[2]) == i + 1:
                                 log_flag = 1
-                                print("[Redundant input] {} {} {} {}".format(row[0], row[1], row[2], row[3]))
-                                print("[Redundant input] old:%f - new:%f" % (
-                                float(row[3]), (P_dist[i] - Previous_distance[i])))
+                                print(
+                                    (
+                                        "[Redundant input] {} {} {} {}".format(
+                                            row[0], row[1], row[2], row[3]
+                                        )
+                                    )
+                                )
+                                print(
+                                    (
+                                        "[Redundant input] old:%f - new:%f"
+                                        % (
+                                            float(row[3]),
+                                            (P_dist[i] - Previous_distance[i]),
+                                        )
+                                    )
+                                )
                                 if float(row[3]) <= (P_dist[i] - Previous_distance[i]):
                                     log_flag = 2
                                     print_input = ""
@@ -884,16 +999,25 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                                     print_input += " "
                                     print_input += str(i + 1)  # 2
                                     print_input += " "
-                                    print_input += str(P_dist[i] - Previous_distance[i])  # 3
+                                    print_input += str(
+                                        P_dist[i] - Previous_distance[i]
+                                    )  # 3
                                     print_input += "\n"
                                     guide_line = guide_line.replace(line, print_input)
                                     print(
-                                        "[Redundant input] we need to log %s because it increase more propositional distance %d" % (
-                                        Current_input, i + 1))
+                                        (
+                                            "[Redundant input] we need to log %s because it increase more propositional distance %d"
+                                            % (Current_input, i + 1)
+                                        )
+                                    )
                 # Append a new input
                 if log_flag == 0:
-                    print("[*Distance*] propositional distance %d is increased (input: %s, %s)" % (
-                    i + 1, Current_input, Current_input_val))
+                    print(
+                        (
+                            "[*Distance*] propositional distance %d is increased (input: %s, %s)"
+                            % (i + 1, Current_input, Current_input_val)
+                        )
+                    )
 
                     print_input = ""
                     print_input += Current_input
@@ -1002,7 +1126,6 @@ def calculate_distance(guidance):
         pitch_avg_flip = 0
         heading_avg_flip = 0
 
-
     if position_cnt > 0:
         lat_avg = lat_series / position_cnt
         lon_avg = lon_series / position_cnt
@@ -1030,7 +1153,12 @@ def calculate_distance(guidance):
     if PRINT_DEBUG == 1:
         # print('[Debug] stable_counter:%d' %stable_counter)
         # print('[Debug] alt_avg:%f (previous_alt:%f, current_alt:%f), roll_avg:%f, pitch_avg:%f, heading_avg:%f' %(alt_avg, previous_alt, current_alt, roll_avg, pitch_avg, heading_avg))
-        print('[Debug] lat_avg:%f, home_lat:%f, lon_avg:%f, home_lon:%f' % (lat_avg, home_lat, lon_avg, home_lon))
+        print(
+            (
+                "[Debug] lat_avg:%f, home_lat:%f, lon_avg:%f, home_lon:%f"
+                % (lat_avg, home_lat, lon_avg, home_lon)
+            )
+        )
 
     position_cnt = 0
     stable_counter = 0
@@ -1095,7 +1223,9 @@ def calculate_distance(guidance):
 
     # P5
     # Request parameter
-    master.mav.param_request_read_send(master.target_system, master.target_component, 'CHUTE_ALT_MIN', -1)
+    master.mav.param_request_read_send(
+        master.target_system, master.target_component, "CHUTE_ALT_MIN", -1
+    )
 
     target_param = "CHUTE_ALT_MIN"
     count = 0
@@ -1110,7 +1240,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=5, policy="A.CHUTE", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=5, policy="A.CHUTE", guid=guidance
+    )
 
     # ----------------------- (end) A.CHUTE1 policy -----------------------
 
@@ -1125,7 +1257,8 @@ def calculate_distance(guidance):
     # P2
     # Request parameter
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'RTL_ALT', -1)
+        master.target_system, master.target_component, "RTL_ALT", -1
+    )
 
     target_param = "RTL_ALT"
     count = 0
@@ -1142,7 +1275,9 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+        print(
+            ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+        )
 
     if current_flight_mode == "RTL":
         P[2] = 1
@@ -1156,7 +1291,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL1", guid=guidance
+    )
     # ----------------------- (end) A.RTL1 policy -----------------------
 
     # ----------------------- (start) A.RTL2 policy -----------------------
@@ -1169,7 +1306,8 @@ def calculate_distance(guidance):
     # P1: (ALT_t - RTL_ALT)/ALT_t
     # Request parameter
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'RTL_ALT', -1)
+        master.target_system, master.target_component, "RTL_ALT", -1
+    )
 
     target_param = "RTL_ALT"
     count = 0
@@ -1186,7 +1324,9 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+        print(
+            ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+        )
 
     # P2: POS_t != Home_position
     if lat_avg != home_lat and lon_avg != home_lon:
@@ -1208,7 +1348,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1], P[2], max(P[3], P[4])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=5, policy="A.RTL2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=5, policy="A.RTL2", guid=guidance
+    )
     # ----------------------- (end) A.RTL2 policy -----------------------
 
     # ----------------------- (start) A.RTL3 policy -----------------------
@@ -1221,7 +1363,8 @@ def calculate_distance(guidance):
     # P1: (ALT_t - RTL_ALT)/ALT_t
     # Request parameter
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'RTL_ALT', -1)
+        master.target_system, master.target_component, "RTL_ALT", -1
+    )
 
     target_param = "RTL_ALT"
     count = 0
@@ -1250,11 +1393,15 @@ def calculate_distance(guidance):
         P[3] = 0
 
     if PRINT_DEBUG == 1:
-        print("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round))
+        print(
+            ("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round))
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL3", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL3", guid=guidance
+    )
     # ----------------------- (end) A.RTL3 policy -----------------------
 
     # ----------------------- (start) A.RTL4 policy -----------------------
@@ -1271,7 +1418,12 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print("[Debug] ALT_t:%f, Ground_ALT:%f" % (round(current_altitude, 1), round(home_altitude, 1)))
+        print(
+            (
+                "[Debug] ALT_t:%f, Ground_ALT:%f"
+                % (round(current_altitude, 1), round(home_altitude, 1))
+            )
+        )
 
     # P2: Disarm = on
     if Armed == 0:
@@ -1281,7 +1433,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.RTL4", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.RTL4", guid=guidance
+    )
     # ----------------------- (end) A.RTL4 policy -----------------------
 
     # ----------------------- (start) A.FLIP1 policy -----------------------
@@ -1316,12 +1470,23 @@ def calculate_distance(guidance):
         P[4] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f" % (
-        roll_avg, round(current_altitude, 0), round(previous_altitude, 0), current_alt))
+        print(
+            (
+                "[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f"
+                % (
+                    roll_avg,
+                    round(current_altitude, 0),
+                    round(previous_altitude, 0),
+                    current_alt,
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=5, policy="A.FLIP1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=5, policy="A.FLIP1", guid=guidance
+    )
     # ----------------------- (end) A.FLIP1 policy -----------------------
 
     # ----------------------- (start) A.FLIP2 policy -----------------------
@@ -1337,8 +1502,12 @@ def calculate_distance(guidance):
     else:
         P[1] = -1
 
-    # P2: Roll_rate = 400
-        P[2] = -1 # We cannot monitor the roll rate; thus, we assume that it's always true.
+        # P2: Roll_rate = 400
+        P[
+            2
+        ] = (
+            -1
+        )  # We cannot monitor the roll rate; thus, we assume that it's always true.
 
     # P3: Roll_Direction = Right
     if abs(roll_avg_flip) > 0:
@@ -1347,11 +1516,13 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] roll_avg_flip:%f" % roll_avg_flip)
+        print(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
 
     Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP2", guid=guidance
+    )
     # ----------------------- (end) A.FLIP2 policy -----------------------
 
     # ----------------------- (start) A.FLIP3 policy -----------------------
@@ -1381,13 +1552,30 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] roll_initial:%f, roll_current:%f" % (round(roll_initial, 0), round(current_roll, 0)))
-        print("[Debug] pitch_initial:%f, pitch_current:%f" % (round(pitch_initial, 0), round(current_pitch, 0)))
-        print("[Debug] yaw_initial:%f, yaw_current:%f" % (round(yaw_initial, 0), round(current_heading, 0)))
+        print(
+            (
+                "[Debug] roll_initial:%f, roll_current:%f"
+                % (round(roll_initial, 0), round(current_roll, 0))
+            )
+        )
+        print(
+            (
+                "[Debug] pitch_initial:%f, pitch_current:%f"
+                % (round(pitch_initial, 0), round(current_pitch, 0))
+            )
+        )
+        print(
+            (
+                "[Debug] yaw_initial:%f, yaw_current:%f"
+                % (round(yaw_initial, 0), round(current_heading, 0))
+            )
+        )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP3", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP3", guid=guidance
+    )
 
     roll_initial = 0.0
     pitch_initial = 0.0
@@ -1414,11 +1602,18 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f" % (flip_start_time, timeit.default_timer(), elapsed))
+        print(
+            (
+                "[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f"
+                % (flip_start_time, timeit.default_timer(), elapsed)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=2, policy="A.FLIP4", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=2, policy="A.FLIP4", guid=guidance
+    )
 
     flip_start_time = 0.0
 
@@ -1430,7 +1625,8 @@ def calculate_distance(guidance):
 
     # Request parameter
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'EK2_ALT_SOURCE', -1)
+        master.target_system, master.target_component, "EK2_ALT_SOURCE", -1
+    )
 
     target_param = "EK2_ALT_SOURCE"
     count = 0
@@ -1456,11 +1652,18 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f" % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1)))
+        print(
+            (
+                "[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f"
+                % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1))
+            )
+        )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD1", guid=guidance
+    )
     # ----------------------- (end) A.ALT_HOLD1 policy -----------------------
 
     # ----------------------- (start) A.ALT_HOLD2 policy -----------------------
@@ -1483,11 +1686,22 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f" % (actual_throttle, round(current_altitude, 0), round(previous_altitude, 0)))
+        print(
+            (
+                "[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f"
+                % (
+                    actual_throttle,
+                    round(current_altitude, 0),
+                    round(previous_altitude, 0),
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD2", guid=guidance
+    )
     # ----------------------- (end) A.ALT_HOLD2 policy -----------------------
 
     # ----------------------- (start) A.CIRCLE1 policy -----------------------
@@ -1515,17 +1729,27 @@ def calculate_distance(guidance):
     # P3: Circle_radius_t < Circle_radius_(t-1)
     ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
 
-    if circle_radius_previous == 0 or (circle_radius_previous - circle_radius_current) == 0:
+    if (
+        circle_radius_previous == 0
+        or (circle_radius_previous - circle_radius_current) == 0
+    ):
         P[3] = 0
     else:
         P[3] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
 
     if PRINT_DEBUG == 1:
-        print("[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f" % (current_rc_2, circle_radius_current, circle_radius_previous))
+        print(
+            (
+                "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
+                % (current_rc_2, circle_radius_current, circle_radius_previous)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE1", guid=guidance
+    )
     # ----------------------- (end) A.CIRCLE1 policy -----------------------
 
     # ----------------------- (start) A.CIRCLE2 policy -----------------------
@@ -1547,17 +1771,27 @@ def calculate_distance(guidance):
     # P2: Circle_radius_t > Circle_radius_(t-1)
     ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
 
-    if circle_radius_previous == 0 or (circle_radius_previous - circle_radius_current) == 0:
+    if (
+        circle_radius_previous == 0
+        or (circle_radius_previous - circle_radius_current) == 0
+    ):
         P[2] = 0
     else:
         P[2] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
 
     if PRINT_DEBUG == 1:
-        print("[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f" % (current_rc_2, circle_radius_current, circle_radius_previous))
+        print(
+            (
+                "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
+                % (current_rc_2, circle_radius_current, circle_radius_previous)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.CIRCLE2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.CIRCLE2", guid=guidance
+    )
     # ----------------------- (end) A.CIRCLE2 policy -----------------------
 
     # ----------------------- (start) A.CIRCLE3 policy -----------------------
@@ -1589,7 +1823,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE3", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE3", guid=guidance
+    )
     # ----------------------- (end) A.CIRCLE3 policy -----------------------
 
     # ----------------------- (start) A.CIRCLE4-6 policy -----------------------
@@ -1621,7 +1857,9 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE4-6", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE4-6", guid=guidance
+    )
     # ----------------------- (end) A.CIRCLE4-6 policy -----------------------
 
     rollspeed_current_raw = rollspeed_current
@@ -1634,7 +1872,7 @@ def calculate_distance(guidance):
     rollspeed_current = round(rollspeed_current, 0)
     rollspeed_previous = round(rollspeed_previous, 0)
     pitchspeed_current = round(pitchspeed_current, 0)
-    pitchspeed_previous  = round(pitchspeed_previous , 0)
+    pitchspeed_previous = round(pitchspeed_previous, 0)
     yawspeed_current = round(yawspeed_current, 0)
     yawspeed_previous = round(yawspeed_previous, 0)
     # ----------------------- (start) A.CIRCLE7 policy -----------------------
@@ -1669,13 +1907,30 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f" % (rollspeed_current, rollspeed_previous))
-        print("[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f" % (pitchspeed_current, pitchspeed_previous))
-        print("[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f" % (yawspeed_current, yawspeed_previous))
+        print(
+            (
+                "[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f"
+                % (rollspeed_current, rollspeed_previous)
+            )
+        )
+        print(
+            (
+                "[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f"
+                % (pitchspeed_current, pitchspeed_previous)
+            )
+        )
+        print(
+            (
+                "[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f"
+                % (yawspeed_current, yawspeed_previous)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE7", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE7", guid=guidance
+    )
     # ----------------------- (end) A.CIRCLE7 policy -----------------------
 
     # ----------------------- (start) A.LAND1 policy -----------------------
@@ -1689,7 +1944,7 @@ def calculate_distance(guidance):
     ## (ALT_t - 10) / ALT_t
     ## Use 'relative_alt': relative altitude from the ground
     if relative_alt == 0:
-        P[1] = -1 # Preventing false alarms when the drone lands on the ground
+        P[1] = -1  # Preventing false alarms when the drone lands on the ground
     else:
         P[1] = (relative_alt - 10) / relative_alt
 
@@ -1700,7 +1955,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'LAND_SPEED_HIGH', -1)
+        master.target_system, master.target_component, "LAND_SPEED_HIGH", -1
+    )
 
     target_param = "LAND_SPEED_HIGH"
     count = 0
@@ -1714,7 +1970,8 @@ def calculate_distance(guidance):
         target_param_ready = 0
 
         master.mav.param_request_read_send(
-            master.target_system, master.target_component, 'WPNAV_SPEED_DN', -1)
+            master.target_system, master.target_component, "WPNAV_SPEED_DN", -1
+        )
 
         target_param = "WPNAV_SPEED_DN"
         count = 0
@@ -1731,11 +1988,18 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d" % (relative_alt, vertical_speed, expected_landing_speed))
+        print(
+            (
+                "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
+                % (relative_alt, vertical_speed, expected_landing_speed)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND1", guid=guidance
+    )
     # ----------------------- (end) A.LAND1 policy -----------------------
 
     # ----------------------- (start) A.LAND2 policy -----------------------
@@ -1751,7 +2015,7 @@ def calculate_distance(guidance):
     if relative_alt == 10:
         P[1] = 0
     elif relative_alt == 0:
-        P[1] = -1 # Preventing false alarms when the drone lands on the ground
+        P[1] = -1  # Preventing false alarms when the drone lands on the ground
     else:
         P[1] = (10 - relative_alt) / 10
 
@@ -1762,7 +2026,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'LAND_SPEED', -1)
+        master.target_system, master.target_component, "LAND_SPEED", -1
+    )
 
     target_param = "LAND_SPEED"
     count = 0
@@ -1779,11 +2044,18 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d" % (relative_alt, vertical_speed, expected_landing_speed))
+        print(
+            (
+                "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
+                % (relative_alt, vertical_speed, expected_landing_speed)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND2", guid=guidance
+    )
     # ----------------------- (end) A.LAND2 policy -----------------------
 
     # ----------------------- (start) A.AUTO1 policy -----------------------
@@ -1806,11 +2078,22 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f" % (current_rc_4, round(yawspeed_current_raw, 2), round(yawspeed_previous_raw, 2)))
+        print(
+            (
+                "[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f"
+                % (
+                    current_rc_4,
+                    round(yawspeed_current_raw, 2),
+                    round(yawspeed_previous_raw, 2),
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.AUTO1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.AUTO1", guid=guidance
+    )
     # ----------------------- (end) A.AUTO1 policy -----------------------
 
     global gps_failsafe_cnt
@@ -1818,11 +2101,22 @@ def calculate_distance(guidance):
     # ----------------------- (start) A.GPS.FS1 policy -----------------------
     # P0: Mode_t = AUTO, AUTOTUNE, BRAKE, CIRCLE, DRIFT, FOLLOW, GUIDED, LOITER, POSHOLD, RTL, Simple, SMART_RTL, THROW, ZIGZAG
     ## When the drone's flight mode leverages a GPS receiver
-    if (current_flight_mode == "AUTO") or (current_flight_mode == "AUTOTUNE") or (current_flight_mode == "BRAKE")\
-            or (current_flight_mode == "CIRCLE") or (current_flight_mode == "DRIFT") or (current_flight_mode == "FOLLOW")\
-            or (current_flight_mode == "GUIDED") or (current_flight_mode == "LOITER") or (current_flight_mode == "POSHOLD") \
-            or (current_flight_mode == "RTL") or (current_flight_mode == "SIMPLE") or (current_flight_mode == "SMART_RTL") \
-            or (current_flight_mode == "THROW") or (current_flight_mode == "ZIGZAG"):
+    if (
+        (current_flight_mode == "AUTO")
+        or (current_flight_mode == "AUTOTUNE")
+        or (current_flight_mode == "BRAKE")
+        or (current_flight_mode == "CIRCLE")
+        or (current_flight_mode == "DRIFT")
+        or (current_flight_mode == "FOLLOW")
+        or (current_flight_mode == "GUIDED")
+        or (current_flight_mode == "LOITER")
+        or (current_flight_mode == "POSHOLD")
+        or (current_flight_mode == "RTL")
+        or (current_flight_mode == "SIMPLE")
+        or (current_flight_mode == "SMART_RTL")
+        or (current_flight_mode == "THROW")
+        or (current_flight_mode == "ZIGZAG")
+    ):
         P[0] = 1
     else:
         P[0] = -1
@@ -1841,7 +2135,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error))
+        print(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
@@ -1851,7 +2145,9 @@ def calculate_distance(guidance):
         gps_failsafe_cnt = gps_failsafe_cnt + 1
         Global_distance = -1 * Global_distance
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS1", guid=guidance
+    )
     # ----------------------- (end) A.GPS.FS1 policy -----------------------
 
     # ----------------------- (start) A.GPS.FS2 policy -----------------------
@@ -1866,7 +2162,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'SIM_BARO_DISABLE', -1)
+        master.target_system, master.target_component, "SIM_BARO_DISABLE", -1
+    )
 
     target_param = "SIM_BARO_DISABLE"
     count = 0
@@ -1887,11 +2184,23 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f" % (failsafe_error, target_param_value, round(alt_avg, 1), round(alt_GPS_avg, 1)))
+        print(
+            (
+                "[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f"
+                % (
+                    failsafe_error,
+                    target_param_value,
+                    round(alt_avg, 1),
+                    round(alt_GPS_avg, 1),
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS2", guid=guidance
+    )
     # ----------------------- (end) A.GPS.FS2 policy -----------------------
 
     # ----------------------- (start) A.RC.FS1 policy -----------------------
@@ -1905,7 +2214,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'FS_THR_VALUE', -1)
+        master.target_system, master.target_component, "FS_THR_VALUE", -1
+    )
 
     target_param = "FS_THR_VALUE"
     count = 0
@@ -1928,11 +2238,13 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed))
+        print(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS1", guid=guidance
+    )
     # ----------------------- (end) A.RC.FS1 policy -----------------------
 
     # ----------------------- (start) A.RC.FS2 policy -----------------------
@@ -1940,7 +2252,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'FS_THR_VALUE', -1)
+        master.target_system, master.target_component, "FS_THR_VALUE", -1
+    )
 
     target_param = "FS_THR_VALUE"
     count = 0
@@ -1963,11 +2276,18 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d" % (current_rc_3, fs_thr_val, RC_failsafe_error))
+        print(
+            (
+                "[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d"
+                % (current_rc_3, fs_thr_val, RC_failsafe_error)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS2", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS2", guid=guidance
+    )
     # ----------------------- (end) A.RC.FS2 policy -----------------------
 
     # ----------------------- (start) A.SPORT1 policy -----------------------
@@ -1981,7 +2301,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'PILOT_SPEED_UP', -1)
+        master.target_system, master.target_component, "PILOT_SPEED_UP", -1
+    )
 
     target_param = "PILOT_SPEED_UP"
     count = 0
@@ -1998,11 +2319,18 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d" % (current_flight_mode, vertical_speed, pilot_speed_vertical))
+        print(
+            (
+                "[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d"
+                % (current_flight_mode, vertical_speed, pilot_speed_vertical)
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=2, policy="A.SPORT1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=2, policy="A.SPORT1", guid=guidance
+    )
     # ----------------------- (end) A.SPORT1 policy -----------------------
 
     # ----------------------- (start) A.GUIDED1 policy -----------------------
@@ -2037,11 +2365,26 @@ def calculate_distance(guidance):
         P[4] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f" % (current_flight_mode, mission_cnt, round(yawspeed_current, 1), round(yawspeed_previous, 1), round(ground_speed, 0), round(current_altitude, 0), round(previous_altitude, 0)))
+        print(
+            (
+                "[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
+                % (
+                    current_flight_mode,
+                    mission_cnt,
+                    round(yawspeed_current, 1),
+                    round(yawspeed_previous, 1),
+                    round(ground_speed, 0),
+                    round(current_altitude, 0),
+                    round(previous_altitude, 0),
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3], P[4])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=5, policy="A.GUIDED1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=5, policy="A.GUIDED1", guid=guidance
+    )
     # ----------------------- (end) A.GUIDED1 policy -----------------------
 
     # ----------------------- (start) A.LOITER1 policy -----------------------
@@ -2070,11 +2413,25 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f" % (current_flight_mode, round(yawspeed_current, 1), round(yawspeed_previous, 1), round(ground_speed, 0), round(current_altitude, 0), round(previous_altitude, 0)))
+        print(
+            (
+                "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
+                % (
+                    current_flight_mode,
+                    round(yawspeed_current, 1),
+                    round(yawspeed_previous, 1),
+                    round(ground_speed, 0),
+                    round(current_altitude, 0),
+                    round(previous_altitude, 0),
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=4, policy="A.LOITER1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=4, policy="A.LOITER1", guid=guidance
+    )
     # ----------------------- (end) A.LOITER1 policy -----------------------
 
     # ----------------------- (start) A.DRIFT1 policy -----------------------
@@ -2095,7 +2452,8 @@ def calculate_distance(guidance):
     target_param_value = 0
 
     master.mav.param_request_read_send(
-        master.target_system, master.target_component, 'FS_EKF_ACTION', -1)
+        master.target_system, master.target_component, "FS_EKF_ACTION", -1
+    )
 
     target_param = "FS_EKF_ACTION"
     count = 0
@@ -2120,11 +2478,23 @@ def calculate_distance(guidance):
         P[2] = -1
 
     if PRINT_DEBUG == 1:
-        print("[Debug] GPS_failsafe:%d, Mode_(t-1):%s, Mode_t:%s, FS_EKF_ACTION:%d" % (failsafe_error, previous_flight_mode, current_flight_mode, expected_flight_mode_from_FS))
+        print(
+            (
+                "[Debug] GPS_failsafe:%d, Mode_(t-1):%s, Mode_t:%s, FS_EKF_ACTION:%d"
+                % (
+                    failsafe_error,
+                    previous_flight_mode,
+                    current_flight_mode,
+                    expected_flight_mode_from_FS,
+                )
+            )
+        )
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=3, policy="A.DRIFT1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.DRIFT1", guid=guidance
+    )
     # ----------------------- (end) A.DRIFT1 policy -----------------------
 
     # ----------------------- (start) A.BRAKE1 policy -----------------------
@@ -2145,14 +2515,25 @@ def calculate_distance(guidance):
 
     Global_distance = -1 * (min(P[0], P[1]))
 
-    if (previous_flight_mode == "BRAKE") and (round(ground_speed, 0) != 0) and (brake_cnt < 2):
+    if (
+        (previous_flight_mode == "BRAKE")
+        and (round(ground_speed, 0) != 0)
+        and (brake_cnt < 2)
+    ):
         brake_cnt = brake_cnt + 1
         Global_distance = -1 * Global_distance
 
     if PRINT_DEBUG == 1:
-        print("[Debug] Mode_t:%s, ground_speed:%f" % (current_flight_mode, round(ground_speed, 0)))
+        print(
+            (
+                "[Debug] Mode_t:%s, ground_speed:%f"
+                % (current_flight_mode, round(ground_speed, 0))
+            )
+        )
 
-    print_distance(G_dist=Global_distance, P_dist=P, length=2, policy="A.BRAKE1", guid=guidance)
+    print_distance(
+        G_dist=Global_distance, P_dist=P, length=2, policy="A.BRAKE1", guid=guidance
+    )
     # ----------------------- (end) A.BRAKE1 policy -----------------------
 
     target_param_ready = 0
@@ -2165,7 +2546,7 @@ def calculate_distance(guidance):
 # More information about Joystick channels
 # here: https://www.ardusub.com/operators-manual/rc-input-and-output.html#rc-inputs
 def set_rc_channel_pwm(id, pwm=1500):
-    """ Set RC channel pwm value
+    """Set RC channel pwm value
     Args:
         id (TYPE): Channel ID
         pwm (int, optional): Channel pwm value 1100-1900
@@ -2185,7 +2566,8 @@ def set_rc_channel_pwm(id, pwm=1500):
         master.mav.rc_channels_override_send(
             master.target_system,  # target_system
             master.target_component,  # target_component
-            *rc_channel_values)  # RC channel list, in microseconds.
+            *rc_channel_values,
+        )  # RC channel list, in microseconds.
 
 
 # ------------------------------------------------------------------------------------
@@ -2200,7 +2582,7 @@ def throttle_th():
 # ------------------------------------------------------------------------------------
 def match_cmd(cmd):
     cmds = []
-    f = open("guidance_log.txt", 'r')
+    f = open("guidance_log.txt", "r")
     for line in f.readlines():
         if cmd in line:
             cmds.append(line)
@@ -2209,18 +2591,18 @@ def match_cmd(cmd):
 
     if len(cmds) >= 2:
         index = random.randint(0, len(cmds) - 1)
-        row = cmds[index].rstrip().split(' ')
+        row = cmds[index].rstrip().split(" ")
         print("*****")
-        print("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3]))
+        print(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         print("*****")
 
         return row[1]
 
     elif len(cmds) == 1:
-        row = cmds[0].rstrip().split(' ')
+        row = cmds[0].rstrip().split(" ")
 
         print("*****")
-        print("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3]))
+        print(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         print("*****")
 
         return row[1]
@@ -2247,10 +2629,19 @@ def execute_cmd(num):
         Current_input_val = match_cmd(cmd=Current_input)
 
     if Current_input_val != "null":
-        print("@@@[Reuse stored input pair] (%s, %s)@@@" % (Current_input, Current_input_val))
+        print(
+            (
+                "@@@[Reuse stored input pair] (%s, %s)@@@"
+                % (Current_input, Current_input_val)
+            )
+        )
 
     # ------------------------(start) execute a selected command-------------------------
-    if read_inputs.cmd_name[num] == "RC1" or read_inputs.cmd_name[num] == "RC2" or read_inputs.cmd_name[num] == "RC4":
+    if (
+        read_inputs.cmd_name[num] == "RC1"
+        or read_inputs.cmd_name[num] == "RC2"
+        or read_inputs.cmd_name[num] == "RC4"
+    ):
         target_RC = 0
         if Current_input_val == "null":
             mutated_value = random.randint(1200, 1900)
@@ -2289,7 +2680,8 @@ def execute_cmd(num):
         master.mav.set_mode_send(
             master.target_system,
             mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            rand_fligh_mode)
+            rand_fligh_mode,
+        )
 
     elif read_inputs.cmd_name[num] == "MAV_CMD_DO_PARACHUTE":
         Current_input_val = "2"
@@ -2298,10 +2690,18 @@ def execute_cmd(num):
             master.target_system,  # target_system
             master.target_component,  # target_component
             mavutil.mavlink.MAV_CMD_DO_PARACHUTE,
-            0, 2, 0, 0, 0, 0, 0, 0)
+            0,
+            2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
     else:
         if Current_input_val != "null" and "," in Current_input_val:
-            row = Current_input_val.rstrip().split(',')
+            row = Current_input_val.rstrip().split(",")
             for i in range(7):
                 rand[i] = int(row[i])
 
@@ -2324,10 +2724,17 @@ def execute_cmd(num):
             master.target_component,  # target_component
             int(read_inputs.cmd_number[num]),
             0,
-            rand[0], rand[1], rand[2], rand[3], rand[4], rand[5], rand[6])
+            rand[0],
+            rand[1],
+            rand[2],
+            rand[3],
+            rand[4],
+            rand[5],
+            rand[6],
+        )
     # ------------------------(end) execute a selected command-------------------------
 
-    print("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val))
+    print(("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the user command
     print_cmd = ""
@@ -2356,14 +2763,22 @@ def execute_env(num):
         rand = random.uniform(0, 100)
         Current_input_val = str(rand)
     else:
-        print("@@@[Reuse stored input pair] (%s, %s)@@@" % (Current_input, Current_input_val))
+        print(
+            (
+                "@@@[Reuse stored input pair] (%s, %s)@@@"
+                % (Current_input, Current_input_val)
+            )
+        )
 
-    master.mav.param_set_send(master.target_system, master.target_component,
-                              Current_input,
-                              float(Current_input_val),
-                              mavutil.mavlink.MAV_PARAM_TYPE_REAL32)
+    master.mav.param_set_send(
+        master.target_system,
+        master.target_component,
+        Current_input,
+        float(Current_input_val),
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+    )
 
-    print("[Execute_env] (%s, %s)" % (Current_input, Current_input_val))
+    print(("[Execute_env] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the environmental factor
     print_env = ""
@@ -2405,17 +2820,30 @@ def pick_up_cmd():
 
     # 2) Parameters
     elif input_type == 2:
-        change_parameter(selected_param=random.randint(0, len(read_inputs.param_name) - 1))
+        change_parameter(
+            selected_param=random.randint(0, len(read_inputs.param_name) - 1)
+        )
 
     # 3) Environmental factors
     elif input_type == 3:
         execute_env(num=random.randint(0, len(read_inputs.env_name) - 1))
+
 
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 def main(argv):
     global Precondition_path
+    global home_altitude
+    global drone_status
+    global executing_commands
+    global current_altitude
+    global Armed
+    global Parachute_on
+    global count_main_loop
+    global goal_throttle
+    global RV_alive
+    global hit_ground
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -2425,51 +2853,74 @@ def main(argv):
     f_path_def += "./policies/"
     f_path_def += Current_policy
 
-    print("#-----------------------------------------------------------------------------")
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
     params_path = ""
     params_path += f_path_def
     params_path += "/parameters.txt"
     read_inputs.parsing_parameter(params_path)
-    print("# Check whether parsing parameters well done or not, received # of params: %d" % len(read_inputs.param_name))
-    print(read_inputs.param_name)
+    print(
+        (
+            "# Check whether parsing parameters well done or not, received # of params: %d"
+            % len(read_inputs.param_name)
+        )
+    )
+    print((read_inputs.param_name))
 
     cmd_path = ""
     cmd_path += f_path_def
     cmd_path += "/cmds.txt"
 
     read_inputs.parsing_command(cmd_path)
-    print("# Check whether parsing user commands well done or not, received # of params: %d" % len(read_inputs.cmd_name))
-    print(read_inputs.cmd_name)
+    print(
+        (
+            "# Check whether parsing user commands well done or not, received # of params: %d"
+            % len(read_inputs.cmd_name)
+        )
+    )
+    print((read_inputs.cmd_name))
 
     env_path = ""
     env_path += f_path_def
     env_path += "/envs.txt"
 
     read_inputs.parsing_env(env_path)
-    print("# Check whether parsing environmental factors well done or not, received # of params: %d" % len(
-        read_inputs.env_name))
-    print(read_inputs.env_name)
-    print("#-----------------------------------------------------------------------------")
+    print(
+        (
+            "# Check whether parsing environmental factors well done or not, received # of params: %d"
+            % len(read_inputs.env_name)
+        )
+    )
+    print((read_inputs.env_name))
+    print(
+        "#-----------------------------------------------------------------------------"
+    )
 
     master.wait_heartbeat()
 
     # request data to be sent at the given rate
     for i in range(0, 3):
-        master.mav.request_data_stream_send(master.target_system, master.target_component,
-                                            mavutil.mavlink.MAV_DATA_STREAM_ALL, 6, 1)
+        master.mav.request_data_stream_send(
+            master.target_system,
+            master.target_component,
+            mavutil.mavlink.MAV_DATA_STREAM_ALL,
+            6,
+            1,
+        )
 
-    message = master.recv_match(type='VFR_HUD', blocking=True)
+    message = master.recv_match(type="VFR_HUD", blocking=True)
     home_altitude = message.alt
-    print("home_altitude: %f" % home_altitude)
+    print(("home_altitude: %f" % home_altitude))
 
-    message = master.recv_match(type='GLOBAL_POSITION_INT', blocking=True)
+    message = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
     home_lat = message.lat
     home_lat = home_lat / 1000
     home_lat = home_lat * 1000
     home_lon = message.lon
     home_lon = home_lon / 1000
     home_lon = home_lon * 1000
-    print("home_lat: %f, home_lon: %f" % (home_lat, home_lon))
+    print(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
 
     # Testing --------------------------------------------------------------------------------------
     for i in range(30):
@@ -2477,35 +2928,34 @@ def main(argv):
         Previous_distance.append(0)
 
     # Choose a mode
-    mode = 'GUIDED'
+    mode = "GUIDED"
 
     # Check if mode is available
     if mode not in master.mode_mapping():
-        print('Unknown mode : {}'.format(mode))
-        print('Try:', list(master.mode_mapping().keys()))
+        print(("Unknown mode : {}".format(mode)))
+        print(("Try:", list(master.mode_mapping().keys())))
         exit(1)
 
     # Get mode ID
     mode_id = master.mode_mapping()[mode]
 
     master.mav.set_mode_send(
-        master.target_system,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id)
+        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    )
 
     # Check ACK
     ack = False
     while not ack:
         # Wait for ACK command
-        ack_msg = master.recv_match(type='COMMAND_ACK', blocking=True)
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
 
         # Check if command in the same in `set_mode`
-        if ack_msg['command'] != mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE:
+        if ack_msg["command"] != mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE:
             continue
 
         # Print the ACK result !
-        print(mavutil.mavlink.enums['MAV_RESULT'][ack_msg['result']].description)
+        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     master.mav.command_long_send(
@@ -2513,15 +2963,22 @@ def main(argv):
         master.target_component,
         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
         0,
-        1, 0, 0, 0, 0, 0, 0)
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
 
     ack = False
     while not ack:
         # Wait for ACK command
-        ack_msg = master.recv_match(type='COMMAND_ACK', blocking=True)
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
 
-        print(mavutil.mavlink.enums['MAV_RESULT'][ack_msg['result']].description)
+        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     time.sleep(1)
@@ -2537,21 +2994,21 @@ def main(argv):
         0,  # param4
         0,  # param5
         0,  # param6
-        100)  # param7- altitude
+        100,
+    )  # param7- altitude
 
     ack = False
     while not ack:
         # Wait for ACK command
-        ack_msg = master.recv_match(type='COMMAND_ACK', blocking=True)
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
 
-        print(mavutil.mavlink.enums['MAV_RESULT'][ack_msg['result']].description)
+        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     # This is for testing A.RTL1
     time.sleep(25)
     # time.sleep(3)
-
 
     # Maintain mid-position of stick on RC controller
     goal_throttle = 1500
@@ -2559,11 +3016,10 @@ def main(argv):
     t1.daemon = True
     t1.start()
 
-    mode_id = master.mode_mapping()['ALT_HOLD']
+    mode_id = master.mode_mapping()["ALT_HOLD"]
     master.mav.set_mode_send(
-        master.target_system,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id)
+        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    )
     # Set default throttle
     set_rc_channel_pwm(3, 1500)
 
@@ -2594,25 +3050,13 @@ def main(argv):
 
     # Main loop
     while True:
-
-        global drone_status
-        global executing_commands
-        global home_altitude
-        global current_altitude
-        global Armed
-        global Parachute_on
-        global count_main_loop
-        global goal_throttle
-        global RV_alive
-        global hit_ground
-
-        # print("[Debug] drone_status:%d" %drone_status)
+        print("[Debug] drone_status:%d" % drone_status)
 
         # if RV is still active state
         if drone_status == 4:
             Armed = 1
             executing_commands = 1
-            print("### Next round (%d) for fuzzing commands. ###" % count_main_loop)
+            print(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
             count_main_loop += 1
 
             # Calculate propositional and global distances
@@ -2635,12 +3079,17 @@ def main(argv):
 
         # The vehicle is grounded
         elif (drone_status == 3 and RV_alive == 1) or (hit_ground == 1):
-            print("[Debug] drone_status:%d" % drone_status)
+            print(("[Debug] drone_status:%d" % drone_status))
 
             if hit_ground == 1:
                 print("[Debug] *the drone hits ground*")
 
-            print("### Vehicle is grounded, Home alt:%f, Current alt:%f" % (home_altitude, current_altitude))
+            print(
+                (
+                    "### Vehicle is grounded, Home alt:%f, Current alt:%f"
+                    % (home_altitude, current_altitude)
+                )
+            )
             Armed = 0
             hit_ground = 0
             re_launch()
@@ -2650,9 +3099,12 @@ def main(argv):
         elif drone_status == 6:
             Armed = 0
             for i in range(1, 5):
-                print("@@@@@@@@@@ Drone losts control. It is in mayday and going down @@@@@@@@@@")
+                print(
+                    "@@@@@@@@@@ Drone losts control. It is in mayday and going down @@@@@@@@@@"
+                )
 
     print("-------------------- Fuzzing End --------------------")
 
+
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main(sys.argv[1:])

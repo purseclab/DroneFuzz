@@ -1,42 +1,41 @@
 from subprocess import *
-#import subprocess,time,psutil
+# import subprocess,time,psutil
 
 import time
 import os
 import signal
 import psutil
 
-#subprocess.call(['~/ardupilot_4_0_3/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'], shell=True)
+# subprocess.call(['~/ardupilot_4_0_3/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'], shell=True)
 
 ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
 
+print(os.getcwd())
 if ARDUPILOT_HOME is None:
     raise Exception("ARDUPILOT_HOME environment variable is not set!")
 
-c = ARDUPILOT_HOME + 'Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'
-#c = '~/ardupilot_pgfuzz/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w' 
+c = ARDUPILOT_HOME + "Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w"
+# c = '~/ardupilot_pgfuzz/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'
 
-#handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
+# handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
 handle = Popen(c, shell=True)
 
-#os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
+# os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
 
 while True:
-	
+    f = open("shared_variables.txt", "r")
 
-	f = open("shared_variables.txt", "r")
-	
-	if f.read() == "reboot":
+    if f.read() == "reboot":
+        open("shared_variables.txt", "w").close()
 
-		open("shared_variables.txt", "w").close()	
-		
-		fi = open("restart.txt", "w")
-		fi.write("restart")
-		fi.close()
+        fi = open("restart.txt", "w")
+        fi.write("restart")
+        fi.close()
+        print("[WOAH] About to kill some parents :|")
 
-		os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
-	
-	time.sleep(1)
+        os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
+
+    time.sleep(1)
 
 """
 print(os.getpgid(handle.pid))
