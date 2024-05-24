@@ -1,0 +1,3 @@
+The bug is inside the values returned from the GIMBAL_DEVICE i.e.
+AUTOPILOT_STATE_FOR_GIMBAL_DEVICE -> This returns the attitude and (speed?) based on the current state
+We need to show that the feed_forward value is incorrect
