@@ -3176,8 +3176,15 @@ def main(argv):
                 print(
                     "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
                 )
-        elif drone_status == 5 or drone_status == 8:
-            raise ValueError("Unhandled drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
+        elif drone_status == 5 and (failsafe_error == 1 or hit_ground == 1):
+            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are critcal error
+            # raise ValueError("Unhandled drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
+            print("Drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
+            print("Restarting the vehicle")
+            failsafe_error = hit_ground = 0
+
+            re_launch()
+            count_main_loop = 0
 
 
     print("-------------------- Fuzzing End --------------------")
