@@ -37,7 +37,9 @@ import sys, os, getopt
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-conn_rangefinder = mavutil.mavlink_connection("localhost:1337", source_system=1, source_component=93, baud=921600)
+conn_rangefinder = mavutil.mavlink_connection(
+    "localhost:1337", source_system=1, source_component=93, baud=921600
+)
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -410,20 +412,21 @@ def send_msg_rangefinder():
     hz = 25
     cur_ms_time = current_milli_time(start_time)
     while True:
-            for i in range(9):
-                msg = mavlink2.MAVLink_obstacle_distance_3d_message(
-                    cur_ms_time,  # us Timestamp (UNIX time or time since system boot)
-                    0,  # not implemented in ArduPilot
-                    12,  # Set the frame to MAV_FRAME_BODY_FRD
-                    65535,  # unknown ID of the object. We are not really detecting the type of obstacle
-                    float(depth_range_x[i]),  # X in NEU body frame
-                    float(depth_range_y[i]),  # Y in NEU body frame
-                    float(depth_range_z[i]),  # Z in NEU body frame
-                    float(DEPTH_RANGE[0]),  # min range of sensor
-                    float(DEPTH_RANGE[1]),  # max range of sensor
-                )
-                conn_rangefinder.mav.send(msg)
-            time.sleep(1 / hz)
+        for i in range(9):
+            msg = mavlink2.MAVLink_obstacle_distance_3d_message(
+                cur_ms_time,  # us Timestamp (UNIX time or time since system boot)
+                0,  # not implemented in ArduPilot
+                12,  # Set the frame to MAV_FRAME_BODY_FRD
+                65535,  # unknown ID of the object. We are not really detecting the type of obstacle
+                float(depth_range_x[i]),  # X in NEU body frame
+                float(depth_range_y[i]),  # Y in NEU body frame
+                float(depth_range_z[i]),  # Z in NEU body frame
+                float(DEPTH_RANGE[0]),  # min range of sensor
+                float(DEPTH_RANGE[1]),  # max range of sensor
+            )
+            conn_rangefinder.mav.send(msg)
+        time.sleep(1 / hz)
+
 
 def randomize_msg_rangefinder():
     """
@@ -431,10 +434,22 @@ def randomize_msg_rangefinder():
     """
     for i in range(9):
         mu = sigma = 0.1
-        depth_range_x[i] = random.gauss(mu,sigma)*DEPTH_RANGE[1]
-        depth_range_y[i] = random.gauss(mu,sigma)*DEPTH_RANGE[1]
-        depth_range_z[i] = random.gauss(mu,sigma)*DEPTH_RANGE[1]
+        depth_range_x[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+        depth_range_y[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+        depth_range_z[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+
+    print_param = ""
+    print_param += "R "
+    print_param += str(depth_range_x)
+    print_param += "|"
+    print_param += str(depth_range_y)
+    print_param += "|"
+    print_param += str(depth_range_z)
+    print_param += "|"
+    print_param += "\n"
+
     print("Generated random msgs for rangefinder")
+    write_log(print_param)
 
 
 # ------------------------------------------------------------------------------------
@@ -444,10 +459,8 @@ def change_parameter(selected_param):
     global Current_input_val
 
     print(
-        (
-            "# [Change_parameter()] selected params: %s"
-        )
-            % read_inputs.param_name[selected_param]
+        ("# [Change_parameter()] selected params: %s")
+        % read_inputs.param_name[selected_param]
     )
 
     no_range = 0
@@ -3105,7 +3118,7 @@ def main(argv):
 
     # Start the Rangefinder thread
 
-    t4 = threading.Thread(target=send_msg_rangefinder,args=())
+    t4 = threading.Thread(target=send_msg_rangefinder, args=())
     t4.daemon = True
     t4.start()
 
@@ -3163,6 +3176,9 @@ def main(argv):
                 print(
                     "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
                 )
+        elif drone_status == 5 or drone_status == 8:
+            raise ValueError("Unhandled drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
+
 
     print("-------------------- Fuzzing End --------------------")
 
