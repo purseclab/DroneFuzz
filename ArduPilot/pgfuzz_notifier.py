@@ -22,7 +22,7 @@ handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
 print(c)
 
 time.sleep(90)
-c = """gnome-terminal -- bash -c 'python2 $PGFUZZ_HOME/ArduPilot/fuzzing.py; \
+c = """gnome-terminal -- bash -c 'python2 $PGFUZZ_HOME/ArduPilot/fuzzing.py | tee fuzzing.log; \
 bash $PGFUZZ_HOME/ArduPilot/notify.sh ; exec bash'"""
 handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
 print(c)
