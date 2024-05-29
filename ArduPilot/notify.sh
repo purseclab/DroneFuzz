@@ -1,2 +1,3 @@
 #!/bin/bash
-curl -s -X POST -H "Content-Type:multipart/form-data" -F chat_id=$CHAT_ID -F text="The script exited" "https://api.telegram.org/bot$TOKEN/sendMessage" > /dev/null
+log=$(tail -n 7 $PGFUZZ_HOME/ArduPilot/fuzzing.log)
+curl -s -X POST -d chat_id=$CHAT_ID -d text="Fuzzer exited with following: $log" "https://api.telegram.org/bot$TOKEN/sendMessage" > /dev/null
