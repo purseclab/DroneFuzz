@@ -11,6 +11,7 @@ import sys, os
 from optparse import OptionParser
 
 import time
+import datetime
 import random
 import threading
 import subprocess
@@ -190,6 +191,12 @@ Current_policy_P_length = 4
 PRINT_DEBUG = 0
 
 
+# Print with time
+def log(message):
+    # Get the current time
+    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Print the message with the current time
+    print('[{}] {}'.format(current_time, message))
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
@@ -225,7 +232,7 @@ def set_preconditions(filepath):
         )
         time.sleep(1)
 
-        print(("[Set_preconditions] %s = %s" % (row[0], row[1])))
+        log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
 
 
 # ------------------------------------------------------------------------------------
@@ -235,7 +242,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "a")
         guidance_log.write(print_log)
         guidance_log.close()
-        print(("[write_guidance_log] appending: %s" % print_log))
+        log(("[write_guidance_log] appending: %s" % print_log))
 
     elif action == "write":
         guidance_log = open("guidance_log.txt", "w")
@@ -244,7 +251,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "w")
         guidance_log.write(print_log)
         guidance_log.close()
-        print(("[write_guidance_log] re-writing: %s" % print_log))
+        log(("[write_guidance_log] re-writing: %s" % print_log))
 
 
 # ------------------------------------------------------------------------------------
@@ -279,19 +286,19 @@ def re_launch():
     Baro_status = 1
     PreArm_error = 0
 
-    print(
+    log(
         "#-----------------------------------------------------------------------------"
     )
-    print(
+    log(
         "#-----------------------------------------------------------------------------"
     )
-    print(
+    log(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
-    print(
+    log(
         "#-----------------------------------------------------------------------------"
     )
-    print(
+    log(
         "#-----------------------------------------------------------------------------"
     )
 
@@ -315,7 +322,7 @@ def re_launch():
     # Refer to https://discuss.ardupilot.org/t/arming-problem-fs-thr-value/806/2
     goal_throttle = required_min_thr + 20
 
-    print(
+    log(
         (
             "[re-launch] min_thr:%d, target throttle:%d"
             % (required_min_thr, goal_throttle)
@@ -453,7 +460,7 @@ def randomize_msg_rangefinder():
     print_param += "|"
     print_param += "\n"
 
-    print("Generated random msgs for rangefinder")
+    log("Generated random msgs for rangefinder")
     write_log(print_param)
 
 
@@ -463,7 +470,7 @@ def change_parameter(selected_param):
     global Current_input
     global Current_input_val
 
-    print(
+    log(
         ("# [Change_parameter()] selected params: %s")
         % read_inputs.param_name[selected_param]
     )
@@ -482,7 +489,7 @@ def change_parameter(selected_param):
     if range_min == "X":
         no_range = 1
         param_value = random.randint(PARAM_MIN, PARAM_MAX)
-        print(
+        log(
             (
                 "[param] selected params: %s, there is no min of valid range, random param value:%d"
                 % (read_inputs.param_name[selected_param], param_value)
@@ -493,7 +500,7 @@ def change_parameter(selected_param):
         no_range = 0
         if range_min.isdigit() == True and range_max.isdigit() == True:
             param_value = random.randint(int(range_min), int(range_max))
-            print(
+            log(
                 (
                     "# [Change_parameter()] selected params: %s, min: %f, max: %f, random digit param value:%d"
                     % (
@@ -507,7 +514,7 @@ def change_parameter(selected_param):
 
         elif range_min.isdigit() == False or range_max.isdigit() == False:
             param_value = random.uniform(float(range_min), float(range_max))
-            print(
+            log(
                 (
                     "# [Change_parameter()] selected params: %s, min: %f, max: %f, random real param value:%f"
                     % (
@@ -526,11 +533,11 @@ def change_parameter(selected_param):
     if param_name == "FS_THR_VALUE":
         param_value = random.randint(925, 975)
         required_min_thr = param_value
-        print(("# Required minimum throttle is %d" % param_value))
+        log(("# Required minimum throttle is %d" % param_value))
 
     if Current_input_val != "null":
         param_value = float(Current_input_val)
-        print(
+        log(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (param_name, Current_input_val)
@@ -827,7 +834,7 @@ def handle_status(msg):
     global mission_cnt
 
     status_data = (msg.severity, msg.text)
-    print(("[status_text] %s" % msg.text))
+    log(("[status_text] %s" % msg.text))
 
     # Detecting a depolyed parachute
     if "Parachute: Released" in msg.text:
@@ -898,7 +905,7 @@ def handle_mission(msg):
     global mission_cnt
 
     mission_cnt = msg.count
-    print(("[Debug][MISSION_COUNT]%d" % mission_cnt))
+    log(("[Debug][MISSION_COUNT]%d" % mission_cnt))
 
 
 # ------------------------------------------------------------------------------------
@@ -971,8 +978,7 @@ def store_mutated_inputs():
     global Policy_violation_cnt
     Policy_violation_cnt += 1
 
-    for i in range(3):
-        print("***************Policy violation!***************")
+    log("***************Policy violation!***************")
 
     f1 = open("mutated_log.txt", "r")
     lines = f1.readlines()
@@ -1007,7 +1013,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
         sys.stdout.write("P%d: %f " % (i + 1, P_dist[i]))
 
     print("")
-    print(("[Distance] Global distance: %f" % Global_distance))
+    log(("[Distance] Global distance: %f" % Global_distance))
     print(
         "#-----------------------------------------------------------------------------"
     )
@@ -1043,14 +1049,14 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                             row = line.rstrip().split(" ")
                             if int(row[2]) == i + 1:
                                 log_flag = 1
-                                print(
+                                log(
                                     (
                                         "[Redundant input] {} {} {} {}".format(
                                             row[0], row[1], row[2], row[3]
                                         )
                                     )
                                 )
-                                print(
+                                log(
                                     (
                                         "[Redundant input] old:%f - new:%f"
                                         % (
@@ -1073,7 +1079,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                                     )  # 3
                                     print_input += "\n"
                                     guide_line = guide_line.replace(line, print_input)
-                                    print(
+                                    log(
                                         (
                                             "[Redundant input] we need to log %s because it increase more propositional distance %d"
                                             % (Current_input, i + 1)
@@ -1081,7 +1087,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                                     )
                 # Append a new input
                 if log_flag == 0:
-                    print(
+                    log(
                         (
                             "[*Distance*] propositional distance %d is increased (input: %s, %s)"
                             % (i + 1, Current_input, Current_input_val)
@@ -1222,7 +1228,7 @@ def calculate_distance(guidance):
     if PRINT_DEBUG == 1:
         # print('[Debug] stable_counter:%d' %stable_counter)
         # print('[Debug] alt_avg:%f (previous_alt:%f, current_alt:%f), roll_avg:%f, pitch_avg:%f, heading_avg:%f' %(alt_avg, previous_alt, current_alt, roll_avg, pitch_avg, heading_avg))
-        print(
+        log(
             (
                 "[Debug] lat_avg:%f, home_lat:%f, lon_avg:%f, home_lon:%f"
                 % (lat_avg, home_lat, lon_avg, home_lon)
@@ -1344,7 +1350,7 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
         )
 
@@ -1393,7 +1399,7 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
         )
 
@@ -1462,7 +1468,7 @@ def calculate_distance(guidance):
         P[3] = 0
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             ("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round))
         )
 
@@ -1487,7 +1493,7 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] ALT_t:%f, Ground_ALT:%f"
                 % (round(current_altitude, 1), round(home_altitude, 1))
@@ -1539,7 +1545,7 @@ def calculate_distance(guidance):
         P[4] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f"
                 % (
@@ -1585,7 +1591,7 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
+        log(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
 
     Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3])))
 
@@ -1621,19 +1627,19 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] roll_initial:%f, roll_current:%f"
                 % (round(roll_initial, 0), round(current_roll, 0))
             )
         )
-        print(
+        log(
             (
                 "[Debug] pitch_initial:%f, pitch_current:%f"
                 % (round(pitch_initial, 0), round(current_pitch, 0))
             )
         )
-        print(
+        log(
             (
                 "[Debug] yaw_initial:%f, yaw_current:%f"
                 % (round(yaw_initial, 0), round(current_heading, 0))
@@ -1671,7 +1677,7 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f"
                 % (flip_start_time, timeit.default_timer(), elapsed)
@@ -1721,7 +1727,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f"
                 % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1))
@@ -1755,7 +1761,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f"
                 % (
@@ -1807,7 +1813,7 @@ def calculate_distance(guidance):
         P[3] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
                 % (current_rc_2, circle_radius_current, circle_radius_previous)
@@ -1849,7 +1855,7 @@ def calculate_distance(guidance):
         P[2] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
                 % (current_rc_2, circle_radius_current, circle_radius_previous)
@@ -1976,19 +1982,19 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f"
                 % (rollspeed_current, rollspeed_previous)
             )
         )
-        print(
+        log(
             (
                 "[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f"
                 % (pitchspeed_current, pitchspeed_previous)
             )
         )
-        print(
+        log(
             (
                 "[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f"
                 % (yawspeed_current, yawspeed_previous)
@@ -2057,7 +2063,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
                 % (relative_alt, vertical_speed, expected_landing_speed)
@@ -2113,7 +2119,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
                 % (relative_alt, vertical_speed, expected_landing_speed)
@@ -2147,7 +2153,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f"
                 % (
@@ -2204,7 +2210,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
+        log(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
@@ -2253,7 +2259,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f"
                 % (
@@ -2307,7 +2313,7 @@ def calculate_distance(guidance):
         P[2] = 1
 
     if PRINT_DEBUG == 1:
-        print(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
+        log(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
 
     Global_distance = -1 * (min(P[0], P[1], P[2]))
 
@@ -2345,7 +2351,7 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d"
                 % (current_rc_3, fs_thr_val, RC_failsafe_error)
@@ -2388,7 +2394,7 @@ def calculate_distance(guidance):
         P[1] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d"
                 % (current_flight_mode, vertical_speed, pilot_speed_vertical)
@@ -2434,7 +2440,7 @@ def calculate_distance(guidance):
         P[4] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
                 % (
@@ -2482,7 +2488,7 @@ def calculate_distance(guidance):
         P[3] = 1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
                 % (
@@ -2547,7 +2553,7 @@ def calculate_distance(guidance):
         P[2] = -1
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] GPS_failsafe:%d, Mode_(t-1):%s, Mode_t:%s, FS_EKF_ACTION:%d"
                 % (
@@ -2593,7 +2599,7 @@ def calculate_distance(guidance):
         Global_distance = -1 * Global_distance
 
     if PRINT_DEBUG == 1:
-        print(
+        log(
             (
                 "[Debug] Mode_t:%s, ground_speed:%f"
                 % (current_flight_mode, round(ground_speed, 0))
@@ -2621,7 +2627,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         pwm (int, optional): Channel pwm value 1100-1900
     """
     if id < 1:
-        print("Channel does not exist.")
+        log("Channel does not exist.")
         return
 
     # We only have 8 channels
@@ -2635,7 +2641,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         master.mav.rc_channels_override_send(
             master.target_system,  # target_system
             master.target_component,  # target_component
-            *rc_channel_values,
+            *rc_channel_values
         )  # RC channel list, in microseconds.
 
 
@@ -2662,7 +2668,7 @@ def match_cmd(cmd):
         index = random.randint(0, len(cmds) - 1)
         row = cmds[index].rstrip().split(" ")
         print("*****")
-        print(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         print("*****")
 
         return row[1]
@@ -2671,7 +2677,7 @@ def match_cmd(cmd):
         row = cmds[0].rstrip().split(" ")
 
         print("*****")
-        print(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         print("*****")
 
         return row[1]
@@ -2698,7 +2704,7 @@ def execute_cmd(num):
         Current_input_val = match_cmd(cmd=Current_input)
 
     if Current_input_val != "null":
-        print(
+        log(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (Current_input, Current_input_val)
@@ -2803,7 +2809,7 @@ def execute_cmd(num):
         )
     # ------------------------(end) execute a selected command-------------------------
 
-    print(("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val)))
+    log(("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the user command
     print_cmd = ""
@@ -2832,7 +2838,7 @@ def execute_env(num):
         rand = random.uniform(0, 100)
         Current_input_val = str(rand)
     else:
-        print(
+        log(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (Current_input, Current_input_val)
@@ -2847,7 +2853,7 @@ def execute_env(num):
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
     )
 
-    print(("[Execute_env] (%s, %s)" % (Current_input, Current_input_val)))
+    log(("[Execute_env] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the environmental factor
     print_env = ""
@@ -2934,40 +2940,40 @@ def main(argv):
     params_path += f_path_def
     params_path += "/parameters.txt"
     read_inputs.parsing_parameter(params_path)
-    print(
+    log(
         (
             "# Check whether parsing parameters well done or not, received # of params: %d"
             % len(read_inputs.param_name)
         )
     )
-    print((read_inputs.param_name))
+    log((read_inputs.param_name))
 
     cmd_path = ""
     cmd_path += f_path_def
     cmd_path += "/cmds.txt"
 
     read_inputs.parsing_command(cmd_path)
-    print(
+    log(
         (
             "# Check whether parsing user commands well done or not, received # of params: %d"
             % len(read_inputs.cmd_name)
         )
     )
-    print((read_inputs.cmd_name))
+    log((read_inputs.cmd_name))
 
     env_path = ""
     env_path += f_path_def
     env_path += "/envs.txt"
 
     read_inputs.parsing_env(env_path)
-    print(
+    log(
         (
             "# Check whether parsing environmental factors well done or not, received # of params: %d"
             % len(read_inputs.env_name)
         )
     )
-    print((read_inputs.env_name))
-    print(
+    log((read_inputs.env_name))
+    log(
         "#-----------------------------------------------------------------------------"
     )
 
@@ -2985,7 +2991,7 @@ def main(argv):
 
     message = master.recv_match(type="VFR_HUD", blocking=True)
     home_altitude = message.alt
-    print(("home_altitude: %f" % home_altitude))
+    log(("home_altitude: %f" % home_altitude))
 
     message = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
     home_lat = message.lat
@@ -2994,7 +3000,7 @@ def main(argv):
     home_lon = message.lon
     home_lon = home_lon / 1000
     home_lon = home_lon * 1000
-    print(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
+    log(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
 
     # Testing --------------------------------------------------------------------------------------
     for i in range(30):
@@ -3006,8 +3012,8 @@ def main(argv):
 
     # Check if mode is available
     if mode not in master.mode_mapping():
-        print(("Unknown mode : {}".format(mode)))
-        print(("Try:", list(master.mode_mapping().keys())))
+        log(("Unknown mode : {}".format(mode)))
+        log(("Try:", list(master.mode_mapping().keys())))
         exit(1)
 
     # Get mode ID
@@ -3029,7 +3035,7 @@ def main(argv):
             continue
 
         # Print the ACK result !
-        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     master.mav.command_long_send(
@@ -3052,7 +3058,7 @@ def main(argv):
         ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
 
-        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     time.sleep(1)
@@ -3077,7 +3083,7 @@ def main(argv):
         ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
 
-        print((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
     # This is for testing A.RTL1
@@ -3128,15 +3134,26 @@ def main(argv):
     t4.daemon = True
     t4.start()
 
+    # Setup a counter to catch stalls
+    status_ctr = 0
+    prev_status_ctr = 0
     # Main loop
     while True:
-        print("[Debug] drone_status:%d" % drone_status)
+        log("[Debug] drone_status:%d" % drone_status)
+        # Store previous status_ctr
+        if prev_status_ctr == drone_status:
+            status_ctr += 1
+            if status_ctr >= 100:
+                log("Counter reached 100, check if the status has been stuck there")
+                raise Exception("Got stuck for a long time, check logs for more info")
 
         # if RV is still active state
         if drone_status == 4:
+            if drone_status != prev_status_ctr:
+                status_ctr = 0
             Armed = 1
             executing_commands = 1
-            print(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
+            log(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
             count_main_loop += 1
 
             # Calculate propositional and global distances
@@ -3149,6 +3166,8 @@ def main(argv):
             calculate_distance(guidance="true")
             goal_throttle = 1500
 
+            prev_status_ctr = drone_status
+
             for i in range(4):
                 set_rc_channel_pwm(i + 1, 1500)
 
@@ -3159,12 +3178,14 @@ def main(argv):
 
         # The vehicle is grounded
         elif (drone_status == 3 and RV_alive == 1) or (hit_ground == 1):
-            print(("[Debug] drone_status:%d" % drone_status))
+            log(("[Debug] drone_status:%d" % drone_status))
+            if drone_status != prev_status_ctr:
+                status_ctr = 0
 
             if hit_ground == 1:
-                print("[Debug] *the drone hits ground*")
+                log("[Debug] *the drone hits ground*")
 
-            print(
+            log(
                 (
                     "### Vehicle is grounded, Home alt:%f, Current alt:%f"
                     % (home_altitude, current_altitude)
@@ -3172,6 +3193,7 @@ def main(argv):
             )
             Armed = 0
             hit_ground = 0
+            prev_status_ctr = drone_status
             re_launch()
             count_main_loop = 0
 
@@ -3179,23 +3201,30 @@ def main(argv):
         elif drone_status == 6:
             Armed = 0
             for i in range(1, 5):
-                print(
-                    "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
-                )
-        elif drone_status == 5 and (failsafe_error == 1 or hit_ground == 1):
-            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are critcal error
-            # raise ValueError("Unhandled drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
-            print(
+                log("@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@")
+        elif drone_status == 5: # Don't care about other variables
+            if drone_status != prev_status_ctr:
+                status_ctr = 0
+            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
+            # critcal error raise ValueError("Unhandled drone status Status: %d
+            # Hit_ground: %d PreArm: %d" %
+            # (drone_status,hit_ground,PreArm_error))
+            log(
                 "Drone status Status: %d Hit_ground: %d PreArm: %d"
                 % (drone_status, hit_ground, PreArm_error)
             )
-            print("Restarting the vehicle")
+            log("Restarting the vehicle")
             failsafe_error = hit_ground = 0
+            prev_status_ctr = drone_status
 
             re_launch()
             count_main_loop = 0
 
-    print("-------------------- Fuzzing End --------------------")
+        else:
+            log("Unhandled MAV_STATE, check what is wrong")
+            raise Exception("Unhandled MAV_STATE please check what's wrong")
+
+    log("-------------------- Fuzzing End --------------------")
 
 
 if __name__ == "__main__":
