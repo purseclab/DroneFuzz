@@ -432,10 +432,15 @@ def randomize_msg_rangefinder():
     """
     Should ideally randomize the Rangefinder depth values
     """
+    mu = sigma = 0.1
+    # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
+    # not repeated
+    # XXX: Why does the randomization fail in a loop?
     for i in range(9):
-        mu = sigma = 0.1
         depth_range_x[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+    for i in range(9):
         depth_range_y[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+    for i in range(9):
         depth_range_z[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
 
     print_param = ""
@@ -2630,7 +2635,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         master.mav.rc_channels_override_send(
             master.target_system,  # target_system
             master.target_component,  # target_component
-            *rc_channel_values
+            *rc_channel_values,
         )  # RC channel list, in microseconds.
 
 
@@ -2910,6 +2915,7 @@ def main(argv):
     global Parachute_on
     global count_main_loop
     global goal_throttle
+    global failsafe_error
     global RV_alive
     global hit_ground
 
@@ -3179,13 +3185,15 @@ def main(argv):
         elif drone_status == 5 and (failsafe_error == 1 or hit_ground == 1):
             # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are critcal error
             # raise ValueError("Unhandled drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
-            print("Drone status Status: %d Hit_ground: %d PreArm: %d" % (drone_status,hit_ground,PreArm_error))
+            print(
+                "Drone status Status: %d Hit_ground: %d PreArm: %d"
+                % (drone_status, hit_ground, PreArm_error)
+            )
             print("Restarting the vehicle")
             failsafe_error = hit_ground = 0
 
             re_launch()
             count_main_loop = 0
-
 
     print("-------------------- Fuzzing End --------------------")
 
