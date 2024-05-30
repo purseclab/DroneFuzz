@@ -2464,8 +2464,11 @@ def calculate_distance(guidance):
 
     # ----------------------- (start) A.LOITER1 policy -----------------------
     # P0: Mode_t = LOITER
+    log("Yaw (C):{0} (P):{1}".format(yawspeed_current,yawspeed_previous))
+    log("Attitude (C):{0} (P):{1}".format(current_altitude,previous_altitude))
     if current_flight_mode == "LOITER":
         P[0] = 1
+        # Dump all values
     else:
         P[0] = -1
 
@@ -2476,6 +2479,7 @@ def calculate_distance(guidance):
         P[1] = 1
 
     # P2: POS_t = POS_(t-1)
+    # 2024-05-29T18:49:45+0000: silipwn: Is this a good assumption?
     if round(ground_speed, 0) == 0:
         P[2] = -1
     else:
@@ -3159,6 +3163,7 @@ def main(argv):
         if drone_status == 4:
             if drone_status != prev_status_ctr:
                 status_ctr = 0
+                log("Reset status_ctr")
             Armed = 1
             executing_commands = 1
             log(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
@@ -3189,6 +3194,7 @@ def main(argv):
             log(("[Debug] drone_status:%d" % drone_status))
             if drone_status != prev_status_ctr:
                 status_ctr = 0
+                log("Reset status_ctr")
 
             if hit_ground == 1:
                 log("[Debug] *the drone hits ground*")
