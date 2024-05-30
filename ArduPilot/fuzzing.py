@@ -3143,8 +3143,9 @@ def main(argv):
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
+            log("Incrementing the status_ctr")
             if status_ctr >= 100:
-                log("Counter reached 100, check if the status has been stuck there")
+                log("Counter reached 100, check if the status has been stuck there, the value for status is {0}".format(drone_status))
                 raise Exception("Got stuck for a long time, check logs for more info")
 
         # if RV is still active state
