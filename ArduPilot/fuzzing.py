@@ -3002,7 +3002,14 @@ def main(argv):
     home_lon = home_lon * 1000
     log(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
 
-    # Testing --------------------------------------------------------------------------------------
+    # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
+    # for every scenario To ensure that we have full setup finished wait till
+    # we get a LOCAL_POSITION_NED
+    _ = master.recv_match(type="LOCAL_POSITION_NED",blocking=True)
+    log("Got the local position ned")
+
+    # Testing
+    # ------------------------------------------------------------------------
     for i in range(30):
         P.append(0)
         Previous_distance.append(0)
