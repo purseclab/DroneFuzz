@@ -22,3 +22,8 @@ PRX_TYPE = 2
 In Patched
 AVOID_ACCEL_MAX  3.000000
 
+How to reproduce
+-> Run ardupilot with out enabled
+> ./Tools/autotest/sim_vehicle.py -v ArduCopter -D -N -l 51.8752066,14.6487840,54.15,0 --out=udp:127.0.0.1:1337
+-> Run sensor_emulate.py in another terminal
+-> To automate stuff, just run the mission_control in the bug_reproduction repo
