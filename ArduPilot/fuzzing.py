@@ -194,9 +194,11 @@ PRINT_DEBUG = 0
 # Print with time
 def log(message):
     # Get the current time
-    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Print the message with the current time
-    print('[{}] {}'.format(current_time, message))
+    print("[{}] {}".format(current_time, message))
+
+
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
@@ -990,7 +992,12 @@ def store_mutated_inputs():
     file_name += str(Policy_violation_cnt)
     file_name += ".txt"
 
-    f2 = open(file_name, "w")
+    try:
+        f2 = open(file_name, "w")
+    except IOError:
+        # Create the directory
+        os.mkdir("./policy_violations/")
+        print("Create the policy_violations dir as not found")
     f2.writelines(lines)
     f1.close()
     f2.close()
@@ -1350,9 +1357,7 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        log(
-            ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
-        )
+        log(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
 
     if current_flight_mode == "RTL":
         P[2] = 1
@@ -1399,9 +1404,7 @@ def calculate_distance(guidance):
         P[1] = 0
 
     if PRINT_DEBUG == 1:
-        log(
-            ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
-        )
+        log(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
 
     # P2: POS_t != Home_position
     if lat_avg != home_lat and lon_avg != home_lon:
@@ -2464,8 +2467,8 @@ def calculate_distance(guidance):
 
     # ----------------------- (start) A.LOITER1 policy -----------------------
     # P0: Mode_t = LOITER
-    log("Yaw (C):{0} (P):{1}".format(yawspeed_current,yawspeed_previous))
-    log("Attitude (C):{0} (P):{1}".format(current_altitude,previous_altitude))
+    log("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
+    log("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
     if current_flight_mode == "LOITER":
         P[0] = 1
         # Dump all values
@@ -2645,7 +2648,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         master.mav.rc_channels_override_send(
             master.target_system,  # target_system
             master.target_component,  # target_component
-            *rc_channel_values
+            *rc_channel_values,
         )  # RC channel list, in microseconds.
 
 
@@ -3009,7 +3012,7 @@ def main(argv):
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
     # we get a LOCAL_POSITION_NED
-    _ = master.recv_match(type="LOCAL_POSITION_NED",blocking=True)
+    _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
     log("Got the local position ned")
 
     # Testing
@@ -3156,7 +3159,11 @@ def main(argv):
             status_ctr += 1
             log("Incrementing the status_ctr")
             if status_ctr >= 100:
-                log("Counter reached 100, check if the status has been stuck there, the value for status is {0}".format(drone_status))
+                log(
+                    "Counter reached 100, check if the status has been stuck there, the value for status is {0}".format(
+                        drone_status
+                    )
+                )
                 raise Exception("Got stuck for a long time, check logs for more info")
 
         # if RV is still active state
@@ -3215,8 +3222,10 @@ def main(argv):
         elif drone_status == 6:
             Armed = 0
             for i in range(1, 5):
-                log("@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@")
-        elif drone_status == 5: # Don't care about other variables
+                log(
+                    "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
+                )
+        elif drone_status == 5:  # Don't care about other variables
             if drone_status != prev_status_ctr:
                 status_ctr = 0
             # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are

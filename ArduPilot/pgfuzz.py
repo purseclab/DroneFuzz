@@ -92,7 +92,6 @@ signal.signal(signal.SIGINT, sigint_handler)
 cmd = 'source ' + setup_sh + '; python2 ' + open_simulator + '; exit'
 spawn_tmux_window(window_name='sitl', command=cmd)
 
-
 time.sleep(90)
 cmd = 'source ' + setup_sh + '; python2 ' + fuzzing_py + ' | tee fuzzing.log'
 spawn_tmux_window(window_name='fuzzing', command=cmd)
