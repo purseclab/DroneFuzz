@@ -13,6 +13,7 @@ from optparse import OptionParser
 import time
 import datetime
 import random
+import numpy
 import threading
 import subprocess
 
@@ -141,11 +142,6 @@ start_time = int(round(time.time() * 1000))
 DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
 # Uniformly send values
 depth_range_x = depth_range_y = depth_range_z = [0.00] * 9
-# Initialize with some default values
-for i in range(9):
-    depth_range_x[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
-    depth_range_y[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
-    depth_range_z[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
 
 # Distance
 P = []
@@ -287,6 +283,12 @@ def re_launch():
     Gyro_status = 1
     Baro_status = 1
     PreArm_error = 0
+
+    # Reset the prx_values
+    for i in range(9):
+        depth_range_x[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
+        depth_range_y[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
+        depth_range_z[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
 
     log(
         "#-----------------------------------------------------------------------------"
@@ -441,16 +443,12 @@ def randomize_msg_rangefinder():
     """
     Should ideally randomize the Rangefinder depth values
     """
-    mu = sigma = 0.1
     # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
     # not repeated
     # XXX: Why does the randomization fail in a loop?
-    for i in range(9):
-        depth_range_x[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
-    for i in range(9):
-        depth_range_y[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
-    for i in range(9):
-        depth_range_z[i] = random.gauss(mu, sigma) * DEPTH_RANGE[1]
+    depth_range_x = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_y = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_z = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
 
     print_param = ""
     print_param += "R "
@@ -998,6 +996,7 @@ def store_mutated_inputs():
         # Create the directory
         os.mkdir("./policy_violations/")
         print("Create the policy_violations dir as not found")
+        f2 = open(file_name, "w")
     f2.writelines(lines)
     f1.close()
     f2.close()
@@ -2482,7 +2481,8 @@ def calculate_distance(guidance):
         P[1] = 1
 
     # P2: POS_t = POS_(t-1)
-    # 2024-05-29T18:49:45+0000: silipwn: Is this a good assumption?
+    # XXX: 2024-05-29T18:49:45+0000: silipwn: Is this a good assumption?
+    # Would have to def change this based on what Hyungsub mentioned in slack
     if round(ground_speed, 0) == 0:
         P[2] = -1
     else:
@@ -2648,7 +2648,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         master.mav.rc_channels_override_send(
             master.target_system,  # target_system
             master.target_component,  # target_component
-            *rc_channel_values,
+            *rc_channel_values
         )  # RC channel list, in microseconds.
 
 
@@ -2931,6 +2931,16 @@ def main(argv):
     global failsafe_error
     global RV_alive
     global hit_ground
+
+    ardupilot_dir = os.getenv("ARDUPILOT_HOME")
+
+    # Get git commit in ardupilot_dir
+    # Very bad programming practice, but it is a quick solution
+    current_commit = subprocess.check_output('git rev-parse HEAD',shell=True, cwd=ardupilot_dir).strip()
+    if current_commit != "":
+        print("No commit found in the Ardupilot directory")
+    else:
+        print("The commit being tested is: ", current_commit)
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
