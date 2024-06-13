@@ -6,7 +6,7 @@ import pymavlink.dialects.v20.all as dialect
 master = mavutil.mavlink_connection("udp:127.0.0.1:1337")
 master.wait_heartbeat()
 
-TAKEOFF_ALTITUDE = 50
+TAKEOFF_ALTITUDE = 100
 
 # FIXME: Ideally wait will IMU is using GPS data
 # Wait till copter has position for EKF
@@ -72,7 +72,7 @@ master.mav.command_long_send(
 arm_msg = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
 time.sleep(1)
 # Take off to 50 meters
-print("Taking off to 50 meters...")
+print("Taking off to 100 meters...")
 takeoff_command = dialect.MAVLink_command_long_message(
     target_system=master.target_system,
     target_component=master.target_component,
@@ -93,7 +93,7 @@ while True:
     msg = master.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
     if msg is not None:
         altitude = msg.relative_alt / 1000.0  # Altitude in meters
-        if altitude >= 48:
+        if altitude >= 98:
             break
 
 # Change mode to Loiter
@@ -113,9 +113,9 @@ master.mav.command_long_send(
     param7=0,
 )
 
-# Wait for 10 seconds
-print("Waiting for 20 seconds...")
-time.sleep(20)
+# Wait for 40 seconds
+print("Waiting for 60 seconds...")
+time.sleep(60)
 
 # Return to Land
 print("Returning to Land...")
