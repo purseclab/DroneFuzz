@@ -16,6 +16,7 @@ import random
 import numpy
 import threading
 import subprocess
+import requests
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -186,6 +187,19 @@ Current_policy_P_length = 4
 # Debug parameter
 PRINT_DEBUG = 0
 
+# Send a curl request to telegram
+def send_telegram_message(message):
+    # Get the os env commands to get the token and chat_id
+    token = os.getenv("TOKEN")
+    chat_id = os.getenv("CHAT_ID")
+    if token is None or chat_id is None:
+        print("TOKEN and CHAT_ID environment variables not set")
+        return
+    # Send a message to the telegram using requests
+    requests.post(
+        "https://api.telegram.org/bot{}/sendMessage".format(token),
+        data={"chat_id": chat_id, "text": message},
+    )
 
 # Print with time
 def log(message):
@@ -2466,11 +2480,10 @@ def calculate_distance(guidance):
 
     # ----------------------- (start) A.LOITER1 policy -----------------------
     # P0: Mode_t = LOITER
-    log("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
-    log("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
+    # log("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
+    # log("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
     if current_flight_mode == "LOITER":
         P[0] = 1
-        # Dump all values
     else:
         P[0] = -1
 
@@ -2494,20 +2507,20 @@ def calculate_distance(guidance):
     else:
         P[3] = 1
 
-    if PRINT_DEBUG == 1:
-        log(
-            (
-                "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
-                % (
-                    current_flight_mode,
-                    round(yawspeed_current, 1),
-                    round(yawspeed_previous, 1),
-                    round(ground_speed, 0),
-                    round(current_altitude, 0),
-                    round(previous_altitude, 0),
-                )
+    # if PRINT_DEBUG == 1:
+    log(
+        (
+            "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
+            % (
+                current_flight_mode,
+                yawspeed_current,
+                yawspeed_previous,
+                ground_speed,
+                current_altitude,
+                previous_altitude,
             )
         )
+    )
 
     Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
 
@@ -2937,7 +2950,7 @@ def main(argv):
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
     current_commit = subprocess.check_output('git rev-parse HEAD',shell=True, cwd=ardupilot_dir).strip()
-    if current_commit != "":
+    if current_commit == "":
         print("No commit found in the Ardupilot directory")
     else:
         print("The commit being tested is: ", current_commit)
@@ -3255,6 +3268,7 @@ def main(argv):
 
         else:
             log("Unhandled MAV_STATE, check what is wrong")
+            send_telegram_message("Unhandled MAV_STATE, check what is wrong")
             raise Exception("Unhandled MAV_STATE please check what's wrong")
 
     log("-------------------- Fuzzing End --------------------")
