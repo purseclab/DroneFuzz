@@ -58,6 +58,7 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
                 session_name, window_name) if window_name else session_name
             subprocess.call(
                 ['tmux', 'send-keys', '-t', target, command, 'C-m'])
+            print("Running command {0}".format(command))
 
         print("New window created in session {0}.".format(session_name))
 
