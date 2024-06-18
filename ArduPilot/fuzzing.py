@@ -471,18 +471,21 @@ def randomize_msg_rangefinder():
     # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
     # not repeated
     # XXX: Why does the randomization fail in a loop?
-    depth_range_x = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
-    depth_range_y = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
-    depth_range_z = numpy.random.normal(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_x = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_y = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_z = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+
+    depth_range_x_str = numpy.reshape(depth_range_x,(1,len(depth_range_x)))
+    depth_range_y_str = numpy.reshape(depth_range_y,(1,len(depth_range_y)))
+    depth_range_z_str = numpy.reshape(depth_range_z,(1,len(depth_range_z)))
 
     print_param = ""
     print_param += "R "
-    print_param += str(depth_range_x)
+    print_param += numpy.array2string(depth_range_x_str,separator=',')
     print_param += "|"
-    print_param += str(depth_range_y)
+    print_param += numpy.array2string(depth_range_y_str,separator=',')
     print_param += "|"
-    print_param += str(depth_range_z)
-    print_param += "|"
+    print_param += numpy.array2string(depth_range_z_str,separator=',')
     print_param += "\n"
 
     log("Generated random msgs for rangefinder")

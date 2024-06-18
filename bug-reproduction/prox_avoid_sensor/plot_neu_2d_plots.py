@@ -9,9 +9,9 @@ DEPTH_RANGE = [0.3, 12.0]  # Example range values
 
 # Function to calculate distances and angles
 def calculate_distances_angles(data):
-    distances = np.sqrt(np.square(data[0]) + np.square(data[1]))
+    distances = np.sqrt(np.square(data[0]) + np.square(data[1]) + np.square(data[2]))
     angles = np.arctan2(data[1], data[0])
-    angles = np.mod(angles, 2 * np.pi)
+    angles = np.mod(angles, 360)
     return distances, angles
 
 
@@ -24,10 +24,12 @@ if len(sys.argv) > 1:
         with open(arg, "r") as f:
             for line in f:
                 if line.startswith("R"):
-                    value = []
-                    for val in line[2:-2].split("|"):
-                        value.append(ast.literal_eval(val))
-                    datasets.append(value)
+                    # Read the next lines until the closing bracket
+                    while not line.endswith("]]\n"):
+                        line += next(f)
+                    for val in line[2:-1].replace("\n", "").split("|"):
+                        val_list = ast.literal_eval(val[1:-1])
+                        datasets.append(val_list)
 
 # Create a polar plot
 fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
@@ -36,11 +38,15 @@ fig, ax = plt.subplots(subplot_kw={"projection": "polar"})
 colors = ["b", "g", "r", "c", "m", "y", "k"]
 
 # Plot each dataset
-for i, data in enumerate(datasets):
+for i in range(len(datasets) // 3):
+    data = datasets[i * 3 : (i + 1) * 3]
     distances, angles = calculate_distances_angles(data)
     color = colors[i % len(colors)]  # Cycle through colors
     ax.plot(angles, distances, f"{color}-", label=f"Mutated point{i+1}")
     ax.fill(angles, distances, color, alpha=0.3)
+    print("Color: ", color)
+    print("Distances: ", distances)
+    print("Angles: ", angles)
 
 # Set the title and labels
 ax.set_title("OBSTACLE_DISTANCE_3D on a 360-degree Plane", va="bottom")
