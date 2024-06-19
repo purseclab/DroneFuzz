@@ -1,0 +1,1062 @@
+The commit being tested is: 98287a1b2fb98a0670d914db11be56e44a751e63
+#-----------------------------------------------------------------------------
+##### (Start) Read a meta file for parameters #####
+# 1 GND_TEMP X 0 X X 1
+# 2 GND_ALT_OFFSET X 0 X X 0.1
+# 3 GND_PRIMARY X 0 0 2 1
+# 4 PILOT_THR_FILT X 0 0 10 0.5
+# 5 PILOT_TKOFF_ALT X 0 0 1000 10
+# 6 RTL_ALT X 1500 200 8000 1
+# 7 RTL_ALT_FINAL X 0 0 1000 1
+# 8 RNGFND_GAIN X 0.8 0.01 2 0.01
+# 9 PILOT_ACCEL_Z X 250 50 500 10
+# 10 WP_NAVALT_MIN X 0 0 5 X
+# 11 LAND_ALT_LOW X 1000 100 10000 10
+# 12 ATC_ANGLE_BOOST X 1 0 1 1
+# 13 ATC_ANG_LIM_TC X 1 0.5 10 X
+# 14 BCN_ALT X 0 0 10000 1
+# 15 EK2_ALT_SOURCE TRUE 0 0 3 1
+# 16 EK2_ALT_M_NSE X 3 0.1 10 0.1
+# 17 EK2_WIND_PSCALE X 0.5 0 1 0.1
+# 18 EK3_ALT_SOURCE TRUE 0 0 3 1
+# 19 EK3_ALT_M_NSE X 3 0.1 10 0.1
+# 20 EK3_WIND_PSCALE X 0.5 0 1 0.1
+# 21 FENCE_ALT_MAX X 100 10 10000 1
+# 22 PSC_POSZ_P X 1 1 3 X
+# 23 SIM_FLOW_POS_Z X 0 X X X
+# 24 GPS_POS1_Z X 0 -5 5 0.01
+# 25 GPS_POS2_Z X 0 -5 5 0.01
+# 26 RNGFND1_POS_Z X 0 -5 5 0.01
+# 27 VISO_POS_Z X 0 -5 5 0.01
+# 28 EK2_VELD_M_NSE X 0.7 0.05 5 0.05
+# 29 GND_ALT_OFFSET X 0 X X 0.1
+# 30 PILOT_THR_FILT X 0 0 10 0.500
+# 31 PILOT_THR_BHV X 0 0 4 1.000
+# 32 FS_THR_ENABLE X 1 0 5 1.000
+# 33 FS_THR_VALUE X 975 925 1100 1.000
+# 34 ACRO_THR_MID X 0 0 1 X
+# 35 ATC_THR_MIX_MIN X 0.1 0.1 0.25 X
+# 36 ATC_THR_MIX_MAX X 0.5 0.5 0.9 X
+# 37 ATC_THR_MIX_MAN X 0.1 0.1 0.9 X
+# 38 MOT_BOOST_SCALE X 0 0 5 0.100
+# 39 MOT_SLEW_UP_TIME X 0 0 0.5 0.001
+# 40 MOT_SLEW_DN_TIME X 0 0 0.5 0.001
+# 41 ACRO_RP_P X 4.5 1 10 X
+# 42 ACRO_BAL_ROLL X 1 0 3 0.1
+# 43 ACRO_RP_EXPO X 0.3 -0.5 1 0.1
+# 44 AHRS_TRIM_X X 0 -0.1745 0.1745 0.01
+# 45 ATC_ACCEL_R_MAX X 110000 0 180000 1000
+# 46 ATC_ANG_RLL_P X 4.5 0 12 X
+# 47 ATC_RATE_R_MAX X 0 0 1080 1
+# 48 ATC_RAT_RLL_P X 0.135 0.01 0.5 0.005
+# 49 ATC_RAT_RLL_I X 0.135 0.01 2 0.01
+# 50 ATC_RAT_RLL_IMAX X 0.5 0 1 0.01
+# 51 ATC_RAT_RLL_D X 0.0036 0 0.05 0.001
+# 52 ATC_RAT_RLL_FF X 0 0 0.5 0.001
+# 53 ATC_RAT_RLL_FLTT X 20 5 100 1
+# 54 ATC_RAT_RLL_FLTE X 0 0 100 1
+# 55 ATC_RAT_RLL_FLTD X 20 5 100 1
+# 56 ATC_RAT_RLL_P X 0.135 0.08 0.35 0.005
+# 57 ATC_RAT_RLL_I X 0.135 0.01 0.6 0.01
+# 58 ATC_RAT_RLL_IMAX X 0.5 0 1 0.01
+# 59 ATC_RAT_RLL_D X 0.0036 0.001 0.03 0.001
+# 60 ATC_RAT_RLL_FLTT X 20 5 50 1
+# 61 ATC_RAT_RLL_FLTE X 0 5 50 1
+# 62 ATC_RAT_RLL_FLTD X 20 0 50 1
+##### The name of parameters #####
+['GND_TEMP', 'GND_ALT_OFFSET', 'GND_PRIMARY', 'PILOT_THR_FILT', 'PILOT_TKOFF_ALT', 'RTL_ALT', 'RTL_ALT_FINAL', 'RNGFND_GAIN', 'PILOT_ACCEL_Z', 'WP_NAVALT_MIN', 'LAND_ALT_LOW', 'ATC_ANGLE_BOOST', 'ATC_ANG_LIM_TC', 'BCN_ALT', 'EK2_ALT_SOURCE', 'EK2_ALT_M_NSE', 'EK2_WIND_PSCALE', 'EK3_ALT_SOURCE', 'EK3_ALT_M_NSE', 'EK3_WIND_PSCALE', 'FENCE_ALT_MAX', 'PSC_POSZ_P', 'SIM_FLOW_POS_Z', 'GPS_POS1_Z', 'GPS_POS2_Z', 'RNGFND1_POS_Z', 'VISO_POS_Z', 'EK2_VELD_M_NSE', 'GND_ALT_OFFSET', 'PILOT_THR_FILT', 'PILOT_THR_BHV', 'FS_THR_ENABLE', 'FS_THR_VALUE', 'ACRO_THR_MID', 'ATC_THR_MIX_MIN', 'ATC_THR_MIX_MAX', 'ATC_THR_MIX_MAN', 'MOT_BOOST_SCALE', 'MOT_SLEW_UP_TIME', 'MOT_SLEW_DN_TIME', 'ACRO_RP_P', 'ACRO_BAL_ROLL', 'ACRO_RP_EXPO', 'AHRS_TRIM_X', 'ATC_ACCEL_R_MAX', 'ATC_ANG_RLL_P', 'ATC_RATE_R_MAX', 'ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_IMAX', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FF', 'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD', 'ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_IMAX', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD']
+['X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'TRUE', 'X', 'X', 'TRUE', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X']
+['0', '0', '0', '0', '0', '1500', '0', '0.8', '250', '0', '1000', '1', '1', '0', '0', '3', '0.5', '0', '3', '0.5', '100', '1', '0', '0', '0', '0', '0', '0.7', '0', '0', '0', '1', '975', '0', '0.1', '0.5', '0.1', '0', '0', '0', '4.5', '1', '0.3', '0', '110000', '4.5', '0', '0.135', '0.135', '0.5', '0.0036', '0', '20', '0', '20', '0.135', '0.135', '0.5', '0.0036', '20', '0', '20']
+['X', 'X', '0', '0', '0', '200', '0', '0.01', '50', '0', '100', '0', '0.5', '0', '0', '0.1', '0', '0', '0.1', '0', '10', '1', 'X', '-5', '-5', '-5', '-5', '0.05', 'X', '0', '0', '0', '925', '0', '0.1', '0.5', '0.1', '0', '0', '0', '1', '0', '-0.5', '-0.1745', '0', '0', '0', '0.01', '0.01', '0', '0', '0', '5', '0', '5', '0.08', '0.01', '0', '0.001', '5', '5', '0']
+['X', 'X', '2', '10', '1000', '8000', '1000', '2', '500', '5', '10000', '1', '10', '10000', '3', '10', '1', '3', '10', '1', '10000', '3', 'X', '5', '5', '5', '5', '5', 'X', '10', '4', '5', '1100', '1', '0.25', '0.9', '0.9', '5', '0.5', '0.5', '10', '3', '1', '0.1745', '180000', '12', '1080', '0.5', '2', '1', '0.05', '0.5', '100', '100', '100', '0.35', '0.6', '1', '0.03', '50', '50', '50']
+['1', '0.1', '1', '0.5', '10', '1', '1', '0.01', '10', 'X', '10', '1', 'X', '1', '1', '0.1', '0.1', '1', '0.1', '0.1', '1', 'X', 'X', '0.01', '0.01', '0.01', '0.01', '0.05', '0.1', '0.500', '1.000', '1.000', '1.000', 'X', 'X', 'X', 'X', '0.100', '0.001', '0.001', 'X', '0.1', '0.1', '0.01', '1000', 'X', '1', '0.005', '0.01', '0.01', '0.001', '0.001', '1', '1', '1', '0.005', '0.01', '0.01', '0.001', '1', '1', '1']
+##### (End) Read a meta file for parameters #####
+[2024-06-18 13:44:07] # Check whether parsing parameters well done or not, received # of params: 62
+[2024-06-18 13:44:07] ['GND_TEMP', 'GND_ALT_OFFSET', 'GND_PRIMARY', 'PILOT_THR_FILT', 'PILOT_TKOFF_ALT', 'RTL_ALT', 'RTL_ALT_FINAL', 'RNGFND_GAIN', 'PILOT_ACCEL_Z', 'WP_NAVALT_MIN', 'LAND_ALT_LOW', 'ATC_ANGLE_BOOST', 'ATC_ANG_LIM_TC', 'BCN_ALT', 'EK2_ALT_SOURCE', 'EK2_ALT_M_NSE', 'EK2_WIND_PSCALE', 'EK3_ALT_SOURCE', 'EK3_ALT_M_NSE', 'EK3_WIND_PSCALE', 'FENCE_ALT_MAX', 'PSC_POSZ_P', 'SIM_FLOW_POS_Z', 'GPS_POS1_Z', 'GPS_POS2_Z', 'RNGFND1_POS_Z', 'VISO_POS_Z', 'EK2_VELD_M_NSE', 'GND_ALT_OFFSET', 'PILOT_THR_FILT', 'PILOT_THR_BHV', 'FS_THR_ENABLE', 'FS_THR_VALUE', 'ACRO_THR_MID', 'ATC_THR_MIX_MIN', 'ATC_THR_MIX_MAX', 'ATC_THR_MIX_MAN', 'MOT_BOOST_SCALE', 'MOT_SLEW_UP_TIME', 'MOT_SLEW_DN_TIME', 'ACRO_RP_P', 'ACRO_BAL_ROLL', 'ACRO_RP_EXPO', 'AHRS_TRIM_X', 'ATC_ACCEL_R_MAX', 'ATC_ANG_RLL_P', 'ATC_RATE_R_MAX', 'ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_IMAX', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FF', 'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD', 'ATC_RAT_RLL_P', 'ATC_RAT_RLL_I', 'ATC_RAT_RLL_IMAX', 'ATC_RAT_RLL_D', 'ATC_RAT_RLL_FLTT', 'ATC_RAT_RLL_FLTE', 'ATC_RAT_RLL_FLTD']
+##### (Start) Read a meta file for user commands #####
+##### The name of user commands #####
+['Flight_Mode', 'MAV_CMD_DO_PARACHUTE', 'MAV_CMD_DO_SEND_BANNER', 'MAV_CMD_SET_FACTORY_TEST_MODE', 'MAV_CMD_GIMBAL_RESET', 'MAV_CMD_NAV_WAYPOINT', 'RC1', 'RC2', 'RC3', 'RC4', 'MAV_CMD_NAV_RETURN_TO_LAUNCH', 'MAV_CMD_NAV_TAKEOFF', 'MAV_CMD_NAV_LAND', 'MAV_CMD_NAV_LOITER_TURNS', 'MAV_CMD_NAV_LOITER_TIME', 'MAV_CMD_NAV_SPLINE_WAYPOINT', 'MAV_CMD_NAV_GUIDED_ENABLE', 'MAV_CMD_DO_JUMP', 'MAV_CMD_MISSION_START', 'MAV_CMD_COMPONENT_ARM_DISARM', 'MAV_CMD_CONDITION_DELAY', 'MAV_CMD_CONDITION_DISTANCE', 'MAV_CMD_CONDITION_YAW', 'MAV_CMD_DO_CHANGE_SPEED', 'MAV_CMD_DO_SET_HOME', 'MAV_CMD_DO_SET_SERVO', 'MAV_CMD_DO_SET_RELAY', 'MAV_CMD_DO_REPEAT_SERVO', 'MAV_CMD_DO_REPEAT_RELAY', 'MAV_CMD_DO_DIGICAM_CONFIGURE', 'MAV_CMD_DO_DIGICAM_CONTROL', 'MAV_CMD_DO_SET_CAM_TRIGG_DIST', 'MAV_CMD_DO_SET_ROI', 'MAV_CMD_DO_SET_MODE', 'MAV_CMD_DO_MOUNT_CONTROL', 'MAV_CMD_DO_GRIPPER', 'MAV_CMD_DO_GUIDED_LIMITS', 'MAV_CMD_DO_REPOSITION', 'MAV_CMD_DO_AUTOTUNE_ENABLE', 'MAV_CMD_DO_PAUSE_CONTINUE', 'MAV_CMD_NAV_ALTITUDE_WAIT', 'MAV_CMD_POWER_OFF_INITIATED', 'MAV_CMD_SOLO_BTN_FLY_CLICK', 'MAV_CMD_SOLO_BTN_FLY_HOLD', 'MAV_CMD_SOLO_BTN_PAUSE_CLICK', 'MAV_CMD_FIXED_MAG_CAL', 'MAV_CMD_FIXED_MAG_CAL_FIELD', 'MAV_CMD_FIXED_MAG_CAL_YAW', 'MAV_CMD_DO_START_MAG_CAL', 'MAV_CMD_DO_ACCEPT_MAG_CAL', 'MAV_CMD_DO_CANCEL_MAG_CAL']
+['5', '208', '42428', '42427', '42501', '16', '0', '0', '0', '0', '20', '22', '21', '18', '19', '82', '92', '177', '300', '400', '112', '114', '115', '178', '179', '183', '181', '184', '182', '202', '203', '206', '201', '176', '205', '211', '222', '192', '212', '193', '83', '42000', '42001', '42002', '42003', '42004', '42005', '42006', '42424', '42425', '42426']
+##### (End) Read a meta file for user commands #####
+[2024-06-18 13:44:07] # Check whether parsing user commands well done or not, received # of params: 51
+[2024-06-18 13:44:07] ['Flight_Mode', 'MAV_CMD_DO_PARACHUTE', 'MAV_CMD_DO_SEND_BANNER', 'MAV_CMD_SET_FACTORY_TEST_MODE', 'MAV_CMD_GIMBAL_RESET', 'MAV_CMD_NAV_WAYPOINT', 'RC1', 'RC2', 'RC3', 'RC4', 'MAV_CMD_NAV_RETURN_TO_LAUNCH', 'MAV_CMD_NAV_TAKEOFF', 'MAV_CMD_NAV_LAND', 'MAV_CMD_NAV_LOITER_TURNS', 'MAV_CMD_NAV_LOITER_TIME', 'MAV_CMD_NAV_SPLINE_WAYPOINT', 'MAV_CMD_NAV_GUIDED_ENABLE', 'MAV_CMD_DO_JUMP', 'MAV_CMD_MISSION_START', 'MAV_CMD_COMPONENT_ARM_DISARM', 'MAV_CMD_CONDITION_DELAY', 'MAV_CMD_CONDITION_DISTANCE', 'MAV_CMD_CONDITION_YAW', 'MAV_CMD_DO_CHANGE_SPEED', 'MAV_CMD_DO_SET_HOME', 'MAV_CMD_DO_SET_SERVO', 'MAV_CMD_DO_SET_RELAY', 'MAV_CMD_DO_REPEAT_SERVO', 'MAV_CMD_DO_REPEAT_RELAY', 'MAV_CMD_DO_DIGICAM_CONFIGURE', 'MAV_CMD_DO_DIGICAM_CONTROL', 'MAV_CMD_DO_SET_CAM_TRIGG_DIST', 'MAV_CMD_DO_SET_ROI', 'MAV_CMD_DO_SET_MODE', 'MAV_CMD_DO_MOUNT_CONTROL', 'MAV_CMD_DO_GRIPPER', 'MAV_CMD_DO_GUIDED_LIMITS', 'MAV_CMD_DO_REPOSITION', 'MAV_CMD_DO_AUTOTUNE_ENABLE', 'MAV_CMD_DO_PAUSE_CONTINUE', 'MAV_CMD_NAV_ALTITUDE_WAIT', 'MAV_CMD_POWER_OFF_INITIATED', 'MAV_CMD_SOLO_BTN_FLY_CLICK', 'MAV_CMD_SOLO_BTN_FLY_HOLD', 'MAV_CMD_SOLO_BTN_PAUSE_CLICK', 'MAV_CMD_FIXED_MAG_CAL', 'MAV_CMD_FIXED_MAG_CAL_FIELD', 'MAV_CMD_FIXED_MAG_CAL_YAW', 'MAV_CMD_DO_START_MAG_CAL', 'MAV_CMD_DO_ACCEPT_MAG_CAL', 'MAV_CMD_DO_CANCEL_MAG_CAL']
+##### (Start) Read a meta file for environmental factors #####
+##### The name of environmental factors #####
+['SIM_WOW_PIN', 'SIM_SPEEDUP', 'SIM_SPR_ENABLE', 'SIM_SPR_PUMP', 'SIM_SPR_SPIN', 'SIM_TA_ENABLE', 'SIM_TEMP_FLIGHT', 'SIM_TEMP_START', 'SIM_TERRAIN', 'SIM_TIDE_DIR', 'SIM_TIDE_SPEED', 'SIM_TWIST_TIME', 'SIM_TWIST_X', 'SIM_TWIST_Z', 'SIM_VIB_FREQ_X', 'SIM_VIB_FREQ_Y', 'SIM_VIB_FREQ_Z', 'SIM_VICON_HSTLEN', 'SIM_ACC2_BIAS_X', 'SIM_ACC2_BIAS_Y', 'SIM_ACC2_BIAS_Z', 'SIM_ACCEL_FAIL', 'SIM_ACC_BIAS_X', 'SIM_ACC_BIAS_Y', 'SIM_ACC_BIAS_Z', 'SIM_ACC_RND', 'SIM_ADSB_ALT', 'SIM_ADSB_RADIUS', 'SIM_BARO_DISABLE', 'SIM_BARO_DRIFT', 'SIM_BARO_GLITCH', 'SIM_BARO_RND', 'SIM_BATT_VOLTAGE', 'SIM_BAUDLIMIT_EN', 'SIM_BZ_ENABLE', 'SIM_BZ_PIN', 'SIM_DRIFT_SPEED', 'SIM_DRIFT_TIME', 'SIM_ENGINE_FAIL', 'SIM_ENGINE_MUL', 'SIM_FLOAT_EXCEPT', 'SIM_GND_BEHAV', 'SIM_GPS_ALT_OFS', 'SIM_GPS_BYTELOSS', 'SIM_GPS_DRIFTALT', 'SIM_GPS_GLITCH_Z', 'SIM_GPS_HDG', 'SIM_GPS_LOCKTIME', 'SIM_GPS_NOISE', 'SIM_GPS_NUMSATS', 'SIM_GPS_POS_X', 'SIM_GPS_POS_Y', 'SIM_GPS_POS_Z', 'SIM_GPS_TYPE', 'SIM_GRPE_ENABLE', 'SIM_GRPE_PIN', 'SIM_GYR_SCALE_X', 'SIM_GYR_SCALE_Y', 'SIM_GYR_SCALE_Z', 'SIM_IMU_POS_X', 'SIM_IMU_POS_Y', 'SIM_IMU_POS_Z', 'SIM_LOOP_DELAY', 'SIM_MAG_ALY_HGT', 'SIM_MAG_ALY_X', 'SIM_MAG_ALY_Y', 'SIM_MAG_ALY_Z', 'SIM_MAG_DELAY', 'SIM_MAG_DIA_X', 'SIM_MAG_DIA_Y', 'SIM_MAG_DIA_Z', 'SIM_MAG_ERROR', 'SIM_MAG_MOT_X', 'SIM_MAG_MOT_Y', 'SIM_MAG_MOT_Z', 'SIM_MAG_ODI_X', 'SIM_MAG_ODI_Y', 'SIM_MAG_ODI_Z', 'SIM_MAG_OFS_X', 'SIM_MAG_OFS_Y', 'SIM_MAG_OFS_Z', 'SIM_MAG_ORIENT', 'SIM_MAG_RND', 'SIM_MAG_SCALING', 'SIM_ODOM_ENABLE', 'SIM_OPOS_ALT', 'SIM_PARA_PIN', 'SIM_PIN_MASK', 'SIM_PLD_ALT_LMT', 'SIM_PLD_DIST_LMT', 'SIM_PLD_HEIGHT', 'SIM_PLD_LAT', 'SIM_PLD_LON', 'SIM_PLD_RATE', 'SIM_PLD_TYPE', 'SIM_PLD_YAW', 'SIM_RC_CHANCOUNT', 'SIM_RC_FAIL', 'SIM_SERVO_SPEED', 'SIM_SHOVE_TIME', 'SIM_SHOVE_X', 'SIM_SHOVE_Y', 'SIM_SHOVE_Z', 'SIM_SONAR_GLITCH', 'SIM_SONAR_POS_X', 'SIM_SONAR_POS_Y', 'SIM_SONAR_POS_Z', 'SIM_SONAR_RND', 'SIM_SONAR_SCALE', 'SIM_WAVE_LENGTH', 'SIM_ARSPD2_FAILP', 'SIM_ARSPD2_PITOT', 'SIM_ARSPD_FAIL', 'SIM_ARSPD_FAIL_P', 'SIM_ARSPD_PITOT', 'SIM_ARSPD_RND', 'SIM_ARSPD_SIGN', 'SIM_BARO_DELAY', 'SIM_GYR_RND', 'SIM_OPOS_HDG', 'SIM_OPOS_LAT', 'SIM_PARA_ENABLE', 'SIM_PLD_ENABLE']
+##### (End) Read a meta file for environmental factors #####
+[2024-06-18 13:44:07] # Check whether parsing environmental factors well done or not, received # of params: 123
+[2024-06-18 13:44:07] ['SIM_WOW_PIN', 'SIM_SPEEDUP', 'SIM_SPR_ENABLE', 'SIM_SPR_PUMP', 'SIM_SPR_SPIN', 'SIM_TA_ENABLE', 'SIM_TEMP_FLIGHT', 'SIM_TEMP_START', 'SIM_TERRAIN', 'SIM_TIDE_DIR', 'SIM_TIDE_SPEED', 'SIM_TWIST_TIME', 'SIM_TWIST_X', 'SIM_TWIST_Z', 'SIM_VIB_FREQ_X', 'SIM_VIB_FREQ_Y', 'SIM_VIB_FREQ_Z', 'SIM_VICON_HSTLEN', 'SIM_ACC2_BIAS_X', 'SIM_ACC2_BIAS_Y', 'SIM_ACC2_BIAS_Z', 'SIM_ACCEL_FAIL', 'SIM_ACC_BIAS_X', 'SIM_ACC_BIAS_Y', 'SIM_ACC_BIAS_Z', 'SIM_ACC_RND', 'SIM_ADSB_ALT', 'SIM_ADSB_RADIUS', 'SIM_BARO_DISABLE', 'SIM_BARO_DRIFT', 'SIM_BARO_GLITCH', 'SIM_BARO_RND', 'SIM_BATT_VOLTAGE', 'SIM_BAUDLIMIT_EN', 'SIM_BZ_ENABLE', 'SIM_BZ_PIN', 'SIM_DRIFT_SPEED', 'SIM_DRIFT_TIME', 'SIM_ENGINE_FAIL', 'SIM_ENGINE_MUL', 'SIM_FLOAT_EXCEPT', 'SIM_GND_BEHAV', 'SIM_GPS_ALT_OFS', 'SIM_GPS_BYTELOSS', 'SIM_GPS_DRIFTALT', 'SIM_GPS_GLITCH_Z', 'SIM_GPS_HDG', 'SIM_GPS_LOCKTIME', 'SIM_GPS_NOISE', 'SIM_GPS_NUMSATS', 'SIM_GPS_POS_X', 'SIM_GPS_POS_Y', 'SIM_GPS_POS_Z', 'SIM_GPS_TYPE', 'SIM_GRPE_ENABLE', 'SIM_GRPE_PIN', 'SIM_GYR_SCALE_X', 'SIM_GYR_SCALE_Y', 'SIM_GYR_SCALE_Z', 'SIM_IMU_POS_X', 'SIM_IMU_POS_Y', 'SIM_IMU_POS_Z', 'SIM_LOOP_DELAY', 'SIM_MAG_ALY_HGT', 'SIM_MAG_ALY_X', 'SIM_MAG_ALY_Y', 'SIM_MAG_ALY_Z', 'SIM_MAG_DELAY', 'SIM_MAG_DIA_X', 'SIM_MAG_DIA_Y', 'SIM_MAG_DIA_Z', 'SIM_MAG_ERROR', 'SIM_MAG_MOT_X', 'SIM_MAG_MOT_Y', 'SIM_MAG_MOT_Z', 'SIM_MAG_ODI_X', 'SIM_MAG_ODI_Y', 'SIM_MAG_ODI_Z', 'SIM_MAG_OFS_X', 'SIM_MAG_OFS_Y', 'SIM_MAG_OFS_Z', 'SIM_MAG_ORIENT', 'SIM_MAG_RND', 'SIM_MAG_SCALING', 'SIM_ODOM_ENABLE', 'SIM_OPOS_ALT', 'SIM_PARA_PIN', 'SIM_PIN_MASK', 'SIM_PLD_ALT_LMT', 'SIM_PLD_DIST_LMT', 'SIM_PLD_HEIGHT', 'SIM_PLD_LAT', 'SIM_PLD_LON', 'SIM_PLD_RATE', 'SIM_PLD_TYPE', 'SIM_PLD_YAW', 'SIM_RC_CHANCOUNT', 'SIM_RC_FAIL', 'SIM_SERVO_SPEED', 'SIM_SHOVE_TIME', 'SIM_SHOVE_X', 'SIM_SHOVE_Y', 'SIM_SHOVE_Z', 'SIM_SONAR_GLITCH', 'SIM_SONAR_POS_X', 'SIM_SONAR_POS_Y', 'SIM_SONAR_POS_Z', 'SIM_SONAR_RND', 'SIM_SONAR_SCALE', 'SIM_WAVE_LENGTH', 'SIM_ARSPD2_FAILP', 'SIM_ARSPD2_PITOT', 'SIM_ARSPD_FAIL', 'SIM_ARSPD_FAIL_P', 'SIM_ARSPD_PITOT', 'SIM_ARSPD_RND', 'SIM_ARSPD_SIGN', 'SIM_BARO_DELAY', 'SIM_GYR_RND', 'SIM_OPOS_HDG', 'SIM_OPOS_LAT', 'SIM_PARA_ENABLE', 'SIM_PLD_ENABLE']
+[2024-06-18 13:44:07] #-----------------------------------------------------------------------------
+[2024-06-18 13:44:07] home_altitude: 583.950012
+[2024-06-18 13:44:07] home_lat: -353633000.000000, home_lon: 1491652000.000000
+[2024-06-18 13:44:07] Got the local position ned
+[2024-06-18 13:44:07] Command is valid (is supported and has valid parameters), and was executed.
+[2024-06-18 13:44:07] Command is valid (is supported and has valid parameters), and was executed.
+[2024-06-18 13:44:08] Command is valid (is supported and has valid parameters), and was executed.
+[2024-06-18 13:44:37] [Set_preconditions] PRX_TYPE = 2
+[2024-06-18 13:44:37] [Debug] drone_status:4
+[2024-06-18 13:44:37] Reset status_ctr
+[2024-06-18 13:44:37] ### Next round (0) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:37] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:37] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.000000, yaw_min:-0.011120, roll_max: 0.001200, roll_min:0.000000, pitch_max:0.000000, pitch_min: -0.000058
+[2024-06-18 13:44:37] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:37] # [Change_parameter()] selected params: GND_PRIMARY
+[2024-06-18 13:44:37] # [Change_parameter()] selected params: GND_PRIMARY, min: 0.000000, max: 2.000000, random digit param value:0
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:44] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:44] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.000000, yaw_min:-0.011120, roll_max: 0.001200, roll_min:0.000000, pitch_max:0.000000, pitch_min: -0.001107
+[2024-06-18 13:44:44] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:44] [Debug] drone_status:4
+[2024-06-18 13:44:44] Incrementing the status_ctr
+[2024-06-18 13:44:44] ### Next round (1) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:44] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:44] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.000000, yaw_min:-0.011120, roll_max: 0.001200, roll_min:0.000000, pitch_max:0.000000, pitch_min: -0.001107
+[2024-06-18 13:44:44] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:44] # [Change_parameter()] selected params: ATC_RAT_RLL_FLTE
+[2024-06-18 13:44:44] # [Change_parameter()] selected params: ATC_RAT_RLL_FLTE, min: 5.000000, max: 50.000000, random digit param value:19
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:51] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:51] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.013160, yaw_min:-0.011120, roll_max: 0.001200, roll_min:0.000000, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:51] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:51] [Debug] drone_status:4
+[2024-06-18 13:44:51] Incrementing the status_ctr
+[2024-06-18 13:44:51] ### Next round (2) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:51] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:51] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.013160, yaw_min:-0.011120, roll_max: 0.001200, roll_min:0.000000, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:51] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:51] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:55] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:55] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.011120, roll_max: 0.001449, roll_min:0.000000, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:55] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:55] [Debug] drone_status:4
+[2024-06-18 13:44:55] Incrementing the status_ctr
+[2024-06-18 13:44:55] ### Next round (3) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:55] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:55] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.011120, roll_max: 0.001449, roll_min:0.000000, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:55] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:55] [Execute_cmd] (MAV_CMD_MISSION_START, 90,38,93,89,9,64,6)
+[2024-06-18 13:44:55] [status_text] Flight mode change failed AUTO
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:59] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:59] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.012530, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:59] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:59] [Debug] drone_status:4
+[2024-06-18 13:44:59] Incrementing the status_ctr
+[2024-06-18 13:44:59] ### Next round (4) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:44:59] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:44:59] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.012530, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:44:59] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:44:59] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:03] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:03] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.012530, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:45:03] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:03] [Debug] drone_status:4
+[2024-06-18 13:45:03] Incrementing the status_ctr
+[2024-06-18 13:45:03] ### Next round (5) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:03] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:03] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.012530, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:45:03] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:03] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:07] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:07] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:45:07] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:07] [Debug] drone_status:4
+[2024-06-18 13:45:07] Incrementing the status_ctr
+[2024-06-18 13:45:07] ### Next round (6) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:07] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:07] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.001449, roll_min:-0.002653, pitch_max:0.000839, pitch_min: -0.001107
+[2024-06-18 13:45:07] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:07] [Execute_cmd] (MAV_CMD_FIXED_MAG_CAL_FIELD, 31,92,58,36,93,41,16)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:11] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:11] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:11] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:11] [Debug] drone_status:4
+[2024-06-18 13:45:11] Incrementing the status_ctr
+[2024-06-18 13:45:11] ### Next round (7) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:11] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:11] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:11] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:11] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:15] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:15] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:15] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:15] [Debug] drone_status:4
+[2024-06-18 13:45:15] Incrementing the status_ctr
+[2024-06-18 13:45:15] ### Next round (8) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:15] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:15] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:15] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:15] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:19] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:19] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:19] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:19] [Debug] drone_status:4
+[2024-06-18 13:45:19] Incrementing the status_ctr
+[2024-06-18 13:45:19] ### Next round (9) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:19] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:19] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001107
+[2024-06-18 13:45:19] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:19] # [Change_parameter()] selected params: BCN_ALT
+[2024-06-18 13:45:19] # [Change_parameter()] selected params: BCN_ALT, min: 0.000000, max: 10000.000000, random digit param value:7854
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:26] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001440
+[2024-06-18 13:45:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:26] [Debug] drone_status:4
+[2024-06-18 13:45:26] Incrementing the status_ctr
+[2024-06-18 13:45:26] ### Next round (10) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:26] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001237, pitch_min: -0.001440
+[2024-06-18 13:45:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:26] # [Change_parameter()] selected params: FENCE_ALT_MAX
+[2024-06-18 13:45:26] # [Change_parameter()] selected params: FENCE_ALT_MAX, min: 10.000000, max: 10000.000000, random digit param value:557
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:33] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:33] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:33] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:33] [Debug] drone_status:4
+[2024-06-18 13:45:33] Incrementing the status_ctr
+[2024-06-18 13:45:33] ### Next round (11) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:33] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:33] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:33] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:33] [Execute_env] (SIM_SPR_SPIN, 25.5522254965)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:37] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:37] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:37] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:37] [Debug] drone_status:4
+[2024-06-18 13:45:37] Incrementing the status_ctr
+[2024-06-18 13:45:37] ### Next round (12) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:37] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:37] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:37] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:37] [Execute_cmd] (RC2, 1616)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:41] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:41] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:41] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:41] [Debug] drone_status:4
+[2024-06-18 13:45:41] Incrementing the status_ctr
+[2024-06-18 13:45:41] ### Next round (13) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:41] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:41] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.017340, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002653, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:41] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:41] # [Change_parameter()] selected params: RTL_ALT_FINAL
+[2024-06-18 13:45:41] # [Change_parameter()] selected params: RTL_ALT_FINAL, min: 0.000000, max: 1000.000000, random digit param value:404
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:48] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:48] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:48] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:48] [Debug] drone_status:4
+[2024-06-18 13:45:48] Incrementing the status_ctr
+[2024-06-18 13:45:48] ### Next round (14) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:48] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:48] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:48] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:48] # [Change_parameter()] selected params: RNGFND_GAIN
+[2024-06-18 13:45:48] # [Change_parameter()] selected params: RNGFND_GAIN, min: 0.010000, max: 2.000000, random real param value:1.334882
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:55] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:55] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:55] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:55] [Debug] drone_status:4
+[2024-06-18 13:45:55] Incrementing the status_ctr
+[2024-06-18 13:45:55] ### Next round (15) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:55] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:55] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:55] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:55] [Execute_env] (SIM_TEMP_FLIGHT, 14.9392281812)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:59] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:59] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:59] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:59] [Debug] drone_status:4
+[2024-06-18 13:45:59] Incrementing the status_ctr
+[2024-06-18 13:45:59] ### Next round (16) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:45:59] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:45:59] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.018298, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:45:59] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:45:59] [Execute_env] (SIM_WAVE_LENGTH, 2.09453126952)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:03] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:03] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:03] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:03] [Debug] drone_status:4
+[2024-06-18 13:46:03] Incrementing the status_ctr
+[2024-06-18 13:46:03] ### Next round (17) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:03] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:03] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:03] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:03] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:07] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:07] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:07] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:07] [Debug] drone_status:4
+[2024-06-18 13:46:07] Incrementing the status_ctr
+[2024-06-18 13:46:07] ### Next round (18) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:07] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:07] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:07] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:07] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:11] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:11] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:11] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:11] [Debug] drone_status:4
+[2024-06-18 13:46:11] Incrementing the status_ctr
+[2024-06-18 13:46:11] ### Next round (19) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:11] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:11] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:11] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:11] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:15] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:15] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:15] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:15] [Debug] drone_status:4
+[2024-06-18 13:46:15] Incrementing the status_ctr
+[2024-06-18 13:46:15] ### Next round (20) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:15] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:15] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:15] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:15] [Execute_env] (SIM_BZ_ENABLE, 59.4348916466)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:19] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:19] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:19] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:19] [Debug] drone_status:4
+[2024-06-18 13:46:19] Incrementing the status_ctr
+[2024-06-18 13:46:19] ### Next round (21) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:19] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:19] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:19] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:19] [Execute_env] (SIM_SHOVE_TIME, 62.8721258445)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:23] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:23] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:23] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:23] [Debug] drone_status:4
+[2024-06-18 13:46:23] Incrementing the status_ctr
+[2024-06-18 13:46:23] ### Next round (22) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:23] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:23] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:23] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:23] # [Change_parameter()] selected params: FS_THR_ENABLE
+[2024-06-18 13:46:23] # [Change_parameter()] selected params: FS_THR_ENABLE, min: 0.000000, max: 5.000000, random digit param value:1
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:30] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:30] [Debug] drone_status:4
+[2024-06-18 13:46:30] Incrementing the status_ctr
+[2024-06-18 13:46:30] ### Next round (23) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:30] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001440
+[2024-06-18 13:46:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:30] # [Change_parameter()] selected params: ATC_THR_MIX_MIN
+[2024-06-18 13:46:30] # [Change_parameter()] selected params: ATC_THR_MIX_MIN, min: 0.100000, max: 0.250000, random real param value:0.135807
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:37] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:37] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001832
+[2024-06-18 13:46:37] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:37] [Debug] drone_status:4
+[2024-06-18 13:46:37] Incrementing the status_ctr
+[2024-06-18 13:46:37] ### Next round (24) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:37] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:37] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001832
+[2024-06-18 13:46:37] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:37] [Execute_env] (SIM_GPS_TYPE, 28.4481093388)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:41] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:41] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001832
+[2024-06-18 13:46:41] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:41] [Debug] drone_status:4
+[2024-06-18 13:46:41] Incrementing the status_ctr
+[2024-06-18 13:46:41] ### Next round (25) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:41] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:41] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.001774, pitch_min: -0.001832
+[2024-06-18 13:46:41] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:41] [Execute_env] (SIM_TIDE_DIR, 2.52027111532)
+[2024-06-18 13:46:45] [status_text] EKF3 lane switch 1
+[2024-06-18 13:46:45] [status_text] EKF primary changed:1
+[2024-06-18 13:46:45] [status_text] EKF variance
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:45] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:45] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.003111, pitch_min: -0.001832
+[2024-06-18 13:46:45] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:45] [Debug] drone_status:4
+[2024-06-18 13:46:45] Incrementing the status_ctr
+[2024-06-18 13:46:45] ### Next round (26) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:45] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:45] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.003111, pitch_min: -0.001832
+[2024-06-18 13:46:45] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:45] [Execute_cmd] (MAV_CMD_NAV_LOITER_TURNS, 47,33,36,9,1,89,18)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:46:49] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:46:49] [RANGEFINDER] Mode_t:ALT_HOLD, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.003786, roll_min:-0.002984, pitch_max:0.003111, pitch_min: -0.001832
+[2024-06-18 13:46:49] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:46:49] [Debug] drone_status:5
+[2024-06-18 13:46:49] Incrementing the status_ctr
+[2024-06-18 13:46:49] Drone status Status: 5 Hit_ground: 0 PreArm: 0
+[2024-06-18 13:46:49] Restarting the vehicle
+[2024-06-18 13:46:49] #-----------------------------------------------------------------------------
+[2024-06-18 13:46:49] #-----------------------------------------------------------------------------
+[2024-06-18 13:46:49] #------------------------- RE-LAUNCH the vehicle -----------------------------
+[2024-06-18 13:46:49] #-----------------------------------------------------------------------------
+[2024-06-18 13:46:49] #-----------------------------------------------------------------------------
+[2024-06-18 13:46:52] [status_text] EKF3 IMU0 stopped aiding
+[2024-06-18 13:46:52] [status_text] EKF3 IMU1 stopped aiding
+[2024-06-18 13:46:55] [re-launch] min_thr:975, target throttle:995
+[2024-06-18 13:47:02] [status_text] Calibrating barometer
+[2024-06-18 13:47:02] ***************Policy violation!***************
+Create the policy_violations dir as not found
+Restarting the vehicle : Policy violation logged
+[2024-06-18 13:47:02] #-----------------------------------------------------------------------------
+[2024-06-18 13:47:02] #-----------------------------------------------------------------------------
+[2024-06-18 13:47:02] #------------------------- RE-LAUNCH the vehicle -----------------------------
+[2024-06-18 13:47:02] #-----------------------------------------------------------------------------
+[2024-06-18 13:47:02] #-----------------------------------------------------------------------------
+[2024-06-18 13:47:03] [status_text] ArduCopter V4.1.0-dev (98287a1b)
+[2024-06-18 13:47:03] [status_text] 43ef9e12cd45440383d4ec9e33e65b21
+[2024-06-18 13:47:03] [status_text] Frame: QUAD/PLUS
+[2024-06-18 13:47:04] [status_text] Barometer 1 calibration complete
+[2024-06-18 13:47:04] [status_text] Barometer 2 calibration complete
+[2024-06-18 13:47:04] [status_text] ArduPilot Ready
+[2024-06-18 13:47:04] [status_text] AHRS: DCM active
+[2024-06-18 13:47:05] [status_text] SaveWaypoint LOW
+[2024-06-18 13:47:05] [status_text] EKF3 IMU0 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:47:05] [status_text] EKF3 IMU1 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:47:06] [status_text] EKF3 IMU0 initialised
+[2024-06-18 13:47:06] [status_text] EKF3 IMU1 initialised
+[2024-06-18 13:47:06] [status_text] AHRS: EKF3 active
+[2024-06-18 13:47:06] [status_text] EKF3 IMU1 initial yaw alignment complete
+[2024-06-18 13:47:06] [status_text] EKF3 IMU0 initial yaw alignment complete
+[2024-06-18 13:47:07] [re-launch] min_thr:975, target throttle:995
+[2024-06-18 13:47:08] [status_text] EKF3 IMU1 tilt alignment complete
+[2024-06-18 13:47:08] [status_text] EKF3 IMU0 tilt alignment complete
+[2024-06-18 13:47:10] [status_text] GPS 1: detected as u-blox at 230400 baud
+[2024-06-18 13:47:15] [status_text] Calibrating barometer
+[2024-06-18 13:47:16] [status_text] ArduCopter V4.1.0-dev (98287a1b)
+[2024-06-18 13:47:16] [status_text] 43ef9e12cd45440383d4ec9e33e65b21
+[2024-06-18 13:47:16] [status_text] Frame: QUAD/PLUS
+[2024-06-18 13:47:17] [status_text] Barometer 1 calibration complete
+[2024-06-18 13:47:17] [status_text] Barometer 2 calibration complete
+[2024-06-18 13:47:17] [status_text] ArduPilot Ready
+[2024-06-18 13:47:17] [status_text] AHRS: DCM active
+[2024-06-18 13:47:18] [status_text] SaveWaypoint LOW
+[2024-06-18 13:47:18] [status_text] EKF3 IMU0 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:47:18] [status_text] EKF3 IMU1 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:47:19] [status_text] EKF3 IMU0 initialised
+[2024-06-18 13:47:19] [status_text] EKF3 IMU1 initialised
+[2024-06-18 13:47:19] [status_text] AHRS: EKF3 active
+[2024-06-18 13:47:19] [status_text] EKF3 IMU1 initial yaw alignment complete
+[2024-06-18 13:47:20] [status_text] EKF3 IMU0 initial yaw alignment complete
+[2024-06-18 13:47:21] [status_text] EKF3 IMU1 tilt alignment complete
+[2024-06-18 13:47:21] [status_text] EKF3 IMU0 tilt alignment complete
+[2024-06-18 13:47:23] [status_text] GPS 1: detected as u-blox at 230400 baud
+[2024-06-18 13:47:34] [status_text] EKF3 IMU0 origin set
+[2024-06-18 13:47:34] [status_text] EKF3 IMU1 origin set
+[2024-06-18 13:47:47] [Set_preconditions] PRX_TYPE = 2
+[2024-06-18 13:47:50] [status_text] PreArm: Need Position Estimate
+[2024-06-18 13:47:55] [status_text] EKF3 IMU1 is using GPS
+[2024-06-18 13:47:55] [status_text] EKF3 IMU0 is using GPS
+[2024-06-18 13:47:59] [Set_preconditions] PRX_TYPE = 2
+[2024-06-18 13:48:02] [status_text] Arming motors
+[2024-06-18 13:48:09] [status_text] EKF3 IMU0 in-flight yaw alignment complete
+[2024-06-18 13:48:09] [status_text] EKF3 IMU1 in-flight yaw alignment complete
+[2024-06-18 13:48:18] [Debug] drone_status:4
+[2024-06-18 13:48:18] Reset status_ctr
+[2024-06-18 13:48:18] ### Next round (0) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:18] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:18] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001832
+[2024-06-18 13:48:18] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:18] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:22] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:22] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001832
+[2024-06-18 13:48:22] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:22] [Debug] drone_status:4
+[2024-06-18 13:48:22] Incrementing the status_ctr
+[2024-06-18 13:48:22] ### Next round (1) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:22] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:22] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001832
+[2024-06-18 13:48:22] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:22] [Execute_cmd] (MAV_CMD_NAV_WAYPOINT, 61,68,89,85,48,17,23)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:26] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:26] [Debug] drone_status:4
+[2024-06-18 13:48:26] Incrementing the status_ctr
+[2024-06-18 13:48:26] ### Next round (2) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:26] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:26] [Execute_env] (SIM_IMU_POS_X, 0.704102744315)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:30] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:30] [Debug] drone_status:4
+[2024-06-18 13:48:30] Incrementing the status_ctr
+[2024-06-18 13:48:30] ### Next round (3) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:30] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:30] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:34] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:34] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:34] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:34] [Debug] drone_status:4
+[2024-06-18 13:48:34] Incrementing the status_ctr
+[2024-06-18 13:48:34] ### Next round (0) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:34] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:34] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:34] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:34] # [Change_parameter()] selected params: EK3_ALT_M_NSE
+[2024-06-18 13:48:34] # [Change_parameter()] selected params: EK3_ALT_M_NSE, min: 0.100000, max: 10.000000, random real param value:6.392568
+[2024-06-18 13:48:35] [status_text] Calibrating barometer
+[2024-06-18 13:48:36] [status_text] ArduCopter V4.1.0-dev (98287a1b)
+[2024-06-18 13:48:36] [status_text] 43ef9e12cd45440383d4ec9e33e65b21
+[2024-06-18 13:48:36] [status_text] Frame: QUAD/PLUS
+[2024-06-18 13:48:37] [status_text] Barometer 1 calibration complete
+[2024-06-18 13:48:37] [status_text] Barometer 2 calibration complete
+[2024-06-18 13:48:37] [status_text] ArduPilot Ready
+[2024-06-18 13:48:37] [status_text] AHRS: DCM active
+[2024-06-18 13:48:38] [status_text] SaveWaypoint LOW
+[2024-06-18 13:48:38] [status_text] EKF3 IMU0 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:48:38] [status_text] EKF3 IMU1 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:48:39] [status_text] EKF3 IMU0 initialised
+[2024-06-18 13:48:39] [status_text] EKF3 IMU1 initialised
+[2024-06-18 13:48:39] [status_text] AHRS: EKF3 active
+[2024-06-18 13:48:40] [status_text] EKF3 IMU1 initial yaw alignment complete
+[2024-06-18 13:48:40] [status_text] EKF3 IMU0 initial yaw alignment complete
+[2024-06-18 13:48:41] [status_text] EKF3 IMU1 tilt alignment complete
+[2024-06-18 13:48:41] [status_text] EKF3 IMU0 tilt alignment complete
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:48:41] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:48:41] [RANGEFINDER] Mode_t:STABILIZE, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:48:41] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:48:41] [Debug] drone_status:3
+[2024-06-18 13:48:41] Incrementing the status_ctr
+[2024-06-18 13:48:41] [Debug] drone_status:3
+[2024-06-18 13:48:41] ### Vehicle is grounded, Home alt:627.469971, Current alt:640.669983
+[2024-06-18 13:48:41] #-----------------------------------------------------------------------------
+[2024-06-18 13:48:41] #-----------------------------------------------------------------------------
+[2024-06-18 13:48:41] #------------------------- RE-LAUNCH the vehicle -----------------------------
+[2024-06-18 13:48:41] #-----------------------------------------------------------------------------
+[2024-06-18 13:48:41] #-----------------------------------------------------------------------------
+[2024-06-18 13:48:44] [status_text] GPS 1: detected as u-blox at 230400 baud
+[2024-06-18 13:48:46] [re-launch] min_thr:975, target throttle:995
+[2024-06-18 13:48:54] [status_text] Calibrating barometer
+[2024-06-18 13:48:55] [status_text] ArduCopter V4.1.0-dev (98287a1b)
+[2024-06-18 13:48:55] [status_text] 43ef9e12cd45440383d4ec9e33e65b21
+[2024-06-18 13:48:55] [status_text] Frame: QUAD/PLUS
+[2024-06-18 13:48:56] [status_text] Barometer 1 calibration complete
+[2024-06-18 13:48:56] [status_text] Barometer 2 calibration complete
+[2024-06-18 13:48:56] [status_text] ArduPilot Ready
+[2024-06-18 13:48:56] [status_text] AHRS: DCM active
+[2024-06-18 13:48:57] [status_text] SaveWaypoint LOW
+[2024-06-18 13:48:57] [status_text] EKF3 IMU0 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:48:57] [status_text] EKF3 IMU1 buffs IMU=19 OBS=7 OF=17 EN:17 dt=0.0120
+[2024-06-18 13:48:58] [status_text] EKF3 IMU0 initialised
+[2024-06-18 13:48:58] [status_text] EKF3 IMU1 initialised
+[2024-06-18 13:48:58] [status_text] AHRS: EKF3 active
+[2024-06-18 13:48:59] [status_text] EKF3 IMU1 initial yaw alignment complete
+[2024-06-18 13:48:59] [status_text] EKF3 IMU0 initial yaw alignment complete
+[2024-06-18 13:49:00] [status_text] EKF3 IMU1 tilt alignment complete
+[2024-06-18 13:49:00] [status_text] EKF3 IMU0 tilt alignment complete
+[2024-06-18 13:49:03] [status_text] GPS 1: detected as u-blox at 230400 baud
+[2024-06-18 13:49:13] [status_text] EKF3 IMU0 origin set
+[2024-06-18 13:49:13] [status_text] EKF3 IMU1 origin set
+[2024-06-18 13:49:34] [status_text] EKF3 IMU1 is using GPS
+[2024-06-18 13:49:34] [status_text] EKF3 IMU0 is using GPS
+[2024-06-18 13:49:38] [Set_preconditions] PRX_TYPE = 2
+[2024-06-18 13:49:41] [status_text] Arming motors
+[2024-06-18 13:49:48] [status_text] EKF3 IMU1 in-flight yaw alignment complete
+[2024-06-18 13:49:48] [status_text] EKF3 IMU0 in-flight yaw alignment complete
+[2024-06-18 13:50:09] [Debug] drone_status:4
+[2024-06-18 13:50:09] Reset status_ctr
+[2024-06-18 13:50:09] ### Next round (0) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:09] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:09] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.002984, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:50:09] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:09] # [Change_parameter()] selected params: ATC_RAT_RLL_IMAX
+[2024-06-18 13:50:09] # [Change_parameter()] selected params: ATC_RAT_RLL_IMAX, min: 0.000000, max: 1.000000, random digit param value:1
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:16] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:16] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:50:16] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:16] [Debug] drone_status:4
+[2024-06-18 13:50:16] Incrementing the status_ctr
+[2024-06-18 13:50:16] ### Next round (1) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:16] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:16] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006191, pitch_min: -0.001998
+[2024-06-18 13:50:16] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:16] [Execute_env] (SIM_GYR_RND, 55.7026430854)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:20] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:20] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:20] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:20] [Debug] drone_status:4
+[2024-06-18 13:50:20] Incrementing the status_ctr
+[2024-06-18 13:50:20] ### Next round (2) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:20] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:20] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:20] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:20] [Execute_env] (SIM_SHOVE_X, 21.9291516701)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:24] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:24] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:24] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:24] [Debug] drone_status:4
+[2024-06-18 13:50:24] Incrementing the status_ctr
+[2024-06-18 13:50:24] ### Next round (3) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:24] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:24] [RANGEFINDER] Mode_t:GUIDED, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:24] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:24] [Execute_cmd] (MAV_CMD_NAV_RETURN_TO_LAUNCH, 18,76,67,18,61,88,50)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:28] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:28] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:28] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:28] [Debug] drone_status:4
+[2024-06-18 13:50:28] Incrementing the status_ctr
+[2024-06-18 13:50:28] ### Next round (4) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:28] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:28] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:28] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:28] # [Change_parameter()] selected params: ATC_ACCEL_R_MAX
+[2024-06-18 13:50:28] # [Change_parameter()] selected params: ATC_ACCEL_R_MAX, min: 0.000000, max: 180000.000000, random digit param value:34185
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:35] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:35] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:35] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:35] [Debug] drone_status:4
+[2024-06-18 13:50:35] Incrementing the status_ctr
+[2024-06-18 13:50:35] ### Next round (5) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:35] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:35] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:35] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:35] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:39] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:39] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:39] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:39] [Debug] drone_status:4
+[2024-06-18 13:50:39] Incrementing the status_ctr
+[2024-06-18 13:50:39] ### Next round (6) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:39] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:39] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:39] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:39] # [Change_parameter()] selected params: ATC_ANGLE_BOOST
+[2024-06-18 13:50:39] # [Change_parameter()] selected params: ATC_ANGLE_BOOST, min: 0.000000, max: 1.000000, random digit param value:0
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:46] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:46] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:46] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:46] [Debug] drone_status:4
+[2024-06-18 13:50:46] Incrementing the status_ctr
+[2024-06-18 13:50:46] ### Next round (7) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:46] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:46] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:46] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:46] [Execute_cmd] (MAV_CMD_DO_SET_CAM_TRIGG_DIST, 65,66,95,20,38,16,79)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:50] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:50] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:50] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:50] [Debug] drone_status:4
+[2024-06-18 13:50:50] Incrementing the status_ctr
+[2024-06-18 13:50:50] ### Next round (8) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:50] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:50] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020029, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:50] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:50] [Execute_cmd] (MAV_CMD_DO_ACCEPT_MAG_CAL, 76,64,100,15,49,13,97)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:54] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:54] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:54] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:54] [Debug] drone_status:4
+[2024-06-18 13:50:54] Incrementing the status_ctr
+[2024-06-18 13:50:54] ### Next round (9) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:54] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:54] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:54] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:54] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:58] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:58] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:58] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:58] [Debug] drone_status:4
+[2024-06-18 13:50:58] Incrementing the status_ctr
+[2024-06-18 13:50:58] ### Next round (10) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:50:58] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:50:58] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:50:58] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:50:58] # [Change_parameter()] selected params: MOT_SLEW_UP_TIME
+[2024-06-18 13:50:58] # [Change_parameter()] selected params: MOT_SLEW_UP_TIME, min: 0.000000, max: 0.500000, random real param value:0.017869
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:06] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:06] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:06] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:06] [Debug] drone_status:4
+[2024-06-18 13:51:06] Incrementing the status_ctr
+[2024-06-18 13:51:06] ### Next round (11) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:06] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:06] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.005159, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:06] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:06] [Execute_cmd] (RC1, 1658)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:10] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:10] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:10] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:10] [Debug] drone_status:4
+[2024-06-18 13:51:10] Incrementing the status_ctr
+[2024-06-18 13:51:10] ### Next round (12) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:10] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:10] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:10] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:10] [Execute_env] (SIM_ACC_BIAS_X, 97.1539852818)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:14] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:14] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:14] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:14] [Debug] drone_status:4
+[2024-06-18 13:51:14] Incrementing the status_ctr
+[2024-06-18 13:51:14] ### Next round (13) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:14] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:14] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.001998
+[2024-06-18 13:51:14] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:14] [Execute_env] (SIM_BARO_GLITCH, 82.1175936564)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:18] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:18] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:18] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:18] [Debug] drone_status:4
+[2024-06-18 13:51:18] Incrementing the status_ctr
+[2024-06-18 13:51:18] ### Next round (14) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:18] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:18] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:18] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:18] Generated random msgs for rangefinder
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:22] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:22] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:22] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:22] [Debug] drone_status:4
+[2024-06-18 13:51:22] Incrementing the status_ctr
+[2024-06-18 13:51:22] ### Next round (15) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:22] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:22] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:22] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:22] [Execute_env] (SIM_BZ_ENABLE, 25.19787135)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:26] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:26] [Debug] drone_status:4
+[2024-06-18 13:51:26] Incrementing the status_ctr
+[2024-06-18 13:51:26] ### Next round (16) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:26] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:26] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:26] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:26] [Execute_env] (SIM_GRPE_PIN, 67.0735559341)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:30] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:30] [Debug] drone_status:4
+[2024-06-18 13:51:30] Incrementing the status_ctr
+[2024-06-18 13:51:30] ### Next round (17) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:30] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:30] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:30] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:30] [Execute_env] (SIM_TIDE_SPEED, 76.646133166)
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:34] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:34] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:34] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:34] [Debug] drone_status:4
+[2024-06-18 13:51:34] Incrementing the status_ctr
+[2024-06-18 13:51:34] ### Next round (18) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:34] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:34] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:34] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:34] [Execute_env] (SIM_TWIST_Z, 57.5951493465)
+[2024-06-18 13:51:37] [status_text] SIM Hit ground at 1.408194 m/s
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:38] [Distance] Global distance: 1.000000
+#-----------------------------------------------------------------------------
+[2024-06-18 13:51:38] [RANGEFINDER] Mode_t:RTL, yaw_max:0.022164, yaw_min:-0.020751, roll_max: 0.005083, roll_min:-0.017460, pitch_max:0.006576, pitch_min: -0.003706
+[2024-06-18 13:51:38] P values [-1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+[2024-06-18 13:51:38] [Debug] drone_status:4
+[2024-06-18 13:51:38] Incrementing the status_ctr
+[2024-06-18 13:51:38] ### Next round (19) for fuzzing commands. ###
+#---------------------------------A.RANGEFINDER-------------------------------------------
+[Distance] P1: -1.000000 P2: -1.000000 P3: -1.000000 P4: -1.000000 
+[2024-06-18 13:51:38] [Distance] Global distance: 1.000000
+#----------

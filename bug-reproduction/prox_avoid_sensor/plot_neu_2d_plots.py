@@ -42,7 +42,7 @@ for i in range(len(datasets) // 3):
     data = datasets[i * 3 : (i + 1) * 3]
     distances, angles = calculate_distances_angles(data)
     color = colors[i % len(colors)]  # Cycle through colors
-    ax.plot(angles, distances, f"{color}-", label=f"Mutated point{i+1}")
+    ax.plot(angles, distances, f"{color}-", label=f"gen_point{i+1}")
     ax.fill(angles, distances, color, alpha=0.3)
     print("Color: ", color)
     print("Distances: ", distances)
