@@ -4,10 +4,14 @@ set -e
 
 # Now ask user for what unique identifier they want to use for the results folder
 REASON=$1
-if [ -z "$REASON" ]
-then
-    echo "Please provide a unique identifier for the results folder"
-    exit 1
+if [ -z "$REASON" ]; then
+	echo "Please provide a unique identifier for the results folder"
+	exit 1
+fi
+# Check if PGFUZZ_HOME is set
+if [ -z "$PGFUZZ_HOME" ]; then
+	echo "Please set the PGFUZZ_HOME environment variable"
+	exit 1
 fi
 
 # First get the commit under test from the fuzzing.log file

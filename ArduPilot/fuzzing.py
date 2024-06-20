@@ -40,9 +40,9 @@ import sys, os, getopt
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-conn_rangefinder = mavutil.mavlink_connection(
-    "localhost:1337", source_system=1, source_component=93, baud=921600
-)
+# conn_rangefinder = mavutil.mavlink_connection(
+#     "localhost:1337", source_system=1, source_component=93, baud=921600
+# )
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -190,7 +190,7 @@ Precondition_path = ""
 # Current_policy = "A.RTL4"
 # Current_policy_P_length = 3
 Current_policy = "A.RANGEFINDER"
-Current_policy_P_length = 4
+Current_policy_P_length = 3
 
 # Debug parameter
 PRINT_DEBUG = 0
@@ -460,7 +460,7 @@ def send_msg_rangefinder():
                 float(DEPTH_RANGE[0]),  # min range of sensor
                 float(DEPTH_RANGE[1]),  # max range of sensor
             )
-            conn_rangefinder.mav.send(msg)
+            master.mav.send(msg)
         time.sleep(1 / hz)
 
 
@@ -1005,6 +1005,7 @@ def read_loop():
 # ------------------------------------------------------------------------------------
 def store_mutated_inputs():
     global Policy_violation_cnt
+    global count_main_loop
     Policy_violation_cnt += 1
 
     log("***************Policy violation!***************")
@@ -1030,9 +1031,13 @@ def store_mutated_inputs():
     f1.close()
     f2.close()
 
+
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
 
+    print("Restarting the vehicle : Policy violation logged")
+    re_launch()
+    count_main_loop = 0
 
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
@@ -2573,23 +2578,23 @@ def calculate_distance(guidance):
     else:
         P[0] = -1
     # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    if (roll_max - roll_min) > 1:
-        P[1] = -1
-    else:
+    if (roll_max - roll_min) > 2:
         P[1] = 1
-    if (yaw_max - yaw_min) > 1:
-        P[2] = -1
     else:
+        P[1] = -1
+    if (yaw_max - yaw_min) > 2:
         P[2] = 1
-    if (pitch_max - pitch_min) > 1:
-        P[3] = -1
     else:
+        P[2] = -1
+    if (pitch_max - pitch_min) > 2:
         P[3] = 1
+    else:
+        P[3] = -1
 
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
+    Global_distance = -1 * (min(P[0], max(P[1], P[3])))
 
     print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.RANGEFINDER", guid=guidance
+        G_dist=Global_distance, P_dist=P, length=3, policy="A.RANGEFINDER", guid=guidance
     )
 
     log(
