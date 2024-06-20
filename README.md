@@ -8,3 +8,8 @@ Improved version of PGFuzz with new sensor support
 
 ## Some notes
 📔 Always run from `<SRC>_DIR`
+
+## Some helper scripts
+- notify.sh
+- move_results.sh
+- setup.sh
