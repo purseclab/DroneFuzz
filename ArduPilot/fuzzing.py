@@ -8,13 +8,13 @@ Goal: Main loop of PGFUZZ
 # !onsusr/bin/env python
 
 import sys, os
-from optparse import OptionParser
 
 import time
 import datetime
 import random
 import numpy
 import threading
+import queue
 import subprocess
 import requests
 
@@ -40,9 +40,7 @@ import sys, os, getopt
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-# conn_rangefinder = mavutil.mavlink_connection(
-#     "localhost:1337", source_system=1, source_component=93, baud=921600
-# )
+# conn_rangefinder = mavutil.mavlink_connection("localhost:1337",autoreconnect=True)
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -149,8 +147,10 @@ actual_throttle = 0
 # Sensor metrics
 start_time = int(round(time.time() * 1000))
 DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
-# Uniformly send values
 depth_range_x = depth_range_y = depth_range_z = [0.00] * 9
+mavlink_lock = threading.Lock()
+mavlink_msg_queue = queue.Queue()
+
 
 # Distance
 P = []
@@ -218,6 +218,33 @@ def log(message):
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Print the message with the current time
     print("[{}] {}".format(current_time, message))
+
+## Reboot the Vehicle via MAVLINK
+def reboot_vehicle():
+    log("Rebooting vehicle")
+    # Send a reboot command to the vehicle
+    master.mav.command_long_send(
+        master.target_system,
+        master.target_component,
+        mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    # Check for the response back
+    log("Waiting for response")
+    while True:
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        resp = ack_msg.to_dict()
+        if resp['command'] != mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
+            continue
+        print(resp)
+        break
 
 
 # ------------------------------------------------------------------------------------
@@ -376,6 +403,8 @@ def re_launch():
     # Step 3. reset preconditions to fuzz the target policy
     global Precondition_path
     set_preconditions(Precondition_path)
+    reboot_vehicle()
+    time.sleep(45) # TODO: Figure out the exact time to wait
 
     # Step 4. re-take off the vehicle
     master.mav.set_mode_send(
@@ -445,9 +474,19 @@ def current_milli_time(start_time):
 
 
 def send_msg_rangefinder():
+    master.recv_match(type="HEARTBEAT",blocking=True)
     hz = 25
-    cur_ms_time = current_milli_time(start_time)
     while True:
+        try:
+            mutated_msg = mavlink_msg_queue.get(timeout=1)
+            depth_range_x = mutated_msg[0]
+            depth_range_y = mutated_msg[1]
+            depth_range_z = mutated_msg[2]
+        except queue.Empty:
+            depth_range_x = numpy.random.uniform(9,12,9)
+            depth_range_y = numpy.random.uniform(9,12,9)
+            depth_range_z = numpy.random.uniform(9,12,9)
+        cur_ms_time = current_milli_time(start_time)
         for i in range(9):
             msg = mavlink2.MAVLink_obstacle_distance_3d_message(
                 cur_ms_time,  # us Timestamp (UNIX time or time since system boot)
@@ -461,7 +500,8 @@ def send_msg_rangefinder():
                 float(DEPTH_RANGE[1]),  # max range of sensor
             )
             master.mav.send(msg)
-        time.sleep(1 / hz)
+            time.sleep(1 / hz)
+        time.sleep(1)
 
 
 def randomize_msg_rangefinder():
@@ -471,9 +511,17 @@ def randomize_msg_rangefinder():
     # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
     # not repeated
     # XXX: Why does the randomization fail in a loop?
-    depth_range_x = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
-    depth_range_y = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
-    depth_range_z = numpy.random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1], 9)
+    depth_range_x = numpy.random.uniform(-(DEPTH_RANGE[1]/2), (DEPTH_RANGE[1]/2), 9)
+    depth_range_y = numpy.random.uniform(-(DEPTH_RANGE[1]/2), (DEPTH_RANGE[1]/2), 9)
+    depth_range_z = numpy.random.uniform(-(DEPTH_RANGE[1]/2), (DEPTH_RANGE[1]/2), 9)
+    # depth_range_1 = [12, 12, 12, 12, 12, 12, 12, 12, 12]
+    # depth_range_2 = [-7.171149112500025, 3.468601209163399, 5.695193805774039, -9.266968362509475, 11.667519738575635, 5.1041530139455205, 0.45212570746143044, -7.864746056681961, -2.337234663244491]
+    # depth_range_3 = [9.170353381650724, 8.632255888031327, 3.9505021451729547, -6.620548981848094, -0.6074463507713102, 2.6709162689533255, 3.3385703109376905, 3.4818020706529715, 9.12005049574292]
+    # val = random.choice([depth_range_1])
+    # print("Selected value: ", val)
+    # depth_range_x = depth_range_y = depth_range_z = val
+    combined_msg = [depth_range_x,depth_range_y,depth_range_z]
+    mavlink_msg_queue.put(combined_msg)
 
     depth_range_x_str = numpy.reshape(depth_range_x,(1,len(depth_range_x)))
     depth_range_y_str = numpy.reshape(depth_range_y,(1,len(depth_range_y)))
@@ -2985,7 +3033,8 @@ def pick_up_cmd():
     Guidance_decision = None
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
-    input_type = random.randint(1, 4)
+    # input_type = random.randint(1, 4)
+    input_type = random.choice([1,4]) # XXX: Remove always set to 4, also enable the Flight_Mode to ensure LOITER
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
     # input_type = 1
@@ -3121,8 +3170,25 @@ def main(argv):
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
     # we get a LOCAL_POSITION_NED
+    # _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
+    # log("Got the local position ned")
+
+    # Start the Rangefinder thread
+    t4 = threading.Thread(target=send_msg_rangefinder, args=())
+    t4.daemon = True
+    t4.start()
+
+    # Set some preconditions to test a policy
+    # When I switch to another target policy, I need to update the 'Precondition_path'.
+    Precondition_path += "./policies/"
+    Precondition_path += Current_policy
+    Precondition_path += "/preconditions.txt"
+    set_preconditions(Precondition_path)
+    reboot_vehicle()
+    time.sleep(15) # TODO: Figure out the exact time to wait
+
     _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned")
+    log("Got the local position ned again")
 
     # Testing
     # ------------------------------------------------------------------------
@@ -3238,12 +3304,6 @@ def main(argv):
     guidance_log = open("guidance_log.txt", "w")
     guidance_log.close()
 
-    # Set some preconditions to test a policy
-    # When I switch to another target policy, I need to update the 'Precondition_path'.
-    Precondition_path += "./policies/"
-    Precondition_path += Current_policy
-    Precondition_path += "/preconditions.txt"
-    set_preconditions(Precondition_path)
 
     # Check liveness of the RV software
 
@@ -3251,18 +3311,13 @@ def main(argv):
     t3.daemon = True
     t3.start()
 
-    # Start the Rangefinder thread
-
-    t4 = threading.Thread(target=send_msg_rangefinder, args=())
-    t4.daemon = True
-    t4.start()
 
     # Setup a counter to catch stalls
     status_ctr = 0
     prev_status_ctr = 0
     # Main loop
     while True:
-        log("[Debug] drone_status:%d" % drone_status)
+        log("[Debug] drone_status:%d prev_status_ctr %d" % (drone_status,prev_status_ctr))
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
@@ -3353,6 +3408,47 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
+        elif drone_status == 3:
+            if drone_status != prev_status_ctr:
+                status_ctr = 0
+            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
+            # critcal error raise ValueError("Unhandled drone status Status: %d
+            # Hit_ground: %d PreArm: %d" %
+            # (drone_status,hit_ground,PreArm_error))
+            log(
+                "Drone status Status: %d Hit_ground: %d PreArm: %d"
+                % (drone_status, hit_ground, PreArm_error)
+            )
+            log("It seems the drone might have hit the ground")
+
+            log("Restarting the vehicle")
+            failsafe_error = hit_ground = 0
+            prev_status_ctr = drone_status
+
+            re_launch()
+            count_main_loop = 0
+
+        elif drone_status == 0:
+            log("Didn't get anything yet ig, just continue")
+            Armed = 1
+            executing_commands = 1
+            log(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
+            count_main_loop += 1
+
+            # Calculate propositional and global distances
+            calculate_distance(guidance="false")
+
+            pick_up_cmd()
+
+            # Calculate distances to evaluate effect of the executed input
+            time.sleep(4)
+            calculate_distance(guidance="true")
+            goal_throttle = 1500
+
+            prev_status_ctr = drone_status
+
+            for i in range(4):
+                set_rc_channel_pwm(i + 1, 1500)
         else:
             log("Unhandled MAV_STATE, check what is wrong")
             send_telegram_message("Unhandled MAV_STATE, check what is wrong")
