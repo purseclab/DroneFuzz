@@ -21,7 +21,10 @@ import requests
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
-from pymavlink import mavutil
+# TODO: Figure out Ruff issue with following lines
+from pymavlink import mavutil, mavwp
+from pymavlink import mavextra
+from pymavlink import mavexpression
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 # NOTE: pymavlink needs to be an old version 2.4.37 (Cause it doesn't support Py2 :|)
 # pip2 install --force-reinstall -v "pymavlink==2.4.37"
@@ -3318,7 +3321,10 @@ def main(argv):
         if prev_status_ctr == drone_status:
             status_ctr += 1
             log("Incrementing the status_ctr")
-            if status_ctr >= 100:
+            if status_ctr >= 100 and (
+                drone_status != mavutil.mavlink.MAV_STATE_ACTIVE
+                and prev_status_ctr != mavutil.mavlink.MAV_STATE_ACTIVE
+            ):
                 log(
                     "Counter reached 100, check if the status has been stuck there, the value for status is {0}".format(
                         drone_status
