@@ -7,7 +7,8 @@ Goal: Main loop of PGFUZZ
 
 # !onsusr/bin/env python
 
-import sys, os
+import sys
+import os
 
 import time
 import datetime
@@ -20,9 +21,7 @@ import requests
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
-from pymavlink import mavutil, mavwp
-from pymavlink import mavextra
-from pymavlink import mavexpression
+from pymavlink import mavutil
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 # NOTE: pymavlink needs to be an old version 2.4.37 (Cause it doesn't support Py2 :|)
 # pip2 install --force-reinstall -v "pymavlink==2.4.37"
@@ -30,12 +29,9 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 import read_inputs
 import shared_variables
 
-import time
 import timeit
 import re
 import math
-from optparse import OptionParser
-import sys, os, getopt
 
 # ------------------------------------------------------------------------------------
 # Global variables
