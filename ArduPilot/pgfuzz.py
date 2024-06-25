@@ -1,19 +1,15 @@
-from re import sub
 import time
-import datetime
 import signal
-import psutil
 import subprocess
 # from subprocess import *
-from pdb import set_trace as bp
 import os
 
 # List to keep track of child processes
 child_processes = []
 
 
-def sigint_handler(signum, frame):
-    print("SIGINT received, terminating child processes...")
+def sigint_handler(_signum, _frame):
+    print("SIGINT received, at some point will terminate child processes...")
     # TODO Actually kill the processes?
     # It's slightly more complicated than just recording child processes
     # Because the child spawns and exits
@@ -100,7 +96,7 @@ cmd = 'source ' + setup_sh + '; python2 ' + open_simulator + '; exit'
 prg_name = 'pgfuzz-sitl-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
 
-time.sleep(90)
+time.sleep(20) # NOTE: Time reduced for testing
 cmd = 'source ' + setup_sh + '; python2 ' + fuzzing_py + ' | tee fuzzing.log'
 prg_name = 'pgfuzz-fuzzing-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
