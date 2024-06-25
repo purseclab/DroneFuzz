@@ -31,7 +31,7 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
             # We need to get the session name which is usually part of the path
             result = subprocess.check_output(
                 ['tmux', 'display-message', '-p', '#S'])
-            session_name = result.strip()
+            session_name = result.strip().decode('utf-8') #XXX: For now stick to UTF-8 names only
         else:
             # Check if the session exists
             result = subprocess.Popen(
@@ -43,7 +43,7 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
                 # Create the session if it doesn't exist
                 subprocess.call(
                     ['tmux', 'new-session', '-d', '-s', session_name])
-                print("Created new session: {0}".format(session_name))
+                print(("Created new session: {0}".format(session_name)))
 
         if window_name == "":
             window_name = "default" + str(int(time.time()))
@@ -60,12 +60,12 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
             cmd = ['tmux', 'send-keys', '-t', target, command, 'C-m']
             process = subprocess.Popen(cmd)
             child_processes.append(process.pid)
-            print("Running command {0}".format(command))
+            print(("Running command {0}".format(command)))
 
-        print("New window created in session {0}.".format(session_name))
+        print(("New window created in session {0}.".format(session_name)))
 
     except Exception as e:
-        print("An error occurred: {0}".format(e))
+        print(("An error occurred: {0}".format(e)))
 
 
 # except Exception as e:

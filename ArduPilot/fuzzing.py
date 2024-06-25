@@ -219,7 +219,7 @@ def log(message):
     # Get the current time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Print the message with the current time
-    print("[{}] {}".format(current_time, message))
+    print(("[{}] {}".format(current_time, message)))
 
 
 ## Reboot the Vehicle via MAVLINK
@@ -3123,7 +3123,7 @@ def main(argv):
     if current_commit == "":
         print("No commit found in the Ardupilot directory")
     else:
-        print("The commit being tested is: %s" % current_commit)
+        print(("The commit being tested is: %s" % current_commit))
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
