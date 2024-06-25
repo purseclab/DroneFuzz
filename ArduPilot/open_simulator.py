@@ -10,7 +10,7 @@ import psutil
 
 ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
 
-print(os.getcwd())
+print((os.getcwd()))
 if ARDUPILOT_HOME is None:
     raise Exception("ARDUPILOT_HOME environment variable is not set!")
 
