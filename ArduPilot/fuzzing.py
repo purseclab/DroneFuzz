@@ -18,6 +18,7 @@ import threading
 import queue
 import subprocess
 import requests
+import multiprocessing
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -368,13 +369,15 @@ def re_launch():
     )
 
     # Step 1. land the vehicle
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
-    )
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
+    # )
+    mode_id = master.mode_mapping()["RTL"]
+    master.set_mode(mode_id)
 
     # Wait for finishing the landing
     while True:
-        if current_flight_mode == "LAND":
+        if current_flight_mode == "RTL":
             break
         time.sleep(0.2)
 
@@ -428,9 +431,10 @@ def re_launch():
     time.sleep(5)
 
     # Step 4. re-take off the vehicle
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
-    )
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
+    # )
+    master.set_mode()
 
     # Wait for finishing the landing
     while True:
@@ -2949,16 +2953,23 @@ def execute_cmd(num):
         Current_input_val = read_inputs.cmd_number[num]
 
         if Current_input_val == "null":
-            rand_fligh_mode = random.randint(0, 18)
-            Current_input_val = str(rand_fligh_mode)
+            rand_flight_mode = random.choice(master.mode_mapping().items())
+            log("Rand flight mode " + rand_flight_mode)
+            Current_input_val = str(rand_flight_mode[1])
+            rand_fligh_mode = rand_flight_mode[1]
         else:
             rand_fligh_mode = int(Current_input_val)
 
-        master.mav.set_mode_send(
-            master.target_system,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            rand_fligh_mode,
-        )
+        # master.mav.set_mode_send(
+        #     master.target_system,
+        #     mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        #     rand_fligh_mode,
+        # )
+        #
+        mode_id = master.mode_mapping()[
+            rand_fligh_mode
+        ]  # FIXME: Double check if this works
+        master.set_mode(mode_id)
 
     elif read_inputs.cmd_name[num] == "MAV_CMD_DO_PARACHUTE":
         Current_input_val = "2"
@@ -3234,7 +3245,7 @@ def main(argv):
     set_preconditions(Precondition_path)
     # reboot_vehicle()
 
-    t4 = threading.Thread(target=send_msg_rangefinder, args=())
+    t4 = multiprocessing.Process(target=send_msg_rangefinder)
     t4.daemon = True
     t4.start()
 
@@ -3263,28 +3274,32 @@ def main(argv):
     # Get mode ID
     mode_id = master.mode_mapping()[mode]
 
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    )
+    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    # master.mav.command_long_send(
+    #     master.target_system,
+    #     master.target_component,
+    #     mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+    #     0,
+    #     0,
+    #     mode_id,
+    #     0,
+    #     0,
+    #     0,
+    #     0,
+    #     0,
+    # )
+    master.set_mode(mode_id)
 
-    # Check ACK
-    ack = False
-    while not ack:
+    while True:
         # Wait for ACK command
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=40)
-        if ack_msg is None:
-            log("Setting mode failed, exiting")
-            exit(0)
-
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         ack_msg = ack_msg.to_dict()
-
         # Check if command in the same in `set_mode`
-        if ack_msg["command"] != mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE:
+        if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
             continue
-
         # Print the ACK result !
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-
         break
 
     master.mav.command_long_send(
@@ -3301,8 +3316,7 @@ def main(argv):
         0,
     )
 
-    ack = False
-    while not ack:
+    while True:
         # Wait for ACK command
         ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
         if ack_msg is None:
@@ -3352,9 +3366,21 @@ def main(argv):
     t1.start()
 
     mode_id = master.mode_mapping()["ALT_HOLD"]
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    )
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    master.set_mode(mode_id)
+
+    while True:
+        # Wait for ACK command
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = ack_msg.to_dict()
+
+        # Check if command in the same in `set_mode`
+        if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+            continue
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
     # Set default throttle
     set_rc_channel_pwm(3, 1500)
 
@@ -3499,6 +3525,7 @@ def main(argv):
         elif drone_status == 0:
             log("DANGER! It seems that the drone status is 0")
             log("I'm going to sleep, fix this man")
+            send_telegram_message("Now is drone_status 0")
             time.sleep(100)
         else:
             log("Unhandled MAV_STATE, check what is wrong")
