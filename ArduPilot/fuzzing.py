@@ -39,7 +39,7 @@ import math
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-# conn_rangefinder = mavutil.mavlink_connection("localhost:1337",autoreconnect=True)
+conn_rangefinder = mavutil.mavlink_connection("localhost:1337", autoreconnect=True)
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -215,18 +215,20 @@ def send_telegram_message(message):
 
 
 # Print with time
-def log(message):
+def log(message, filename="fuzzing.log"):
     # Get the current time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Print the message with the current time
-    print("[{}] {}".format(current_time, message))
+    # Format the log message
+    log_message = "[{}] {}".format(current_time, message)
+    print(log_message)
+    # Append the message to the file
+    with open(filename, "a") as log_file:
+        log_file.write(log_message + "\n")
 
 
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    mavlink_pause_event.set()
-    log("Setting event")
     # Send a reboot command to the vehicle
     master.mav.command_long_send(
         master.target_system,
@@ -248,9 +250,8 @@ def reboot_vehicle():
         resp = ack_msg.to_dict()
         if resp["command"] != mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
             continue
+        log("Received response back")
         break
-    log("Clearing event")
-    mavlink_pause_event.clear()
 
 
 # ------------------------------------------------------------------------------------
@@ -409,10 +410,20 @@ def re_launch():
     # Step 3. reset preconditions to fuzz the target policy
     global Precondition_path
     set_preconditions(Precondition_path)
-    reboot_vehicle()
-    time.sleep(45)  # TODO: Figure out the exact time to wait
-    _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned again")
+    mavlink_pause_event.set()
+    log("Setting event")
+    # reboot_vehicle()
+
+    # Try to read the STATUSTEXT msgs till we get the GPS usage
+    # while True:
+    #     msg = master.recv_match(type="STATUSTEXT", blocking=True)
+    #     if "EKF3 IMU0 is using GPS" in msg.text:
+    #         log("Got GPS usage message")
+    #         break
+
+    log("Clearing event")
+    mavlink_pause_event.clear()
+    time.sleep(5)
 
     # Step 4. re-take off the vehicle
     master.mav.set_mode_send(
@@ -482,7 +493,7 @@ def current_milli_time(start_time):
 
 
 def send_msg_rangefinder():
-    master.recv_match(type="HEARTBEAT", blocking=True)
+    conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
     hz = 25
     while True:
         try:
@@ -507,7 +518,7 @@ def send_msg_rangefinder():
                 float(DEPTH_RANGE[0]),  # min range of sensor
                 float(DEPTH_RANGE[1]),  # max range of sensor
             )
-            master.mav.send(msg)
+            conn_rangefinder.mav.send(msg)
             time.sleep(1 / hz)
         time.sleep(1)
 
@@ -1024,23 +1035,27 @@ def read_loop():
             log("Pausing reading loop for 10 seconds")
             time.sleep(10)
         # current types
-        # types_msg = [
-        #     "BAD_DATA",
-        #     "RC_CHANNELS",
-        #     "VFR_HUD",
-        #     "ATTITUDE",
-        #     "NAV_CONTROLLER_OUTPUT",
-        #     "GLOBAL_POSITION_INT",
-        #     "STATUSTEXT",
-        #     "SYSTEM_TIME",
-        #     "MISSION_COUNT",
-        #     "PARAM_VALUE",
-        #     "GPS_RAW_INT",
-        #     "HEARTBEAT",
-        #     "ORBIT_EXECUTION_STATUS",
-        # ]
+        types_msg = [
+            "BAD_DATA",
+            "RC_CHANNELS",
+            "VFR_HUD",
+            "ATTITUDE",
+            "NAV_CONTROLLER_OUTPUT",
+            "GLOBAL_POSITION_INT",
+            "STATUSTEXT",
+            "SYSTEM_TIME",
+            "MISSION_COUNT",
+            "PARAM_VALUE",
+            "GPS_RAW_INT",
+            "HEARTBEAT",
+            "ORBIT_EXECUTION_STATUS",
+        ]
         # grab a mavlink message
-        msg = master.recv_match(blocking=True)
+        try:
+            msg = master.recv_match(blocking=True, type=types_msg)
+        except:
+            print("An exception occurred:", str(e))
+            print(msg)
 
         # handle the message based on its type
         msg_type = msg.get_type()
@@ -1099,7 +1114,7 @@ def store_mutated_inputs():
     except IOError:
         # Create the directory
         os.mkdir("./policy_violations/")
-        print("Create the policy_violations dir as not found")
+        log("Create the policy_violations dir as not found")
         f2 = open(file_name, "w")
     f2.writelines(lines)
     f1.close()
@@ -1108,7 +1123,7 @@ def store_mutated_inputs():
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
 
-    print("Restarting the vehicle : Policy violation logged")
+    log("Restarting the vehicle : Policy violation logged")
     re_launch()
     count_main_loop = 0
 
@@ -1116,21 +1131,21 @@ def store_mutated_inputs():
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
     # Print distances
-    print(
-        (
-            "#---------------------------------%s-------------------------------------------"
-            % policy
-        )
-    )
-    sys.stdout.write("[Distance] ")
+    # print(
+    #     (
+    #         "#---------------------------------%s-------------------------------------------"
+    #         % policy
+    #     )
+    # )
+    log("[Distance] ")
     for i in range(length):
-        sys.stdout.write("P%d: %f " % (i + 1, P_dist[i]))
+        log("P%d: %f " % (i + 1, P_dist[i]))
 
-    print("")
+    # print("")
     log(("[Distance] Global distance: %f" % Global_distance))
-    print(
-        "#-----------------------------------------------------------------------------"
-    )
+    # print(
+    #     "#-----------------------------------------------------------------------------"
+    # )
 
     if G_dist < 0:
         store_mutated_inputs()
@@ -2852,18 +2867,18 @@ def match_cmd(cmd):
     if len(cmds) >= 2:
         index = random.randint(0, len(cmds) - 1)
         row = cmds[index].rstrip().split(" ")
-        print("*****")
-        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
-        print("*****")
+        # print("*****")
+        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # print("*****")
 
         return row[1]
 
     elif len(cmds) == 1:
         row = cmds[0].rstrip().split(" ")
 
-        print("*****")
-        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
-        print("*****")
+        # print("*****")
+        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # print("*****")
 
         return row[1]
 
@@ -3121,9 +3136,9 @@ def main(argv):
         "git rev-parse HEAD", shell=True, cwd=ardupilot_dir
     ).strip()
     if current_commit == "":
-        print("No commit found in the Ardupilot directory")
+        log("No commit found in the Ardupilot directory")
     else:
-        print("The commit being tested is: %s" % current_commit)
+        log("The commit being tested is: %s" % current_commit)
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -3133,9 +3148,9 @@ def main(argv):
     f_path_def += "./policies/"
     f_path_def += Current_policy
 
-    print(
-        "#-----------------------------------------------------------------------------"
-    )
+    # print(
+    #     "#-----------------------------------------------------------------------------"
+    # )
     params_path = ""
     params_path += f_path_def
     params_path += "/parameters.txt"
@@ -3209,22 +3224,26 @@ def main(argv):
     # log("Got the local position ned")
 
     # Start the Rangefinder thread
-    t4 = threading.Thread(target=send_msg_rangefinder, args=())
-    t4.daemon = True
-    t4.start()
-
     # Set some preconditions to test a policy
     # When I switch to another target policy, I need to update the 'Precondition_path'.
     Precondition_path += "./policies/"
     Precondition_path += Current_policy
     Precondition_path += "/preconditions.txt"
     set_preconditions(Precondition_path)
-    reboot_vehicle()
-    time.sleep(15)  # TODO: Figure out the exact time to wait
+    # reboot_vehicle()
 
-    _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned again")
 
+    t4 = threading.Thread(target=send_msg_rangefinder, args=())
+    t4.daemon = True
+    t4.start()
+
+    while True:
+        msg = master.recv_match(type="STATUSTEXT", blocking=True)
+        if "EKF3 IMU0 is using GPS" in msg.text:
+            log("Got GPS usage message")
+            break
+
+    time.sleep(5)
     # Testing
     # ------------------------------------------------------------------------
     for i in range(30):
@@ -3251,7 +3270,11 @@ def main(argv):
     ack = False
     while not ack:
         # Wait for ACK command
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=40)
+        if ack_msg is None:
+            log("Setting mode failed, exiting")
+            exit(0)
+
         ack_msg = ack_msg.to_dict()
 
         # Check if command in the same in `set_mode`
@@ -3260,6 +3283,7 @@ def main(argv):
 
         # Print the ACK result !
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+
         break
 
     master.mav.command_long_send(
@@ -3280,6 +3304,9 @@ def main(argv):
     while not ack:
         # Wait for ACK command
         ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None:
+            log("Arming failed, exiting")
+            exit(0)
         ack_msg = ack_msg.to_dict()
 
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
@@ -3305,6 +3332,9 @@ def main(argv):
     while not ack:
         # Wait for ACK command
         ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None:
+            log("Takeoff failed, exiting")
+            exit(0)
         ack_msg = ack_msg.to_dict()
 
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
@@ -3341,10 +3371,12 @@ def main(argv):
 
     # Check liveness of the RV software
 
-    t3 = threading.Thread(target=check_liveness, args=())
-    t3.daemon = True
-    t3.start()
+    # TODO: For now we ignore liveness
+    # t3 = threading.Thread(target=check_liveness, args=())
+    # t3.daemon = True
+    # t3.start()
 
+    time.sleep(30)  # Just waiting to see if we can handle the 0 case
     # Setup a counter to catch stalls
     status_ctr = 0
     prev_status_ctr = 0
@@ -3423,6 +3455,21 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
+        elif drone_status == 3:
+            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
+            # critcal error raise ValueError("Unhandled drone status Status: %d
+            # Hit_ground: %d PreArm: %d" %
+            # (drone_status,hit_ground,PreArm_error))
+            log("It is in standby mode")
+            log(
+                "Drone status Status: %d Hit_ground: %d PreArm: %d"
+                % (drone_status, hit_ground, PreArm_error)
+            )
+
+            Armed = 0
+            re_launch()
+            count_main_loop = 0
+
         # It is in mayday and going down
         elif drone_status == 6:
             Armed = 0
@@ -3442,26 +3489,6 @@ def main(argv):
                 "Drone status Status: %d Hit_ground: %d PreArm: %d"
                 % (drone_status, hit_ground, PreArm_error)
             )
-            log("Restarting the vehicle")
-            failsafe_error = hit_ground = 0
-
-            re_launch()
-            count_main_loop = 0
-
-        elif drone_status == 3:
-            if drone_status != prev_status_ctr:
-                status_ctr = 0
-            prev_status_ctr = drone_status
-            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
-            # critcal error raise ValueError("Unhandled drone status Status: %d
-            # Hit_ground: %d PreArm: %d" %
-            # (drone_status,hit_ground,PreArm_error))
-            log("It technically is in standby mode")
-            log(
-                "Drone status Status: %d Hit_ground: %d PreArm: %d"
-                % (drone_status, hit_ground, PreArm_error)
-            )
-
             log("Restarting the vehicle")
             failsafe_error = hit_ground = 0
 
