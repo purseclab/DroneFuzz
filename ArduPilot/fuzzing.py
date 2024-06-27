@@ -39,7 +39,9 @@ import math
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-conn_rangefinder = mavutil.mavlink_connection("localhost:1337", autoreconnect=True)
+conn_rangefinder = mavutil.mavlink_connection(
+    "udpin:localhost:1337", autoreconnect=True
+)
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -3231,7 +3233,6 @@ def main(argv):
     Precondition_path += "/preconditions.txt"
     set_preconditions(Precondition_path)
     # reboot_vehicle()
-
 
     t4 = threading.Thread(target=send_msg_rangefinder, args=())
     t4.daemon = True
