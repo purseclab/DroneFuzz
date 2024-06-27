@@ -1,3 +1,4 @@
+from typing import final
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 import sys
 import time
@@ -7,10 +8,8 @@ import os
 
 sys.path.append("/usr/local/lib/")
 
-# Connect to the UAV's MAVLink interface over TCP
-conn = mavutil.mavlink_connection(
-    "localhost:14551", source_system=1, source_component=93, baud=921600
-)
+# Connect to the UAV's MAVLink interface over UDP
+conn = mavutil.mavlink_connection("localhost:1337",autoreconnect=True)
 
 print("Connected to Mavlink interface")
 
@@ -24,6 +23,9 @@ DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
 MAX_DEPTH = 9999  # arbitrary large number
 
 obstacle_bring = False
+
+# Open a file to log the sensor values
+f = open("sensor_values.txt", "w")
 
 
 def current_milli_time():
@@ -77,7 +79,14 @@ def normal_exec():
     itr = 0
     hz = 25
     while itr <= hz:
-        send_sensor_input(random_normal_value())
+        vals = random_normal_value()
+        if itr == 0:
+            final_str = "R [" + str(vals[0]) + "]|["
+            final_str += str(vals[1]) + "]|["
+            final_str += str(vals[2]) + "]"
+            final_str += "\n"
+            f.write(final_str)
+        send_sensor_input(vals)
         time.sleep(1 / hz)
         itr += 1
 
@@ -87,7 +96,14 @@ def obstacle_exec():
     itr = 0
     hz = 10
     while itr <= hz:
-        send_sensor_input(random_attack_value())
+        vals = random_attack_value()
+        if itr == 0:
+            final_str = "R [" + str(vals[0]) + "]|["
+            final_str += str(vals[1]) + "]|["
+            final_str += str(vals[2]) + "]"
+            final_str += "\n"
+            f.write(final_str)
+        send_sensor_input(vals)
         time.sleep(1 / hz)
         itr += 1
 
@@ -109,9 +125,11 @@ while True:
         time.sleep(0.15)
         if not obstacle_bring:
             print("Moving obstcale")
+            f.write("Obstacle\n")
             obstacle_exec()
             obstacle_bring = True
         else:
+            f.write("Done\n")
             print("Already done")
 
     time.sleep(0.25)
