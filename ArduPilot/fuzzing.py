@@ -40,9 +40,7 @@ import math
 # ------------------------------------------------------------------------------------
 # Global variables
 master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-conn_rangefinder = mavutil.mavlink_connection(
-    "udpin:localhost:1337", autoreconnect=True
-)
+conn_rangefinder = mavutil.mavlink_connection("udpin:127.0.0.1:1337")
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -434,7 +432,8 @@ def re_launch():
     # master.mav.set_mode_send(
     #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
     # )
-    master.set_mode()
+    mode_id = master.mode_mapping()["GUIDED"]
+    master.set_mode(mode_id)
 
     # Wait for finishing the landing
     while True:
@@ -2966,10 +2965,10 @@ def execute_cmd(num):
         #     rand_fligh_mode,
         # )
         #
-        mode_id = master.mode_mapping()[
-            rand_fligh_mode
-        ]  # FIXME: Double check if this works
-        master.set_mode(mode_id)
+        # mode_id = master.mode_mapping()[
+        #     rand_fligh_mode
+        # ]  # FIXME: Double check if this works
+        master.set_mode(rand_fligh_mode)
 
     elif read_inputs.cmd_name[num] == "MAV_CMD_DO_PARACHUTE":
         Current_input_val = "2"
