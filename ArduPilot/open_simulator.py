@@ -19,6 +19,7 @@ c = (
     ARDUPILOT_HOME
     + "Tools/autotest/sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:1337 -D --gdb"
 )
+# "Tools/autotest/sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:1337 -D --gdb --out=tcpin:127.0.0.1:14560"
 # c = '~/ardupilot_pgfuzz/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'
 
 # handle = Popen(c, stdin=PIPE, stderr=PIPE, stdout=PIPE, shell=True)
