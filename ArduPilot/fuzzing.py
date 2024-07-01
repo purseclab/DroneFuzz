@@ -3252,8 +3252,8 @@ def main(argv):
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
     # we get a LOCAL_POSITION_NED
-    _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned")
+    # _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
+    # log("Got the local position ned")
 
     # Start the Rangefinder thread
     # Set some preconditions to test a policy
@@ -3264,12 +3264,11 @@ def main(argv):
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
 
-    # while True:
-    #     msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
-    #     print(msg)
-    #     if "is using GPS" in msg.text:
-    #         log("Got GPS usage message")
-    #         break
+    while True:
+        msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
+        if "is using GPS" in msg.text:
+            log("Got GPS usage message")
+            break
 
     t4 = multiprocessing.Process(target=send_msg_rangefinder)
     t4.daemon = True
@@ -3313,15 +3312,26 @@ def main(argv):
     # mav_conn.set_mode(mode_id)
 
     # Wait for ACK command
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-    ack_msg = ack_msg.to_dict()
+    # TODO: Figure out why we keep missing command_acks randomly
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
     # Check if command in the same in `set_mode`
-    if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-        print("Life's tough")
-        exit(0)
-
-    # Print the ACK result !
-    log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    if ack_msg is None:
+        # Let's check if the mode is set via Heartbeat
+        hb_msg = mav_conn.recv_match(
+            type="HEARTBEAT", blocking=True
+        )  # XXX: Hoping this doesn't get stuck
+        hb_msg = hb_msg.to_dict()
+        if hb_msg["custom_mode"] != mode_id:
+            log("Failed set to guided mode")
+            log("Exiting")
+            exit(0)
+    else:
+        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+            # Print the ACK result !
+            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        else:
+            log("Failed set to guided mode")
+            log(ack_msg)
 
     mav_conn.mav.command_long_send(
         mav_conn.target_system,
