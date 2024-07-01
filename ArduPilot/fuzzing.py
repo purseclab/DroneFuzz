@@ -218,8 +218,17 @@ def send_telegram_message(message):
 def log(message, filename="fuzzing.log"):
     # Get the current time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Get the current thread name
+    thread_name = threading.current_thread().name
+
+    # Get the current process ID
+    process_id = os.getpid()
+
     # Format the log message
-    log_message = "[{}] {}".format(current_time, message)
+    log_message = "[{}] [Thread: {}] [Process: {}] {}".format(
+        current_time, thread_name, process_id, message
+    )
     print(log_message)
     # Append the message to the file
     with open(filename, "a") as log_file:
