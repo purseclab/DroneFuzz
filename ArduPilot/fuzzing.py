@@ -3261,20 +3261,22 @@ def main(argv):
     Precondition_path += "./policies/"
     Precondition_path += Current_policy
     Precondition_path += "/preconditions.txt"
-    set_preconditions(Precondition_path)
+    # set_preconditions(Precondition_path)
     # reboot_vehicle()
+
+    # while True:
+    #     msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
+    #     print(msg)
+    #     if "is using GPS" in msg.text:
+    #         log("Got GPS usage message")
+    #         break
 
     t4 = multiprocessing.Process(target=send_msg_rangefinder)
     t4.daemon = True
     t4.start()
 
-    while True:
-        msg = master.recv_match(type="STATUSTEXT", blocking=True)
-        if "EKF3 IMU0 is using GPS" in msg.text:
-            log("Got GPS usage message")
-            break
+    time.sleep(10)  # TODO: Figure out the ideal time to wait
 
-    time.sleep(5)
     # Testing
     # ------------------------------------------------------------------------
     for i in range(30):
