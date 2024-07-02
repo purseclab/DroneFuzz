@@ -1,6 +1,7 @@
 import time
 import signal
 import subprocess
+
 # from subprocess import *
 import os
 
@@ -16,7 +17,7 @@ def sigint_handler(_signum, _frame):
     exit(0)
 
 
-def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
+def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
     """
     Spawns a new tmux window in the specified session and runs an optional command.
 
@@ -25,7 +26,7 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
     :param command: Command to run in the new window.
     """
     try:
-        tmux_env = os.getenv('TMUX')
+        tmux_env = os.getenv("TMUX")
         if tmux_env:
             # The TMUX variable is set to a value like "/tmp/tmux-1000/default,1234,0"
             # We need to get the session name which is usually part of the path
@@ -35,9 +36,10 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
         else:
             # Check if the session exists
             result = subprocess.Popen(
-                ['tmux', 'has-session', '-t', session_name],
+                ["tmux", "has-session", "-t", session_name],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+                stderr=subprocess.PIPE,
+            )
             result.communicate()
             if result.returncode != 0:
                 # Create the session if it doesn't exist
@@ -48,16 +50,23 @@ def spawn_tmux_window(session_name='pgfuzz++', window_name='', command=''):
         if window_name == "":
             window_name = "default" + str(int(time.time()))
         # Create a new window in the specified session
-        new_window_command = ['tmux', 'new-window', '-d', '-t', session_name, '-n', window_name]
+        new_window_command = [
+            "tmux",
+            "new-window",
+            "-d",
+            "-t",
+            session_name,
+            "-n",
+            window_name,
+        ]
         # Create the window
         subprocess.call(new_window_command)
 
         # Run the command in the new window if provided
         if command:
-            target = "{0}:{1}".format(
-                session_name, window_name)
+            target = "{0}:{1}".format(session_name, window_name)
             # Log the PID of the child process
-            cmd = ['tmux', 'send-keys', '-t', target, command, 'C-m']
+            cmd = ["tmux", "send-keys", "-t", target, command, "C-m"]
             process = subprocess.Popen(cmd)
             child_processes.append(process.pid)
             print(("Running command {0}".format(command)))
@@ -109,5 +118,5 @@ while True:
         open("restart.txt", "w").close()
         cmd = 'source ' + setup_sh + '; python3 ' + open_simulator + '; exit'
         # Get the current datetime in Unix seconds
-        prg_name = 'pgfuzz-sitl-' + str(int(time.time()))
+        prg_name = "pgfuzz-sitl-" + str(int(time.time()))
         spawn_tmux_window(window_name=prg_name, command=cmd)
