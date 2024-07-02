@@ -18,6 +18,7 @@ import threading
 import queue
 import subprocess
 import requests
+import multiprocessing
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -39,8 +40,7 @@ import math
 
 # ------------------------------------------------------------------------------------
 # Global variables
-master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-# conn_rangefinder = mavutil.mavlink_connection("localhost:1337",autoreconnect=True)
+# master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -216,22 +216,34 @@ def send_telegram_message(message):
 
 
 # Print with time
-def log(message):
+def log(message, filename="fuzzing.log"):
     # Get the current time
     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Print the message with the current time
-    print(("[{}] {}".format(current_time, message)))
+
+    # Get the current thread name
+    thread_name = threading.current_thread().name
+
+    # Get the current process ID
+    process_id = os.getpid()
+
+    # Format the log message
+    log_message = "[{}] [Thread: {}] [Process: {}] {}".format(
+        current_time, thread_name, process_id, message
+    )
+    print(log_message)
+    # Append the message to the file
+    with open(filename, "a") as log_file:
+        log_file.write(log_message + "\n")
 
 
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    mavlink_pause_event.set()
-    log("Setting event")
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     # Send a reboot command to the vehicle
-    master.mav.command_long_send(
-        master.target_system,
-        master.target_component,
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
         mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
         0,
         1,
@@ -245,13 +257,12 @@ def reboot_vehicle():
     # Check for the response back
     log("Waiting for response")
     while True:
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
         resp = ack_msg.to_dict()
         if resp["command"] != mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
             continue
+        log("Received response back")
         break
-    log("Clearing event")
-    mavlink_pause_event.clear()
 
 
 # ------------------------------------------------------------------------------------
@@ -277,6 +288,7 @@ def check_liveness():
 
 # ------------------------------------------------------------------------------------
 def set_preconditions(filepath):
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     for line in open(filepath, "r").readlines():
         # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
         # basically all reads are as bytes
@@ -370,14 +382,17 @@ def re_launch():
         "#-----------------------------------------------------------------------------"
     )
 
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     # Step 1. land the vehicle
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
-    )
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
+    # )
+    mode_id = mav_conn.mode_mapping()["RTL"]
+    mav_conn.set_mode(mode_id)
 
     # Wait for finishing the landing
     while True:
-        if current_flight_mode == "LAND":
+        if current_flight_mode == "RTL":
             break
         time.sleep(0.2)
 
@@ -415,15 +430,27 @@ def re_launch():
     # Step 3. reset preconditions to fuzz the target policy
     global Precondition_path
     set_preconditions(Precondition_path)
-    reboot_vehicle()
-    time.sleep(45)  # TODO: Figure out the exact time to wait
-    _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned again")
+    mavlink_pause_event.set()
+    log("Setting event")
+    # reboot_vehicle()
+
+    # Try to read the STATUSTEXT msgs till we get the GPS usage
+    # while True:
+    #     msg = master.recv_match(type="STATUSTEXT", blocking=True)
+    #     if "EKF3 IMU0 is using GPS" in msg.text:
+    #         log("Got GPS usage message")
+    #         break
+
+    log("Clearing event")
+    mavlink_pause_event.clear()
+    time.sleep(5)
 
     # Step 4. re-take off the vehicle
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
-    )
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
+    # )
+    mode_id = mav_conn.mode_mapping()["GUIDED"]
+    mav_conn.set_mode(mode_id)
 
     # Wait for finishing the landing
     while True:
@@ -434,9 +461,9 @@ def re_launch():
     time.sleep(3)
 
     # Arming
-    master.mav.command_long_send(
-        master.target_system,
-        master.target_component,
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
         0,
         1,
@@ -450,9 +477,9 @@ def re_launch():
 
     time.sleep(3)
 
-    master.mav.command_long_send(
-        master.target_system,  # target_system
-        master.target_component,  # target_component
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,  # target_system
+        mav_conn.target_component,  # target_component
         mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
         0,  # confirmation
         0,  # param1
@@ -488,8 +515,11 @@ def current_milli_time(start_time):
 
 
 def send_msg_rangefinder():
-    master.recv_match(type="HEARTBEAT", blocking=True)
+    conn_rangefinder = mavutil.mavlink_connection("127.0.0.1:1337")
+    conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
+    log("Got heartbeat")
     hz = 25
+    log("Starting while True")
     while True:
         try:
             mutated_msg = mavlink_msg_queue.get(timeout=1)
@@ -513,7 +543,7 @@ def send_msg_rangefinder():
                 float(DEPTH_RANGE[0]),  # min range of sensor
                 float(DEPTH_RANGE[1]),  # max range of sensor
             )
-            master.mav.send(msg)
+            conn_rangefinder.mav.send(msg)
             time.sleep(1 / hz)
         time.sleep(1)
 
@@ -566,6 +596,7 @@ def change_parameter(selected_param):
     )
 
     no_range = 0
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     param_name = read_inputs.param_name[selected_param]
 
     if Guidance_decision == True:
@@ -635,9 +666,9 @@ def change_parameter(selected_param):
         )
 
     # 2) Set parameter value
-    master.mav.param_set_send(
-        master.target_system,
-        master.target_component,
+    mav_conn.mav.param_set_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
         param_name,
         param_value,
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
@@ -1026,10 +1057,11 @@ def handle_circle_status(msg):
 # ------------------------------------------------------------------------------------
 def read_loop():
     while True:
-        while mavlink_pause_event.is_set():
-            log("Pausing reading loop for 10 seconds")
-            time.sleep(10)
-        # current types
+        monitor_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+        # while mavlink_pause_event.is_set():
+        #     log("Pausing reading loop for 10 seconds")
+        #     time.sleep(10)
+        # # current types
         # types_msg = [
         #     "BAD_DATA",
         #     "RC_CHANNELS",
@@ -1045,8 +1077,12 @@ def read_loop():
         #     "HEARTBEAT",
         #     "ORBIT_EXECUTION_STATUS",
         # ]
-        # grab a mavlink message
-        msg = master.recv_match(blocking=True)
+        # # grab a mavlink message
+        try:
+            msg = monitor_conn.recv_match(blocking=True)
+        except Exception as e:
+            print("An exception occurred:", str(e))
+            exit(0)
 
         # handle the message based on its type
         msg_type = msg.get_type()
@@ -1105,7 +1141,7 @@ def store_mutated_inputs():
     except IOError:
         # Create the directory
         os.mkdir("./policy_violations/")
-        print("Create the policy_violations dir as not found")
+        log("Create the policy_violations dir as not found")
         f2 = open(file_name, "w")
     f2.writelines(lines)
     f1.close()
@@ -1114,7 +1150,7 @@ def store_mutated_inputs():
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
 
-    print("Restarting the vehicle : Policy violation logged")
+    log("Restarting the vehicle : Policy violation logged")
     re_launch()
     count_main_loop = 0
 
@@ -1122,21 +1158,21 @@ def store_mutated_inputs():
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
     # Print distances
-    print(
-        (
-            "#---------------------------------%s-------------------------------------------"
-            % policy
-        )
-    )
-    sys.stdout.write("[Distance] ")
+    # print(
+    #     (
+    #         "#---------------------------------%s-------------------------------------------"
+    #         % policy
+    #     )
+    # )
+    log("[Distance] ")
     for i in range(length):
-        sys.stdout.write("P%d: %f " % (i + 1, P_dist[i]))
+        log("P%d: %f " % (i + 1, P_dist[i]))
 
-    print("")
+    # print("")
     log(("[Distance] Global distance: %f" % Global_distance))
-    print(
-        "#-----------------------------------------------------------------------------"
-    )
+    # print(
+    #     "#-----------------------------------------------------------------------------"
+    # )
 
     if G_dist < 0:
         store_mutated_inputs()
@@ -2815,6 +2851,7 @@ def set_rc_channel_pwm(id, pwm=1500):
         id (TYPE): Channel ID
         pwm (int, optional): Channel pwm value 1100-1900
     """
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     if id < 1:
         log("Channel does not exist.")
         return
@@ -2828,9 +2865,9 @@ def set_rc_channel_pwm(id, pwm=1500):
         # global master
 
         # fmt: off
-        master.mav.rc_channels_override_send(
-            master.target_system,  # target_system
-            master.target_component,  # target_component
+        mav_conn.mav.rc_channels_override_send(
+            mav_conn.target_system,  # target_system
+            mav_conn.target_component,  # target_component
             *rc_channel_values
         )  # RC channel list, in microseconds.
         # fmt: on
@@ -2858,18 +2895,18 @@ def match_cmd(cmd):
     if len(cmds) >= 2:
         index = random.randint(0, len(cmds) - 1)
         row = cmds[index].rstrip().split(" ")
-        print("*****")
-        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
-        print("*****")
+        # print("*****")
+        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # print("*****")
 
         return row[1]
 
     elif len(cmds) == 1:
         row = cmds[0].rstrip().split(" ")
 
-        print("*****")
-        log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
-        print("*****")
+        # print("*****")
+        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # print("*****")
 
         return row[1]
 
@@ -2883,6 +2920,7 @@ def execute_cmd(num):
     global Guidance_decision
     rand = []
 
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     # Each user command contains 7 parameters. We assign random values to these parameters.
     for i in range(7):
         rand.append(random.randint(1, 100))
@@ -2938,23 +2976,30 @@ def execute_cmd(num):
         Current_input_val = read_inputs.cmd_number[num]
 
         if Current_input_val == "null":
-            rand_fligh_mode = random.randint(0, 18)
-            Current_input_val = str(rand_fligh_mode)
+            rand_flight_mode = random.choice(mav_conn.mode_mapping().items())
+            log("Rand flight mode " + rand_flight_mode)
+            Current_input_val = str(rand_flight_mode[1])
+            rand_fligh_mode = rand_flight_mode[1]
         else:
             rand_fligh_mode = int(Current_input_val)
 
-        master.mav.set_mode_send(
-            master.target_system,
-            mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-            rand_fligh_mode,
-        )
+        # master.mav.set_mode_send(
+        #     master.target_system,
+        #     mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        #     rand_fligh_mode,
+        # )
+        #
+        # mode_id = master.mode_mapping()[
+        #     rand_fligh_mode
+        # ]  # FIXME: Double check if this works
+        mav_conn.set_mode(rand_fligh_mode)
 
     elif read_inputs.cmd_name[num] == "MAV_CMD_DO_PARACHUTE":
         Current_input_val = "2"
 
-        master.mav.command_long_send(
-            master.target_system,  # target_system
-            master.target_component,  # target_component
+        mav_conn.mav.command_long_send(
+            mav_conn.target_system,  # target_system
+            mav_conn.target_component,  # target_component
             mavutil.mavlink.MAV_CMD_DO_PARACHUTE,
             0,
             2,
@@ -2985,9 +3030,9 @@ def execute_cmd(num):
         Current_input_val += ","
         Current_input_val += str(rand[6])
 
-        master.mav.command_long_send(
-            master.target_system,  # target_system
-            master.target_component,  # target_component
+        mav_conn.mav.command_long_send(
+            mav_conn.target_system,  # target_system
+            mav_conn.target_component,  # target_component
             int(read_inputs.cmd_number[num]),
             0,
             rand[0],
@@ -3022,6 +3067,7 @@ def execute_env(num):
 
     Current_input = read_inputs.env_name[num]
 
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     if Guidance_decision == True:
         Current_input_val = match_cmd(cmd=Current_input)
 
@@ -3036,9 +3082,9 @@ def execute_env(num):
             )
         )
 
-    master.mav.param_set_send(
-        master.target_system,
-        master.target_component,
+    mav_conn.mav.param_set_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
         Current_input,
         float(Current_input_val),
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
@@ -3127,12 +3173,11 @@ def main(argv):
         "git rev-parse HEAD", shell=True, cwd=ardupilot_dir
     ).strip()
     if current_commit == "":
-        print("No commit found in the Ardupilot directory")
+        log("No commit found in the Ardupilot directory")
     else:
-        print(("The commit being tested is: %s" % current_commit))
+        log("The commit being tested is: %s" % current_commit)
 
-    # Pymavlink version
-    print('Pymavlink version %s'% pymavlink.__version__)
+    log('Pymavlink version %s'% pymavlink.__version__)
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -3142,9 +3187,9 @@ def main(argv):
     f_path_def += "./policies/"
     f_path_def += Current_policy
 
-    print(
-        "#-----------------------------------------------------------------------------"
-    )
+    # print(
+    #     "#-----------------------------------------------------------------------------"
+    # )
     params_path = ""
     params_path += f_path_def
     params_path += "/parameters.txt"
@@ -3181,28 +3226,29 @@ def main(argv):
             % len(read_inputs.env_name)
         )
     )
-    log((read_inputs.env_name))
-    log(
-        "#-----------------------------------------------------------------------------"
-    )
+    # log((read_inputs.env_name)) XXX: Enable the parameter printing via debug flag
+    # log(
+    #     "#-----------------------------------------------------------------------------"
+    # )
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
 
-    master.wait_heartbeat()
+    mav_conn.wait_heartbeat()
 
     # request data to be sent at the given rate
     for i in range(0, 3):
-        master.mav.request_data_stream_send(
-            master.target_system,
-            master.target_component,
+        mav_conn.mav.request_data_stream_send(
+            mav_conn.target_system,
+            mav_conn.target_component,
             mavutil.mavlink.MAV_DATA_STREAM_ALL,
             6,
             1,
         )
 
-    message = master.recv_match(type="VFR_HUD", blocking=True)
+    message = mav_conn.recv_match(type="VFR_HUD", blocking=True)
     home_altitude = message.alt
     log(("home_altitude: %f" % home_altitude))
 
-    message = master.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
+    message = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
     home_lat = message.lat
     home_lat = home_lat / 1000
     home_lat = home_lat * 1000
@@ -3214,25 +3260,29 @@ def main(argv):
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
     # we get a LOCAL_POSITION_NED
-    # _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
+    # _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
     # log("Got the local position ned")
 
     # Start the Rangefinder thread
-    t4 = threading.Thread(target=send_msg_rangefinder, args=())
-    t4.daemon = True
-    t4.start()
-
     # Set some preconditions to test a policy
     # When I switch to another target policy, I need to update the 'Precondition_path'.
     Precondition_path += "./policies/"
     Precondition_path += Current_policy
     Precondition_path += "/preconditions.txt"
-    set_preconditions(Precondition_path)
-    reboot_vehicle()
-    time.sleep(15)  # TODO: Figure out the exact time to wait
+    # set_preconditions(Precondition_path)
+    # reboot_vehicle()
 
-    _ = master.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    log("Got the local position ned again")
+    while True:
+        msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
+        if "is using GPS" in msg.text:
+            log("Got GPS usage message")
+            break
+
+    t4 = multiprocessing.Process(target=send_msg_rangefinder)
+    t4.daemon = True
+    t4.start()
+
+    time.sleep(10)  # TODO: Figure out the ideal time to wait
 
     # Testing
     # ------------------------------------------------------------------------
@@ -3244,36 +3294,56 @@ def main(argv):
     mode = "GUIDED"
 
     # Check if mode is available
-    if mode not in master.mode_mapping():
+    if mode not in mav_conn.mode_mapping():
         log(("Unknown mode : {}".format(mode)))
-        log(("Try:", list(master.mode_mapping().keys())))
+        log(("Try:", list(mav_conn.mode_mapping().keys())))
         exit(1)
 
     # Get mode ID
-    mode_id = master.mode_mapping()[mode]
+    mode_id = mav_conn.mode_mapping()[mode]
 
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        mode_id,
+        0,
+        0,
+        0,
+        0,
+        0,
     )
+    # mav_conn.set_mode(mode_id)
 
-    # Check ACK
-    ack = False
-    while not ack:
-        # Wait for ACK command
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
-        ack_msg = ack_msg.to_dict()
+    # Wait for ACK command
+    # TODO: Figure out why we keep missing command_acks randomly
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
+    # Check if command in the same in `set_mode`
+    if ack_msg is None:
+        # Let's check if the mode is set via Heartbeat
+        hb_msg = mav_conn.recv_match(
+            type="HEARTBEAT", blocking=True
+        )  # XXX: Hoping this doesn't get stuck
+        hb_msg = hb_msg.to_dict()
+        if hb_msg["custom_mode"] != mode_id:
+            log("Failed set to guided mode")
+            log("Exiting")
+            exit(0)
+    else:
+        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+            # Print the ACK result !
+            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        else:
+            log("Failed set to guided mode")
+            log(ack_msg)
 
-        # Check if command in the same in `set_mode`
-        if ack_msg["command"] != mavutil.mavlink.MAVLINK_MSG_ID_SET_MODE:
-            continue
-
-        # Print the ACK result !
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-
-    master.mav.command_long_send(
-        master.target_system,
-        master.target_component,
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
         0,
         1,
@@ -3285,10 +3355,12 @@ def main(argv):
         0,
     )
 
-    ack = False
-    while not ack:
+    while True:
         # Wait for ACK command
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None:
+            log("Arming failed, exiting")
+            exit(0)
         ack_msg = ack_msg.to_dict()
 
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
@@ -3296,9 +3368,9 @@ def main(argv):
 
     time.sleep(1)
 
-    master.mav.command_long_send(
-        master.target_system,  # target_system
-        master.target_component,  # target_component
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,  # target_system
+        mav_conn.target_component,  # target_component
         mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
         0,  # confirmation
         0,  # param1
@@ -3313,7 +3385,10 @@ def main(argv):
     ack = False
     while not ack:
         # Wait for ACK command
-        ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None:
+            log("Takeoff failed, exiting")
+            exit(0)
         ack_msg = ack_msg.to_dict()
 
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
@@ -3323,20 +3398,32 @@ def main(argv):
     time.sleep(25)
     # time.sleep(3)
 
+    mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
+    # master.mav.set_mode_send(
+    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    mav_conn.set_mode(mode_id)
+
+    while True:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = ack_msg.to_dict()
+
+        # Check if command in the same in `set_mode`
+        if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+            continue
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
+    # Set default throttle
+    set_rc_channel_pwm(3, 1500)
+
+    time.sleep(3)
+
     # Maintain mid-position of stick on RC controller
     goal_throttle = 1500
     t1 = threading.Thread(target=throttle_th, args=())
     t1.daemon = True
     t1.start()
-
-    mode_id = master.mode_mapping()["ALT_HOLD"]
-    master.mav.set_mode_send(
-        master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    )
-    # Set default throttle
-    set_rc_channel_pwm(3, 1500)
-
-    time.sleep(3)
 
     t2 = threading.Thread(target=read_loop, args=())
     t2.daemon = True
@@ -3350,10 +3437,12 @@ def main(argv):
 
     # Check liveness of the RV software
 
+    # TODO: For now we ignore liveness
     t3 = threading.Thread(target=check_liveness, args=())
     t3.daemon = True
     t3.start()
 
+    time.sleep(30)  # Just waiting to see if we can handle the 0 case
     # Setup a counter to catch stalls
     status_ctr = 0
     prev_status_ctr = 0
@@ -3432,6 +3521,21 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
+        elif drone_status == 3:
+            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
+            # critcal error raise ValueError("Unhandled drone status Status: %d
+            # Hit_ground: %d PreArm: %d" %
+            # (drone_status,hit_ground,PreArm_error))
+            log("It is in standby mode")
+            log(
+                "Drone status Status: %d Hit_ground: %d PreArm: %d"
+                % (drone_status, hit_ground, PreArm_error)
+            )
+
+            Armed = 0
+            re_launch()
+            count_main_loop = 0
+
         # It is in mayday and going down
         elif drone_status == 6:
             Armed = 0
@@ -3457,29 +3561,10 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
-        elif drone_status == 3:
-            if drone_status != prev_status_ctr:
-                status_ctr = 0
-            prev_status_ctr = drone_status
-            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
-            # critcal error raise ValueError("Unhandled drone status Status: %d
-            # Hit_ground: %d PreArm: %d" %
-            # (drone_status,hit_ground,PreArm_error))
-            log("It technically is in standby mode")
-            log(
-                "Drone status Status: %d Hit_ground: %d PreArm: %d"
-                % (drone_status, hit_ground, PreArm_error)
-            )
-
-            log("Restarting the vehicle")
-            failsafe_error = hit_ground = 0
-
-            re_launch()
-            count_main_loop = 0
-
         elif drone_status == 0:
             log("DANGER! It seems that the drone status is 0")
             log("I'm going to sleep, fix this man")
+            send_telegram_message("Now is drone_status 0")
             time.sleep(100)
         else:
             log("Unhandled MAV_STATE, check what is wrong")
