@@ -92,12 +92,12 @@ fuzzing_py = working_dir + "fuzzing.py"
 # Register the SIGINT handler
 signal.signal(signal.SIGINT, sigint_handler)
 
-cmd = 'source ' + setup_sh + '; python2 ' + open_simulator + '; exit'
+cmd = 'source ' + setup_sh + '; python3 ' + open_simulator + '; exit'
 prg_name = 'pgfuzz-sitl-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
 
 time.sleep(20) # NOTE: Time reduced for testing
-cmd = 'source ' + setup_sh + '; python2 ' + fuzzing_py + ' | tee fuzzing.log'
+cmd = 'source ' + setup_sh + '; python3 ' + fuzzing_py + ' | tee fuzzing.log'
 prg_name = 'pgfuzz-fuzzing-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
 
@@ -107,7 +107,7 @@ while True:
     if f.read() == "restart":
         f.close()
         open("restart.txt", "w").close()
-        cmd = 'source ' + setup_sh + '; python2 ' + open_simulator + '; exit'
+        cmd = 'source ' + setup_sh + '; python3 ' + open_simulator + '; exit'
         # Get the current datetime in Unix seconds
         prg_name = 'pgfuzz-sitl-' + str(int(time.time()))
         spawn_tmux_window(window_name=prg_name, command=cmd)
