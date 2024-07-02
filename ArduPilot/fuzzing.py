@@ -22,6 +22,7 @@ import requests
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
 # TODO: Figure out Ruff issue with following lines
+import pymavlink
 from pymavlink import mavutil, mavwp  # noqa: F401
 from pymavlink import mavextra  # noqa: F401
 from pymavlink import mavexpression  # noqa: F401
@@ -277,18 +278,23 @@ def check_liveness():
 # ------------------------------------------------------------------------------------
 def set_preconditions(filepath):
     for line in open(filepath, "r").readlines():
+        # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
+        # basically all reads are as bytes
         row = line.rstrip().split(" ")
-
-        master.mav.param_set_send(
-            master.target_system,
-            master.target_component,
-            row[0],
-            float(row[1]),
-            mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
-        )
-        time.sleep(1)
-
-        log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
+        print(type(master.target_system))
+        print(type(master.target_component))
+        # breakpoint()
+        # master.mav.param_set_send(
+        #     master.target_system,
+        #     master.target_component,
+        #     row[0],
+        #     row[1],
+        #     mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+        # )
+        # time.sleep(1)
+        #
+        # log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
+        log("[Set_preconditions] currently ignored: TODO Fix this")
 
 
 # ------------------------------------------------------------------------------------
@@ -3124,6 +3130,9 @@ def main(argv):
         print("No commit found in the Ardupilot directory")
     else:
         print(("The commit being tested is: %s" % current_commit))
+
+    # Pymavlink version
+    print('Pymavlink version %s'% pymavlink.__version__)
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
