@@ -106,7 +106,7 @@ prg_name = 'pgfuzz-sitl-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
 
 time.sleep(20) # NOTE: Time reduced for testing
-cmd = 'source ' + setup_sh + '; python3 ' + fuzzing_py + ' | tee fuzzing.log'
+cmd = 'source ' + setup_sh + '; python3 ' + fuzzing_py
 prg_name = 'pgfuzz-fuzzing-' + str(int(time.time()))
 spawn_tmux_window(window_name=prg_name, command=cmd)
 
