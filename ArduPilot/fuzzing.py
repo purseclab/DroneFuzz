@@ -61,6 +61,7 @@ goal_throttle = 0
 executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
+MISSION_ATTITUDE = 100
 required_min_thr = 975
 
 current_roll = 0.0
@@ -3379,8 +3380,8 @@ def main(argv):
         0,  # param4
         0,  # param5
         0,  # param6
-        10,
-    )  # param7- altitude
+        MISSION_ATTITUDE, # param7- altitude
+    )
 
     ack = False
     while not ack:
@@ -3394,9 +3395,15 @@ def main(argv):
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
 
-    # This is for testing A.RTL1
-    time.sleep(25)
-    # time.sleep(3)
+    # Wait till we reach that height
+    while True:
+        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
+        if msg is not None:
+            altitude = msg.relative_alt / 1000.0  # Altitude in meters
+            if altitude >= MISSION_ATTITUDE:
+                log("Reached approximate height")
+                break
+
 
     mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
     # master.mav.set_mode_send(
