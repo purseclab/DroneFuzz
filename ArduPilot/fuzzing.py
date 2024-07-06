@@ -294,9 +294,6 @@ def set_preconditions(filepath):
         # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
         # basically all reads are as bytes
         row = line.rstrip().split(" ")
-        print(type(master.target_system))
-        print(type(master.target_component))
-        # breakpoint()
         # master.mav.param_set_send(
         #     master.target_system,
         #     master.target_component,
@@ -688,6 +685,7 @@ def handle_heartbeat(msg):
     global heartbeat_cnt
     heartbeat_cnt += 1
 
+    # log("Just got a heartbeat : {0}".format(heartbeat_cnt))
     global current_flight_mode
     global previous_flight_mode
 
@@ -894,7 +892,7 @@ def handle_param(msg):
     global target_param_value
 
     message = msg.to_dict()
-    if message["param_id"].decode("utf-8") == target_param:
+    if message["param_id"] == target_param:
         target_param_ready = 1
         target_param_value = message["param_value"]
     else:
@@ -1166,6 +1164,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
     # )
 
     if G_dist < 0:
+        log("The value of distance is low")
         store_mutated_inputs()
 
     global Current_policy_P_length
@@ -3325,6 +3324,7 @@ def main(argv):
             log("Exiting")
             exit(0)
     else:
+        ack_msg = ack_msg.to_dict()
         if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
             # Print the ACK result !
             log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
@@ -3370,7 +3370,7 @@ def main(argv):
         0,  # param4
         0,  # param5
         0,  # param6
-        MISSION_ATTITUDE, # param7- altitude
+        MISSION_ATTITUDE,  # param7- altitude
     )
 
     ack = False
@@ -3434,7 +3434,6 @@ def main(argv):
 
     # Check liveness of the RV software
 
-    # TODO: For now we ignore liveness
     t3 = threading.Thread(target=check_liveness, args=())
     t3.daemon = True
     t3.start()
