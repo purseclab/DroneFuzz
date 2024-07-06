@@ -152,6 +152,7 @@ depth_range_x = depth_range_y = depth_range_z = [0.00] * 9
 mavlink_lock = threading.Lock()
 mavlink_msg_queue = queue.Queue()
 mavlink_pause_event = threading.Event()
+reboot_pause_event = threading.Event()
 
 
 # Distance
@@ -270,11 +271,22 @@ def reboot_vehicle():
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
 def check_liveness():
+    # TODO: 2024-07-03T18:55:16-0400: silipwn: Maybe we can rewrite this?
+    # Cause there's already a loop checking for existing MAVLINK messages?
+    # Another test could be that the messages have stopped?
     global heartbeat_cnt
 
     end_flag = 0
     while end_flag == 0:
+        while reboot_pause_event.is_set():
+            log("Pausing liveness for 10 seconds")
+            time.sleep(10)
         if heartbeat_cnt < 1:
+            log(
+                "The value of heartbeat_cnt is {0}, will store inputs".format(
+                    heartbeat_cnt
+                )
+            )
             store_mutated_inputs()
             # The RV software is crashed
             f = open("shared_variables.txt", "w")
@@ -357,6 +369,9 @@ def re_launch():
     Gyro_status = 1
     Baro_status = 1
     PreArm_error = 0
+
+    reboot_pause_event.set()
+    log("Enabled reboot_pause_event")
 
     # Reset the prx_values
     for i in range(9):
@@ -480,6 +495,9 @@ def re_launch():
     )  # param7- altitude
 
     time.sleep(25)
+
+    reboot_pause_event.clear()
+    log("Cleared reboot_pause_event")
     goal_throttle = 1500
 
 
