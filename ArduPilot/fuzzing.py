@@ -414,9 +414,9 @@ def re_launch():
             % (required_min_thr, goal_throttle)
         )
     )
-    set_rc_channel_pwm(1, 1500)
-    set_rc_channel_pwm(2, 1500)
-    set_rc_channel_pwm(4, 1500)
+    set_rc_channel_pwm(1, mav_conn, 1500)
+    set_rc_channel_pwm(2, mav_conn, 1500)
+    set_rc_channel_pwm(4, mav_conn, 1500)
 
     time.sleep(3)
 
@@ -2853,13 +2853,12 @@ def calculate_distance(guidance):
 # Create a function to send RC values
 # More information about Joystick channels
 # here: https://www.ardusub.com/operators-manual/rc-input-and-output.html#rc-inputs
-def set_rc_channel_pwm(id, pwm=1500):
+def set_rc_channel_pwm(id, mav_conn, pwm=1500):
     """Set RC channel pwm value
     Args:
         id (TYPE): Channel ID
         pwm (int, optional): Channel pwm value 1100-1900
     """
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
     if id < 1:
         log("Channel does not exist.")
         return
@@ -2872,21 +2871,21 @@ def set_rc_channel_pwm(id, pwm=1500):
 
         # global master
 
-        # fmt: off
         mav_conn.mav.rc_channels_override_send(
             mav_conn.target_system,  # target_system
             mav_conn.target_component,  # target_component
-            *rc_channel_values
+            *rc_channel_values,
         )  # RC channel list, in microseconds.
-        # fmt: on
 
 
 # ------------------------------------------------------------------------------------
 def throttle_th():
     global goal_throttle
 
+    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn.recv_match(type="HEARTBEAT", blocking=True)
     while True:
-        set_rc_channel_pwm(3, goal_throttle)
+        set_rc_channel_pwm(3, mav_conn, goal_throttle)
         time.sleep(0.2)
 
 
@@ -2968,7 +2967,7 @@ def execute_cmd(num):
         elif read_inputs.cmd_name[num] == "RC4":
             target_RC = 4
 
-        set_rc_channel_pwm(target_RC, mutated_value)
+        set_rc_channel_pwm(target_RC, mav_conn, mutated_value)
 
     elif read_inputs.cmd_name[num] == "RC3":
         global goal_throttle
@@ -3506,7 +3505,7 @@ def main(argv):
             goal_throttle = 1500
 
             for i in range(4):
-                set_rc_channel_pwm(i + 1, 1500)
+                set_rc_channel_pwm(i + 1, mav_conn, 1500)
 
             if Parachute_on == 1:
                 Armed = 0
