@@ -3411,33 +3411,34 @@ def main(argv):
                 log("Reached approximate height")
                 break
 
-
-    mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
+    # 2024-07-04T11:15:22-0400: silipwn:  TODO: Fix ALT_HOLD mechanism later?
+    #     mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
     # master.mav.set_mode_send(
     #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
     # )
-    mav_conn.set_mode(mode_id)
-
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        ack_msg = ack_msg.to_dict()
-
-        # Check if command in the same in `set_mode`
-        if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-            continue
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-    # Set default throttle
-    set_rc_channel_pwm(3, 1500)
-
-    time.sleep(3)
-
-    # Maintain mid-position of stick on RC controller
-    goal_throttle = 1500
-    t1 = threading.Thread(target=throttle_th, args=())
-    t1.daemon = True
-    t1.start()
+    # mav_conn.set_mode(mode_id)
+    #
+    # while True:
+    #     # Wait for ACK command
+    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+    #     ack_msg = ack_msg.to_dict()
+    #
+    #     # Check if command in the same in `set_mode`
+    #     if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+    #         continue
+    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    #     break
+    # # Set default throttle
+    # set_rc_channel_pwm(3, mav_conn, 1500)
+    # log("Setting default throttle")
+    #
+    # time.sleep(3)
+    #
+    # # Maintain mid-position of stick on RC controller
+    # goal_throttle = 1500
+    # t1 = threading.Thread(target=throttle_th, args=())
+    # t1.daemon = True
+    # t1.start()
 
     t2 = threading.Thread(target=read_loop, args=())
     t2.daemon = True
