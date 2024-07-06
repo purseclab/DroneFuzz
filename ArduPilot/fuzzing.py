@@ -368,34 +368,24 @@ def re_launch():
         depth_range_z[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
 
     log(
-        "#-----------------------------------------------------------------------------"
-    )
-    log(
-        "#-----------------------------------------------------------------------------"
-    )
-    log(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
-    )
-    log(
-        "#-----------------------------------------------------------------------------"
-    )
-    log(
-        "#-----------------------------------------------------------------------------"
     )
 
     mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    _ = mav_conn.recv_match(type="HEARTBEAT", blocking=True)
     # Step 1. land the vehicle
     # master.mav.set_mode_send(
     #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 9
     # )
     mode_id = mav_conn.mode_mapping()["RTL"]
-    mav_conn.set_mode(mode_id)
+    mav_conn.set_mode_rtl()
 
-    # Wait for finishing the landing
+    # Wait for the copter to go into the RTL mode
     while True:
-        if current_flight_mode == "RTL":
+        hb = mav_conn.recv_match(type="HEARTBEAT", blocking=True)
+        hb = hb.to_dict()
+        if hb["custom_mode"] == mode_id:
             break
-        time.sleep(0.2)
 
     home_altitude = current_altitude
 
