@@ -221,6 +221,10 @@ def send_telegram_message(message):
 # Check for heartbeat and restablish connection and try to get hb
 def reconn_heartbeat(timeout=10, max_attempts=3):
     attempt = 0
+    global current_flight_mode
+    global previous_flight_mode
+    global drone_status
+
     while attempt < max_attempts:
         attempt += 1
         log(f"Attempt {attempt} of {max_attempts}")
@@ -229,7 +233,11 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
         # Wait for a heartbeat
         msg = connection.recv_match(type="HEARTBEAT", blocking=True, timeout=timeout)
         if msg:
-            log("Heartbeat received!")
+            log("Heartbeat received! Updating vars")
+            if previous_flight_mode != mavutil.mode_string_v10(msg):
+                previous_flight_mode = current_flight_mode
+            current_flight_mode = mavutil.mode_string_v10(msg)
+            drone_status = msg.system_status
             return msg, connection
         time.sleep(0.1)
         # If no heartbeat is received, close the connection and retry
@@ -307,16 +315,6 @@ def check_liveness():
                 f = open("shared_variables.txt", "w")
                 f.write("reboot")
                 f.close()
-            else:
-                global current_flight_mode
-                global previous_flight_mode
-                global drone_status
-
-                if previous_flight_mode != mavutil.mode_string_v10(hb_msg):
-                    previous_flight_mode = current_flight_mode
-                current_flight_mode = mavutil.mode_string_v10(hb_msg)
-
-                drone_status = hb_msg.system_status
             mav_conn.close()
         else:
             log("Monitoring thread paused")
@@ -492,10 +490,10 @@ def re_launch():
     )
 
     # Wait for finishing the landing
-    while True:
-        if current_flight_mode == "GUIDED":
-            break
-        time.sleep(0.2)
+    hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
+    hb_msg = hb_msg.to_dict()
+    if hb_msg["custom_mode"] != mode_id:
+        log("Error mode setting failed")
 
     time.sleep(3)
 
@@ -532,6 +530,7 @@ def re_launch():
 
     time.sleep(25)
 
+    hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
     log("Cleared reboot_pause_event")
     mav_conn.close()
