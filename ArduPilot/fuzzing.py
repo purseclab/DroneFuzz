@@ -153,6 +153,7 @@ mavlink_lock = threading.Lock()
 mavlink_msg_queue = queue.Queue()
 mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
+global_pause_event = threading.Event()
 
 
 # Distance
@@ -177,7 +178,7 @@ Policy_violation_cnt = 0
 count_main_loop = 0
 
 # Heartbeat
-heartbeat_cnt = 1
+# heartbeat_cnt = 1
 RV_alive = 0
 
 # Policy
@@ -217,6 +218,27 @@ def send_telegram_message(message):
     )
 
 
+# Check for heartbeat and restablish connection and try to get hb
+def reconn_heartbeat(timeout=10, max_attempts=3):
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
+        log(f"Attempt {attempt} of {max_attempts}")
+        # Establish a new connection
+        connection = mavutil.mavlink_connection("localhost:14551")
+        # Wait for a heartbeat
+        msg = connection.recv_match(type="HEARTBEAT", blocking=True, timeout=timeout)
+        if msg:
+            log("Heartbeat received!")
+            return msg, connection
+        time.sleep(0.1)
+        # If no heartbeat is received, close the connection and retry
+        log("No heartbeat received, retrying...")
+
+    log("No heartbeat received after maximum attempts.")
+    return None, None
+
+
 # Print with time
 def log(message, filename="fuzzing.log"):
     # Get the current time
@@ -241,7 +263,7 @@ def log(message, filename="fuzzing.log"):
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    mav_conn = mavutil.mavlink_connection(":127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     # Send a reboot command to the vehicle
     mav_conn.mav.command_long_send(
         mav_conn.target_system,
@@ -272,31 +294,32 @@ def reboot_vehicle():
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
 def check_liveness():
-    # TODO: 2024-07-03T18:55:16-0400: silipwn: Maybe we can rewrite this?
-    # Cause there's already a loop checking for existing MAVLINK messages?
-    # Another test could be that the messages have stopped?
-    global heartbeat_cnt
+    while True:
+        # 2024-07-08T11:05:48-0400: silipwn: We connect every loop to ensure we don't miss
+        # the message somehow
+        # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+        if not reboot_pause_event.is_set():
+            hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
+            if hb_msg is None:
+                log("Got an exception when attempting to reconnect")
+                store_mutated_inputs()
+                # The RV software is crashed
+                f = open("shared_variables.txt", "w")
+                f.write("reboot")
+                f.close()
+            else:
+                global current_flight_mode
+                global previous_flight_mode
+                global drone_status
 
-    end_flag = 0
-    while end_flag == 0:
-        while reboot_pause_event.is_set():
-            log("Pausing liveness for 10 seconds")
-            time.sleep(10)
-        if heartbeat_cnt < 1:
-            log(
-                "The value of heartbeat_cnt is {0}, will store inputs".format(
-                    heartbeat_cnt
-                )
-            )
-            store_mutated_inputs()
-            # The RV software is crashed
-            f = open("shared_variables.txt", "w")
-            f.write("reboot")
-            f.close()
-            end_flag = 1
+                if previous_flight_mode != mavutil.mode_string_v10(hb_msg):
+                    previous_flight_mode = current_flight_mode
+                current_flight_mode = mavutil.mode_string_v10(hb_msg)
+
+                drone_status = hb_msg.system_status
+            mav_conn.close()
         else:
-            heartbeat_cnt = 0
-
+            log("Monitoring thread paused")
         time.sleep(5)
 
 
@@ -436,17 +459,13 @@ def re_launch():
 
     # Step 3. reset preconditions to fuzz the target policy
     global Precondition_path
-    set_preconditions(Precondition_path)
+    # set_preconditions(Precondition_path)
     mavlink_pause_event.set()
     log("Setting event")
     # reboot_vehicle()
 
     # Try to read the STATUSTEXT msgs till we get the GPS usage
-    # while True:
-    #     msg = master.recv_match(type="STATUSTEXT", blocking=True)
-    #     if "EKF3 IMU0 is using GPS" in msg.text:
-    #         log("Got GPS usage message")
-    #         break
+    mav_conn.wait_gps_fix()
 
     log("Clearing event")
     mavlink_pause_event.clear()
@@ -457,7 +476,20 @@ def re_launch():
     #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
     # )
     mode_id = mav_conn.mode_mapping()["GUIDED"]
-    mav_conn.set_mode(mode_id)
+    # mav_conn.set_mode(mode_id)
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        mode_id,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
 
     # Wait for finishing the landing
     while True:
@@ -1070,29 +1102,28 @@ def handle_circle_status(msg):
 # ------------------------------------------------------------------------------------
 def read_loop():
     while True:
-        monitor_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
-        # while mavlink_pause_event.is_set():
-        #     log("Pausing reading loop for 10 seconds")
-        #     time.sleep(10)
+        monitor_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+        while mavlink_pause_event.is_set():
+            log("Pausing reading loop for 10 seconds")
+            time.sleep(10)
         # # current types
-        # types_msg = [
-        #     "BAD_DATA",
-        #     "RC_CHANNELS",
-        #     "VFR_HUD",
-        #     "ATTITUDE",
-        #     "NAV_CONTROLLER_OUTPUT",
-        #     "GLOBAL_POSITION_INT",
-        #     "STATUSTEXT",
-        #     "SYSTEM_TIME",
-        #     "MISSION_COUNT",
-        #     "PARAM_VALUE",
-        #     "GPS_RAW_INT",
-        #     "HEARTBEAT",
-        #     "ORBIT_EXECUTION_STATUS",
-        # ]
+        types_msg = [
+            "BAD_DATA",
+            "RC_CHANNELS",
+            "VFR_HUD",
+            "ATTITUDE",
+            "NAV_CONTROLLER_OUTPUT",
+            "GLOBAL_POSITION_INT",
+            "STATUSTEXT",
+            "SYSTEM_TIME",
+            "MISSION_COUNT",
+            "PARAM_VALUE",
+            "GPS_RAW_INT",
+            "ORBIT_EXECUTION_STATUS",
+        ]
         # # grab a mavlink message
         try:
-            msg = monitor_conn.recv_match(blocking=True)
+            msg = monitor_conn.recv_match(blocking=True, type=types_msg)
         except Exception as e:
             print("An exception occurred:", str(e))
             exit(0)
@@ -1123,8 +1154,8 @@ def read_loop():
             handle_param(msg)
         elif msg_type == "GPS_RAW_INT":
             handle_gps(msg)
-        elif msg_type == "HEARTBEAT":
-            handle_heartbeat(msg)
+        # elif msg_type == "HEARTBEAT":
+        #     handle_heartbeat(msg)
         elif msg_type == "ORBIT_EXECUTION_STATUS":
             handle_circle_status(msg)
 
@@ -3002,10 +3033,33 @@ def execute_cmd(num):
         #     rand_fligh_mode,
         # )
         #
+        modes = mav_conn.mode_mapping()
         # mode_id = master.mode_mapping()[
         #     rand_fligh_mode
         # ]  # FIXME: Double check if this works
-        mav_conn.set_mode(rand_fligh_mode)
+
+        # Check if the mode is supported
+        if rand_fligh_mode not in modes.values():
+            log("ERROR selected value unavailable")
+        else:
+            # mav_conn.set_mode(rand_fligh_mode)
+            msg, mav_conn = reconn_heartbeat(timeout=10)
+            if msg is None:
+                log("Damn this is bad, msg is None")
+                exit(-1)
+            mav_conn.mav.command_long_send(
+                mav_conn.target_system,
+                mav_conn.target_component,
+                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+                0,
+                mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+                rand_fligh_mode,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )
 
     elif read_inputs.cmd_name[num] == "MAV_CMD_DO_PARACHUTE":
         Current_input_val = "2"
@@ -3192,7 +3246,7 @@ def main(argv):
     else:
         log("The commit being tested is: %s" % current_commit)
 
-    log('Pymavlink version %s'% pymavlink.__version__)
+    log("Pymavlink version %s" % pymavlink.__version__)
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -3464,16 +3518,19 @@ def main(argv):
     t3.daemon = True
     t3.start()
 
-    time.sleep(30)  # Just waiting to see if we can handle the 0 case
     # Setup a counter to catch stalls
     status_ctr = 0
     prev_status_ctr = 0
+
     # Main loop
     while True:
         log(
             "[Debug] drone_status:%d prev_status_ctr %d"
             % (drone_status, prev_status_ctr)
         )
+        while reboot_pause_event.is_set():
+            log("Pausing main thread for 10 seconds because an event is set")
+            time.sleep(10)
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
@@ -3493,7 +3550,7 @@ def main(argv):
                 raise Exception("Got stuck for a long time, check logs for more info")
 
         # if RV is still active state
-        if drone_status == 4:
+        if drone_status == mavutil.mavlink.MAV_STATE_ACTIVE:
             if drone_status != prev_status_ctr:
                 status_ctr = 0
                 log("Reset status_ctr")
@@ -3522,7 +3579,9 @@ def main(argv):
                 count_main_loop = 0
 
         # The vehicle is grounded
-        elif (drone_status == 3 and RV_alive == 1) or (hit_ground == 1):
+        elif (drone_status == mavutil.mavlink.MAV_STATE_STANDBY and RV_alive == 1) or (
+            hit_ground == 1
+        ):
             log(("[Debug] drone_status:%d" % drone_status))
             if drone_status != prev_status_ctr:
                 status_ctr = 0
@@ -3543,11 +3602,7 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
-        elif drone_status == 3:
-            # 2024-05-28T16:17:21-0400: silipwn: Basically check if we are
-            # critcal error raise ValueError("Unhandled drone status Status: %d
-            # Hit_ground: %d PreArm: %d" %
-            # (drone_status,hit_ground,PreArm_error))
+        elif drone_status == mavutil.mavlink.MAV_STATE_STANDBY:
             log("It is in standby mode")
             log(
                 "Drone status Status: %d Hit_ground: %d PreArm: %d"
@@ -3559,13 +3614,15 @@ def main(argv):
             count_main_loop = 0
 
         # It is in mayday and going down
-        elif drone_status == 6:
+        elif drone_status == mavutil.mavlink.MAV_STATE_EMERGENCY:
             Armed = 0
             for i in range(1, 5):
                 log(
                     "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
                 )
-        elif drone_status == 5:  # Don't care about other variables
+        elif (
+            drone_status == mavutil.mavlink.MAV_STATE_EMERGENCY
+        ):  # Don't care about other variables
             if drone_status != prev_status_ctr:
                 status_ctr = 0
             prev_status_ctr = drone_status
@@ -3583,17 +3640,15 @@ def main(argv):
             re_launch()
             count_main_loop = 0
 
-        elif drone_status == 0:
-            log("DANGER! It seems that the drone status is 0")
-            log("I'm going to sleep, fix this man")
-            send_telegram_message("Now is drone_status 0")
-            time.sleep(100)
+        elif drone_status == mavutil.mavlink.MAV_STATE_UNINIT:
+            log("Still initializing status, sleeping for 10")
+            reboot_pause_event.set()
+            time.sleep(10)
+            reboot_pause_event.clear()
         else:
             log("Unhandled MAV_STATE, check what is wrong")
             send_telegram_message("Unhandled MAV_STATE, check what is wrong")
             raise Exception("Unhandled MAV_STATE please check what's wrong")
-
-    log("-------------------- Fuzzing End --------------------")
 
 
 if __name__ == "__main__":
