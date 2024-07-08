@@ -40,7 +40,7 @@ import math
 
 # ------------------------------------------------------------------------------------
 # Global variables
-# master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+# master = mavutil.mavlink_connection("127.0.0.1:14551")
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -241,7 +241,7 @@ def log(message, filename="fuzzing.log"):
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection(":127.0.0.1:14551")
     # Send a reboot command to the vehicle
     mav_conn.mav.command_long_send(
         mav_conn.target_system,
@@ -265,6 +265,7 @@ def reboot_vehicle():
             continue
         log("Received response back")
         break
+    mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -301,7 +302,7 @@ def check_liveness():
 
 # ------------------------------------------------------------------------------------
 def set_preconditions(filepath):
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     for line in open(filepath, "r").readlines():
         # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
         # basically all reads are as bytes
@@ -317,6 +318,7 @@ def set_preconditions(filepath):
         #
         # log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
         log("[Set_preconditions] currently ignored: TODO Fix this")
+    mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -383,7 +385,7 @@ def re_launch():
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
 
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     _ = mav_conn.recv_match(type="HEARTBEAT", blocking=True)
     # Step 1. land the vehicle
     # master.mav.set_mode_send(
@@ -426,6 +428,8 @@ def re_launch():
     f.close()
 
     time.sleep(48)
+    # Restablish the connection since it would be rebooted now
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
 
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
@@ -498,6 +502,7 @@ def re_launch():
 
     reboot_pause_event.clear()
     log("Cleared reboot_pause_event")
+    mav_conn.close()
     goal_throttle = 1500
 
 
@@ -602,7 +607,7 @@ def change_parameter(selected_param):
     )
 
     no_range = 0
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     param_name = read_inputs.param_name[selected_param]
 
     if Guidance_decision == True:
@@ -693,6 +698,7 @@ def change_parameter(selected_param):
     print_param += "\n"
 
     write_log(print_param)
+    mav_conn.close()
 
     time.sleep(3)
 
@@ -2882,7 +2888,7 @@ def set_rc_channel_pwm(id, mav_conn, pwm=1500):
 def throttle_th():
     global goal_throttle
 
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     mav_conn.recv_match(type="HEARTBEAT", blocking=True)
     while True:
         set_rc_channel_pwm(3, mav_conn, goal_throttle)
@@ -2927,7 +2933,7 @@ def execute_cmd(num):
     global Guidance_decision
     rand = []
 
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     # Each user command contains 7 parameters. We assign random values to these parameters.
     for i in range(7):
         rand.append(random.randint(1, 100))
@@ -3063,6 +3069,8 @@ def execute_cmd(num):
     print_cmd += "\n"
     write_log(print_cmd)
 
+    mav_conn.close()
+
 
 # ------------------------------------------------------------------------------------
 def execute_env(num):
@@ -3074,7 +3082,7 @@ def execute_env(num):
 
     Current_input = read_inputs.env_name[num]
 
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     if Guidance_decision == True:
         Current_input_val = match_cmd(cmd=Current_input)
 
@@ -3237,7 +3245,7 @@ def main(argv):
     # log(
     #     "#-----------------------------------------------------------------------------"
     # )
-    mav_conn = mavutil.mavlink_connection("udp:127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
 
     mav_conn.wait_heartbeat()
 
