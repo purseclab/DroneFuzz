@@ -557,11 +557,9 @@ def current_milli_time(start_time):
 
 
 def send_msg_rangefinder():
+    hz = 25
     conn_rangefinder = mavutil.mavlink_connection("127.0.0.1:1337")
     conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
-    log("Got heartbeat")
-    hz = 25
-    log("Starting while True")
     while True:
         try:
             mutated_msg = mavlink_msg_queue.get(timeout=1)
@@ -586,8 +584,7 @@ def send_msg_rangefinder():
                 float(DEPTH_RANGE[1]),  # max range of sensor
             )
             conn_rangefinder.mav.send(msg)
-            time.sleep(1 / hz)
-        time.sleep(1)
+        time.sleep(1 / hz)
 
 
 def randomize_msg_rangefinder():
