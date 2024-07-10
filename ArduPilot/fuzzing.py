@@ -462,6 +462,7 @@ def re_launch():
     log("Setting event")
     # reboot_vehicle()
 
+    start_rangefinder()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
     mav_conn.wait_gps_fix()
 
@@ -556,13 +557,25 @@ def current_milli_time(start_time):
     return int(round(time.time() * 1000) - start_time)
 
 
+# Rangefinder manager
+def start_rangefinder(process=None):
+    if process and process.is_alive():
+        log("Terminating the existing process...")
+        process.terminate()
+        process.join()  # Ensure the process has completely terminated
+    new_process = multiprocessing.Process(target=send_msg_rangefinder)
+    new_process.daemon = True
+    new_process.start()
+    return new_process
+
+
 def send_msg_rangefinder():
     hz = 25
     conn_rangefinder = mavutil.mavlink_connection("127.0.0.1:1337")
     conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
     while True:
         try:
-            mutated_msg = mavlink_msg_queue.get(timeout=1)
+            mutated_msg = mavlink_msg_queue.get(timeout=0.1)
             depth_range_x = mutated_msg[0]
             depth_range_y = mutated_msg[1]
             depth_range_z = mutated_msg[2]
@@ -2915,9 +2928,9 @@ def set_rc_channel_pwm(id, mav_conn, pwm=1500):
 def throttle_th():
     global goal_throttle
 
-    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
-    mav_conn.recv_match(type="HEARTBEAT", blocking=True)
     while True:
+        mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+        mav_conn.recv_match(type="HEARTBEAT", blocking=True)
         set_rc_channel_pwm(3, mav_conn, goal_throttle)
         time.sleep(0.2)
 
@@ -3337,17 +3350,21 @@ def main(argv):
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
 
+    # t4 = multiprocessing.Process(target=send_msg_rangefinder)
+    # t4.daemon = True
+    # t4.start()
+    start_rangefinder()
+
+    time.sleep(20)  # TODO: Figure out the ideal time to wait
+
     while True:
         msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
         if "is using GPS" in msg.text:
             log("Got GPS usage message")
             break
 
-    t4 = multiprocessing.Process(target=send_msg_rangefinder)
-    t4.daemon = True
-    t4.start()
-
     time.sleep(10)  # TODO: Figure out the ideal time to wait
+    # This is because we need to get the second IMU also working
 
     # Testing
     # ------------------------------------------------------------------------
@@ -3400,7 +3417,10 @@ def main(argv):
             exit(0)
     else:
         ack_msg = ack_msg.to_dict()
-        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+        if (
+            ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE
+            or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
+        ):
             # Print the ACK result !
             log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         else:
@@ -3424,10 +3444,11 @@ def main(argv):
     while True:
         # Wait for ACK command
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None:
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
             log("Arming failed, exiting")
             exit(0)
         ack_msg = ack_msg.to_dict()
+        print(ack_msg)
 
         log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
         break
@@ -3452,7 +3473,7 @@ def main(argv):
     while not ack:
         # Wait for ACK command
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None:
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
             log("Takeoff failed, exiting")
             exit(0)
         ack_msg = ack_msg.to_dict()
@@ -3470,33 +3491,31 @@ def main(argv):
                 break
 
     # 2024-07-04T11:15:22-0400: silipwn:  TODO: Fix ALT_HOLD mechanism later?
-    #     mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
+    mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
     # master.mav.set_mode_send(
     #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
     # )
-    # mav_conn.set_mode(mode_id)
-    #
-    # while True:
-    #     # Wait for ACK command
-    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-    #     ack_msg = ack_msg.to_dict()
-    #
-    #     # Check if command in the same in `set_mode`
-    #     if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-    #         continue
-    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-    #     break
-    # # Set default throttle
-    # set_rc_channel_pwm(3, mav_conn, 1500)
-    # log("Setting default throttle")
-    #
-    # time.sleep(3)
-    #
-    # # Maintain mid-position of stick on RC controller
-    # goal_throttle = 1500
-    # t1 = threading.Thread(target=throttle_th, args=())
-    # t1.daemon = True
-    # t1.start()
+    mav_conn.set_mode(mode_id)
+    while True:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        ack_msg = ack_msg.to_dict()
+        #
+        # Check if command in the same in `set_mode`
+        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+            break
+        else:
+            exit("Failed to set the mode")
+    # Set default throttle
+    set_rc_channel_pwm(3, mav_conn, 1500)
+    log("Setting default throttle")
+    time.sleep(3)
+    # Maintain mid-position of stick on RC controller
+    goal_throttle = 1500
+    t1 = threading.Thread(target=throttle_th, args=())
+    t1.daemon = True
+    t1.start()
 
     t2 = threading.Thread(target=read_loop, args=())
     t2.daemon = True
