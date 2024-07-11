@@ -61,7 +61,7 @@ goal_throttle = 0
 executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
-MISSION_ATTITUDE = 100
+MISSION_ATTITUDE = 50
 required_min_thr = 975
 
 current_roll = 0.0
@@ -271,7 +271,7 @@ def log(message, filename="fuzzing.log"):
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     # Send a reboot command to the vehicle
     mav_conn.mav.command_long_send(
         mav_conn.target_system,
@@ -295,7 +295,7 @@ def reboot_vehicle():
             continue
         log("Received response back")
         break
-    mav_conn.close()
+    # mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -307,7 +307,7 @@ def check_liveness():
         # the message somehow
         # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
         if not reboot_pause_event.is_set():
-            hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
+            hb_msg, _ = reconn_heartbeat(timeout=5, max_attempts=2)
             if hb_msg is None:
                 log("Got an exception when attempting to reconnect")
                 store_mutated_inputs()
@@ -315,7 +315,7 @@ def check_liveness():
                 f = open("shared_variables.txt", "w")
                 f.write("reboot")
                 f.close()
-            mav_conn.close()
+            # mav_conn.close()
         else:
             log("Monitoring thread paused")
         time.sleep(5)
@@ -323,7 +323,7 @@ def check_liveness():
 
 # ------------------------------------------------------------------------------------
 def set_preconditions(filepath):
-    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     for line in open(filepath, "r").readlines():
         # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
         # basically all reads are as bytes
@@ -339,7 +339,7 @@ def set_preconditions(filepath):
         #
         # log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
         log("[Set_preconditions] currently ignored: TODO Fix this")
-    mav_conn.close()
+    # mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -437,9 +437,9 @@ def re_launch():
             % (required_min_thr, goal_throttle)
         )
     )
-    set_rc_channel_pwm(1, mav_conn, 1500)
-    set_rc_channel_pwm(2, mav_conn, 1500)
-    set_rc_channel_pwm(4, mav_conn, 1500)
+    set_rc_channel_pwm(1, 1500)
+    set_rc_channel_pwm(2, 1500)
+    set_rc_channel_pwm(4, 1500)
 
     time.sleep(3)
 
@@ -534,7 +534,7 @@ def re_launch():
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
     log("Cleared reboot_pause_event")
-    mav_conn.close()
+    # mav_conn.close()
     goal_throttle = 1500
 
 
@@ -563,7 +563,9 @@ def start_rangefinder(process=None):
         log("Terminating the existing process...")
         process.terminate()
         process.join()  # Ensure the process has completely terminated
-    new_process = multiprocessing.Process(target=send_msg_rangefinder)
+    new_process = multiprocessing.Process(
+        name="RangeFinder", target=send_msg_rangefinder
+    )
     new_process.daemon = True
     new_process.start()
     return new_process
@@ -648,7 +650,7 @@ def change_parameter(selected_param):
     )
 
     no_range = 0
-    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     param_name = read_inputs.param_name[selected_param]
 
     if Guidance_decision == True:
@@ -739,7 +741,7 @@ def change_parameter(selected_param):
     print_param += "\n"
 
     write_log(print_param)
-    mav_conn.close()
+    # mav_conn.close()
 
     time.sleep(3)
 
@@ -2899,12 +2901,16 @@ def calculate_distance(guidance):
 # Create a function to send RC values
 # More information about Joystick channels
 # here: https://www.ardusub.com/operators-manual/rc-input-and-output.html#rc-inputs
-def set_rc_channel_pwm(id, mav_conn, pwm=1500):
+def set_rc_channel_pwm(id, pwm=1500):
     """Set RC channel pwm value
     Args:
         id (TYPE): Channel ID
         pwm (int, optional): Channel pwm value 1100-1900
     """
+    mav_conn = mavutil.mavlink_connection(
+        "udp:127.0.0.1:14550"
+    )  # For a change to see if this works
+    mav_conn.wait_heartbeat()
     if id < 1:
         log("Channel does not exist.")
         return
@@ -2926,13 +2932,10 @@ def set_rc_channel_pwm(id, mav_conn, pwm=1500):
 
 # ------------------------------------------------------------------------------------
 def throttle_th():
-    global goal_throttle
-
+    # TODO: Check if global_throttle is correctly set
     while True:
-        mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
-        mav_conn.recv_match(type="HEARTBEAT", blocking=True)
-        set_rc_channel_pwm(3, mav_conn, goal_throttle)
-        time.sleep(0.2)
+        set_rc_channel_pwm(3, 1500)  # Default should be mid
+        time.sleep(0.5)
 
 
 # ------------------------------------------------------------------------------------
@@ -3013,7 +3016,7 @@ def execute_cmd(num):
         elif read_inputs.cmd_name[num] == "RC4":
             target_RC = 4
 
-        set_rc_channel_pwm(target_RC, mav_conn, mutated_value)
+        set_rc_channel_pwm(target_RC, mutated_value)
 
     elif read_inputs.cmd_name[num] == "RC3":
         global goal_throttle
@@ -3145,7 +3148,7 @@ def execute_env(num):
 
     Current_input = read_inputs.env_name[num]
 
-    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     if Guidance_decision == True:
         Current_input_val = match_cmd(cmd=Current_input)
 
@@ -3508,16 +3511,20 @@ def main(argv):
         else:
             exit("Failed to set the mode")
     # Set default throttle
-    set_rc_channel_pwm(3, mav_conn, 1500)
+    set_rc_channel_pwm(3, 1500)
     log("Setting default throttle")
     time.sleep(3)
     # Maintain mid-position of stick on RC controller
     goal_throttle = 1500
-    t1 = threading.Thread(target=throttle_th, args=())
-    t1.daemon = True
-    t1.start()
+    new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
+    new_process.daemon = True
+    new_process.start()
+    # t1 = threading.Thread(name="Throttle", target=throttle_th, args=())
+    # t1.daemon = True
+    # t1.start()
+    #
 
-    t2 = threading.Thread(target=read_loop, args=())
+    t2 = threading.Thread(name="Monitor", target=read_loop, args=())
     t2.daemon = True
     t2.start()
 
@@ -3529,7 +3536,7 @@ def main(argv):
 
     # Check liveness of the RV software
 
-    t3 = threading.Thread(target=check_liveness, args=())
+    t3 = threading.Thread(name="Liveness", target=check_liveness, args=())
     t3.daemon = True
     t3.start()
 
@@ -3585,8 +3592,9 @@ def main(argv):
             calculate_distance(guidance="true")
             goal_throttle = 1500
 
-            for i in range(4):
-                set_rc_channel_pwm(i + 1, mav_conn, 1500)
+            # XXX: 2024-07-11T11:37:53-0400: silipwn: See if this is absolutely necessary
+            # for i in range(4):
+            #     set_rc_channel_pwm(i + 1, 1500)
 
             if Parachute_on == 1:
                 Armed = 0
