@@ -5,6 +5,8 @@ Name of file: fuzzing.py
 Goal: Main loop of PGFUZZ
 """
 
+# ruff: noqa: F481
+# pyright: reportUnusedVariable=false
 # !onsusr/bin/env python
 
 import sys
@@ -32,7 +34,7 @@ from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 # pip2 install --force-reinstall -v "pymavlink==2.4.37"
 
 import read_inputs
-import shared_variables
+# import shared_variables
 
 import timeit
 import re
@@ -271,7 +273,7 @@ def log(message, filename="fuzzing.log"):
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
-    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     # Send a reboot command to the vehicle
     mav_conn.mav.command_long_send(
         mav_conn.target_system,
@@ -295,7 +297,7 @@ def reboot_vehicle():
             continue
         log("Received response back")
         break
-    # mav_conn.close()
+    mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -322,24 +324,26 @@ def check_liveness():
 
 
 # ------------------------------------------------------------------------------------
-def set_preconditions(filepath):
+def set_preconditions(_filepath):
     # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
-    for line in open(filepath, "r").readlines():
-        # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
-        # basically all reads are as bytes
-        row = line.rstrip().split(" ")
-        # master.mav.param_set_send(
-        #     master.target_system,
-        #     master.target_component,
-        #     row[0],
-        #     row[1],
-        #     mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
-        # )
-        # time.sleep(1)
-        #
-        # log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
-        log("[Set_preconditions] currently ignored: TODO Fix this")
-    # mav_conn.close()
+    # for line in open(filepath, "r").readlines():
+    #     # 2024-06-25T10:45:07-0400: silipwn: Check if this approach would work,
+    #     # basically all reads are as bytes
+    #     row = line.rstrip().split(" ")
+    #     master.mav.param_set_send(
+    #         master.target_system,
+    #         master.target_component,
+    #         row[0],
+    #         row[1],
+    #         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+    #     )
+    #     time.sleep(1)
+    #
+    #     log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
+    log("[Set_preconditions] currently ignored: TODO Fix this")
+
+
+# mav_conn.close()
 
 
 # ------------------------------------------------------------------------------------
@@ -609,15 +613,35 @@ def randomize_msg_rangefinder():
     # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
     # not repeated
     # XXX: Why does the randomization fail in a loop?
-    depth_range_x = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    depth_range_y = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    depth_range_z = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    # depth_range_1 = [12, 12, 12, 12, 12, 12, 12, 12, 12]
-    # depth_range_2 = [-7.171149112500025, 3.468601209163399, 5.695193805774039, -9.266968362509475, 11.667519738575635, 5.1041530139455205, 0.45212570746143044, -7.864746056681961, -2.337234663244491]
-    # depth_range_3 = [9.170353381650724, 8.632255888031327, 3.9505021451729547, -6.620548981848094, -0.6074463507713102, 2.6709162689533255, 3.3385703109376905, 3.4818020706529715, 9.12005049574292]
-    # val = random.choice([depth_range_1])
+    # depth_range_x = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
+    # depth_range_y = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
+    # depth_range_z = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
+    depth_range_1 = [12, 12, 12, 12, 12, 12, 12, 12, 12]
+    depth_range_2 = [
+        -7.171149112500025,
+        3.468601209163399,
+        5.695193805774039,
+        -9.266968362509475,
+        11.667519738575635,
+        5.1041530139455205,
+        0.45212570746143044,
+        -7.864746056681961,
+        -2.337234663244491,
+    ]
+    depth_range_3 = [
+        9.170353381650724,
+        8.632255888031327,
+        3.9505021451729547,
+        -6.620548981848094,
+        -0.6074463507713102,
+        2.6709162689533255,
+        3.3385703109376905,
+        3.4818020706529715,
+        9.12005049574292,
+    ]
+    val = random.choice([depth_range_1, depth_range_2, depth_range_3])
     # print("Selected value: ", val)
-    # depth_range_x = depth_range_y = depth_range_z = val
+    depth_range_x = depth_range_y = depth_range_z = val
     combined_msg = [depth_range_x, depth_range_y, depth_range_z]
     mavlink_msg_queue.put(combined_msg)
 
@@ -649,11 +673,11 @@ def change_parameter(selected_param):
         % read_inputs.param_name[selected_param]
     )
 
-    no_range = 0
-    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    # no_range = 0
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     param_name = read_inputs.param_name[selected_param]
 
-    if Guidance_decision == True:
+    if Guidance_decision:
         Current_input_val = match_cmd(cmd=param_name)
 
     range_min = read_inputs.param_min[selected_param]
@@ -662,7 +686,7 @@ def change_parameter(selected_param):
 
     # Step 1. Check whether the selected parameter has an valid range or not
     if range_min == "X":
-        no_range = 1
+        # no_range = 1
         param_value = random.randint(PARAM_MIN, PARAM_MAX)
         log(
             (
@@ -671,9 +695,9 @@ def change_parameter(selected_param):
             )
         )
 
-    elif verify_real_number(range_min) == True:
-        no_range = 0
-        if range_min.isdigit() == True and range_max.isdigit() == True:
+    elif verify_real_number(range_min):
+        # no_range = 0
+        if range_min.isdigit() and range_max.isdigit():
             param_value = random.randint(int(range_min), int(range_max))
             log(
                 (
@@ -687,7 +711,7 @@ def change_parameter(selected_param):
                 )
             )
 
-        elif range_min.isdigit() == False or range_max.isdigit() == False:
+        elif not range_min.isdigit() or not range_max.isdigit():
             param_value = random.uniform(float(range_min), float(range_max))
             log(
                 (
@@ -765,8 +789,8 @@ def handle_heartbeat(msg):
     drone_status = msg.system_status
     # print("Drone status: %d, mavlink version: %d" % (drone_status, msg.mavlink_version))
 
-    is_armed = msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
-    is_enabled = msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED
+    # is_armed = msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED
+    # is_enabled = msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_GUIDED_ENABLED
 
 
 # print("Mode: %s" % current_flight_mode)
@@ -786,28 +810,28 @@ def handle_rc_raw(msg):
 
     # print("RC1:%d, RC2:%d, RC3:%d, RC3:%d" %(current_rc_1, current_rc_2, current_rc_3, current_rc_4))
 
-    channels = (
-        msg.chan1_raw,
-        msg.chan2_raw,
-        msg.chan3_raw,
-        msg.chan4_raw,
-        msg.chan5_raw,
-        msg.chan6_raw,
-        msg.chan7_raw,
-        msg.chan8_raw,
-    )
+    # channels = (
+    #     msg.chan1_raw,
+    #     msg.chan2_raw,
+    #     msg.chan3_raw,
+    #     msg.chan4_raw,
+    #     msg.chan5_raw,
+    #     msg.chan6_raw,
+    #     msg.chan7_raw,
+    #     msg.chan8_raw,
+    # )
 
 
 # ------------------------------------------------------------------------------------
 def handle_hud(msg):
-    hud_data = (
-        msg.airspeed,
-        msg.groundspeed,
-        msg.heading,
-        msg.throttle,
-        msg.alt,
-        msg.climb,
-    )
+    # hud_data = (
+    #     msg.airspeed,
+    #     msg.groundspeed,
+    #     msg.heading,
+    #     msg.throttle,
+    #     msg.alt,
+    #     msg.climb,
+    # )
     # print "Aspd\tGspd\tHead\tThro\tAlt\tClimb"
     # print "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f" % hud_data
 
@@ -851,14 +875,14 @@ def handle_attitude(msg):
     global yawspeed_current
     global yawspeed_previous
 
-    attitude_data = (
-        msg.roll,
-        msg.pitch,
-        msg.yaw,
-        msg.rollspeed,
-        msg.pitchspeed,
-        msg.yawspeed,
-    )
+    # attitude_data = (
+    #     msg.roll,
+    #     msg.pitch,
+    #     msg.yaw,
+    #     msg.rollspeed,
+    #     msg.pitchspeed,
+    #     msg.yawspeed,
+    # )
     # print "Roll\tPit\tYaw\tRSpd\tPSpd\tYSpd"
     # print "%0.6f\t%0.6f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t" % attitude_data
 
@@ -914,14 +938,14 @@ def handle_target(msg):
 	aspd_error	float	m/s	Current airspeed error
 	xtrack_error	float	m	Current crosstrack error on x-y plane
 	"""
-    reference = (
-        msg.nav_roll,
-        msg.nav_pitch,
-        msg.nav_bearing,
-        msg.alt_error,
-        msg.aspd_error,
-        msg.xtrack_error,
-    )
+    # reference = (
+    #     msg.nav_roll,
+    #     msg.nav_pitch,
+    #     msg.nav_bearing,
+    #     msg.alt_error,
+    #     msg.aspd_error,
+    #     msg.xtrack_error,
+    # )
     # print "\nRF_Roll\tRF_Pitch\tRF_Head\tRF_Alt\tRF_Spd\tRF_XY"
     # print "%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t%0.2f\t" % reference
 
@@ -968,7 +992,7 @@ def handle_param(msg):
 
 # ------------------------------------------------------------------------------------
 def handle_position(msg):
-    position_data = (msg.lat, msg.lon)
+    # position_data = (msg.lat, msg.lon)
 
     # print(msg)
     # print("lat:%f, lon:%f, vertical speed (cm/s):%d" %(float(msg.lat), float(msg.lon), int(msg.vz)))
@@ -1010,7 +1034,7 @@ def handle_status(msg):
     global takeoff
     global mission_cnt
 
-    status_data = (msg.severity, msg.text)
+    # status_data = (msg.severity, msg.text)
     log(("[status_text] %s" % msg.text))
 
     # Detecting a depolyed parachute
@@ -2985,7 +3009,7 @@ def execute_cmd(num):
 
     Current_input = read_inputs.cmd_name[num]
 
-    if Guidance_decision == True:
+    if Guidance_decision:
         Current_input_val = match_cmd(cmd=Current_input)
 
     if Current_input_val != "null":
@@ -3148,8 +3172,8 @@ def execute_env(num):
 
     Current_input = read_inputs.env_name[num]
 
-    # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
-    if Guidance_decision == True:
+    mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+    if Guidance_decision:
         Current_input_val = match_cmd(cmd=Current_input)
 
     if Current_input_val == "null":
@@ -3639,10 +3663,9 @@ def main(argv):
         # It is in mayday and going down
         elif drone_status == mavutil.mavlink.MAV_STATE_EMERGENCY:
             Armed = 0
-            for i in range(1, 5):
-                log(
-                    "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
-                )
+            log(
+                "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
+            )
         elif (
             drone_status == mavutil.mavlink.MAV_STATE_EMERGENCY
         ):  # Don't care about other variables
