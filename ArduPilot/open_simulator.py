@@ -1,10 +1,10 @@
-from subprocess import *
+from subprocess import Popen
 # import subprocess,time,psutil
 
 import time
 import os
 import signal
-import psutil
+# import psutil
 
 # subprocess.call(['~/ardupilot_4_0_3/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'], shell=True)
 
