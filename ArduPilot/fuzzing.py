@@ -68,6 +68,7 @@ required_min_thr = 975
 
 current_roll = 0.0
 current_pitch = 0.0
+current_yaw = 0.0
 current_heading = 0.0
 
 alt_error = 0.0
@@ -114,12 +115,12 @@ yawspeed_current = 0.0
 yawspeed_previous = 0.0
 
 # Custom policy addition
-yaw_min = 0.0
-yaw_max = 0.0
-roll_min = 0.0
-roll_max = 0.0
-pitch_min = 0.0
-pitch_max = 0.0
+yaw_min = float("inf")
+roll_min = float("inf")
+pitch_min = float("inf")
+yaw_max = float("-inf")
+roll_max = float("-inf")
+pitch_max = float("-inf")
 
 # states - 0: turn off, 1: turn on
 Parachute_on = 0
@@ -157,7 +158,11 @@ mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
 
-
+try:
+    ardupilot_dir = os.getenv("ARDUPILOT_HOME")
+    pgfuzz_dir = os.getenv("PGFUZZ_HOME")
+except:
+    print("No ARDUPILOT_HOME/PGFUZZ_HOME set")
 # Distance
 P = []
 Global_distance = 0
@@ -319,7 +324,7 @@ def check_liveness():
                 f.close()
             # mav_conn.close()
         else:
-            log("Monitoring thread paused")
+            log("Liveness thread paused")
         time.sleep(5)
 
 
@@ -375,10 +380,20 @@ def write_log(print_log):
 
 # ------------------------------------------------------------------------------------
 def re_launch():
+    global current_roll
+    global current_pitch
+    global current_yaw
+    global yaw_min
+    global yaw_max
+    global roll_min
+    global roll_max
+    global pitch_min
+    global pitch_max
     global goal_throttle
     global home_altitude
     global current_altitude
     global current_flight_mode
+
     global Parachute_on
     global count_main_loop
     global GPS_status
@@ -405,6 +420,28 @@ def re_launch():
         depth_range_x[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
         depth_range_y[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
         depth_range_z[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
+
+    current_roll = 0.0
+    current_pitch = 0.0
+    current_yaw = 0.0
+
+    yaw_min = float("inf")
+    roll_min = float("inf")
+    pitch_min = float("inf")
+    yaw_max = float("-inf")
+    roll_max = float("-inf")
+    pitch_max = float("-inf")
+
+    # Check ardupilot_dir
+    global pgfuzz_dir
+    # Check last log in the logs folder
+    logs_dir = pgfuzz_dir + "ArduPilot/logs"
+    LAST_LOG = os.path.join(logs_dir, "LASTLOG.TXT")
+    # Read the LAST_LOG contents
+    last_log_fd = open(LAST_LOG, "r")
+    last_log_number = last_log_fd.readline()
+    log("The current log file is ")
+    log(last_log_number)
 
     log(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
@@ -434,7 +471,8 @@ def re_launch():
     global required_min_thr
     # Refer to https://discuss.ardupilot.org/t/arming-problem-fs-thr-value/806/2
     goal_throttle = required_min_thr + 20
-
+    #
+    # 2024-07-12T10:18:19-0400: silipwn: Do we need this?
     log(
         (
             "[re-launch] min_thr:%d, target throttle:%d"
@@ -456,6 +494,7 @@ def re_launch():
     # Restablish the connection since it would be rebooted now
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
 
+    set_rc_channel_pwm(3, 1500)
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
 
@@ -538,7 +577,7 @@ def re_launch():
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
     log("Cleared reboot_pause_event")
-    # mav_conn.close()
+    mav_conn.close()
     goal_throttle = 1500
 
 
@@ -861,6 +900,7 @@ def handle_hud(msg):
 def handle_attitude(msg):
     global current_roll
     global current_pitch
+    global current_yaw
 
     global current_flight_mode
 
@@ -890,12 +930,13 @@ def handle_attitude(msg):
     pitchspeed_previous = pitchspeed_current
     yawspeed_previous = yawspeed_current
 
-    rollspeed_current = msg.rollspeed
+    rollspeed_current = msg.roll
     pitchspeed_current = msg.pitchspeed
     yawspeed_current = msg.yawspeed
 
     current_roll = (msg.roll * 180) / math.pi
     current_pitch = (msg.pitch * 180) / math.pi
+    current_yaw = (msg.yaw * 180) / math.pi
 
     if current_flight_mode == "FLIP":
         if roll_initial == 0:
@@ -1135,9 +1176,10 @@ def handle_circle_status(msg):
 
 
 # ------------------------------------------------------------------------------------
+# FIXME: 2024-07-11T16:00:48-0400: silipwn: Currently doesn't work at all
 def read_loop():
     while True:
-        monitor_conn = mavutil.mavlink_connection("127.0.0.1:14551")
+        monitor_conn = mavutil.mavlink_connection("127.0.0.1:1338")  # Custom addition
         while mavlink_pause_event.is_set():
             log("Pausing reading loop for 10 seconds")
             time.sleep(10)
@@ -1374,6 +1416,7 @@ def calculate_distance(guidance):
 
     global current_roll
     global current_pitch
+    global current_yaw
     global current_heading
 
     global lat_series
@@ -2754,20 +2797,20 @@ def calculate_distance(guidance):
 
     # ----------------------- (start) A.RANGEFINDER policy -----------------------
     # Adjust Yaw
-    if yawspeed_current > yaw_max:
-        yaw_max = yawspeed_current
-    if yawspeed_current < yaw_min:
-        yaw_min = yawspeed_current
+    if current_yaw > yaw_max:
+        yaw_max = current_yaw
+    if current_yaw < yaw_min:
+        yaw_min = current_yaw
     # Adjust Roll
-    if rollspeed_current > roll_max:
-        roll_max = rollspeed_current
-    if rollspeed_current < roll_min:
-        roll_min = rollspeed_current
+    if current_roll > roll_max:
+        roll_max = current_roll
+    if current_roll < roll_min:
+        roll_min = current_roll
     # Adjust Pitch
-    if pitchspeed_current > pitch_max:
-        pitch_max = pitchspeed_current
-    if pitchspeed_current < pitch_min:
-        pitch_min = pitchspeed_current
+    if current_pitch > pitch_max:
+        pitch_max = current_pitch
+    if current_pitch < pitch_min:
+        pitch_min = current_pitch
 
     if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
         P[0] = 1
@@ -2934,7 +2977,8 @@ def set_rc_channel_pwm(id, pwm=1500):
     mav_conn = mavutil.mavlink_connection(
         "udp:127.0.0.1:14550"
     )  # For a change to see if this works
-    mav_conn.wait_heartbeat()
+    if not reboot_pause_event.is_set():
+        mav_conn.wait_heartbeat()
     if id < 1:
         log("Channel does not exist.")
         return
@@ -2958,8 +3002,12 @@ def set_rc_channel_pwm(id, pwm=1500):
 def throttle_th():
     # TODO: Check if global_throttle is correctly set
     while True:
-        set_rc_channel_pwm(3, 1500)  # Default should be mid
-        time.sleep(0.5)
+        if not mavlink_pause_event.is_set():
+            set_rc_channel_pwm(3, 1500)  # Default should be mid
+            time.sleep(0.5)
+        else:
+            log("Throttle disabled")
+            time.sleep(10)
 
 
 # ------------------------------------------------------------------------------------
@@ -3270,13 +3318,13 @@ def main(argv):
     global RV_alive
     global hit_ground
 
-    ardupilot_dir = os.getenv("ARDUPILOT_HOME")
-
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
-    current_commit = subprocess.check_output(
-        "git rev-parse HEAD", shell=True, cwd=ardupilot_dir
-    ).strip()
+    current_commit = (
+        subprocess.check_output("git rev-parse HEAD", shell=True, cwd=ardupilot_dir)
+        .strip()
+        .decode("utf-8")
+    )
     if current_commit == "":
         log("No commit found in the Ardupilot directory")
     else:
