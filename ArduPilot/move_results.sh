@@ -27,6 +27,6 @@ DATENOW=$(date +"%Y%m%d")
 mkdir -p $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}
 
 mv fuzzing.log $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}/fuzzing.log
-mv policy_violations/ $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}/policy_violations
 mkdir -p $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}/AP_Logs
 mv logs/* $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}/AP_Logs
+mv policy_violations/ $PGFUZZ_HOME/results-devel/ArduPilot/${DATENOW}_${COMMIT}_${REASON}/policy_violations
