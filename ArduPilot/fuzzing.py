@@ -702,6 +702,7 @@ def randomize_msg_rangefinder():
     print_param += numpy.array2string(depth_range_z_str, separator=",")
     print_param += "\n"
 
+    write_log(print_param)
     depth_range_x = depth_range_y = depth_range_z = depth_range_2
     combined_msg = [depth_range_x, depth_range_y, depth_range_z]
     mavlink_msg_queue.put(combined_msg)
@@ -719,6 +720,7 @@ def randomize_msg_rangefinder():
     print_param += numpy.array2string(depth_range_z_str, separator=",")
     print_param += "\n"
 
+    write_log(print_param)
     depth_range_x = depth_range_y = depth_range_z = depth_range_3
     combined_msg = [depth_range_x, depth_range_y, depth_range_z]
     mavlink_msg_queue.put(combined_msg)
@@ -736,8 +738,8 @@ def randomize_msg_rangefinder():
     print_param += numpy.array2string(depth_range_z_str, separator=",")
     print_param += "\n"
 
-    log("Generated random msgs for rangefinder")
     write_log(print_param)
+    log("Generated random msgs for rangefinder")
 
 
 # ------------------------------------------------------------------------------------
@@ -2861,15 +2863,15 @@ def calculate_distance(guidance):
     else:
         P[0] = -1
     # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    if (roll_max - roll_min) > 2:
+    if (roll_max - roll_min) > 5:
         P[1] = 1
     else:
         P[1] = -1
-    if (yaw_max - yaw_min) > 2:
+    if (yaw_max - yaw_min) > 5:
         P[2] = 1
     else:
         P[2] = -1
-    if (pitch_max - pitch_min) > 2:
+    if (pitch_max - pitch_min) > 5:
         P[3] = 1
     else:
         P[3] = -1
