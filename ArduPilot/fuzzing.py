@@ -69,7 +69,10 @@ required_min_thr = 975
 current_roll = 0.0
 current_pitch = 0.0
 current_yaw = 0.0
+previous_yaw = 0.0
 current_heading = 0.0
+
+yaw_transition = 0
 
 alt_error = 0.0
 roll_error = 0.0
@@ -153,7 +156,7 @@ start_time = int(round(time.time() * 1000))
 DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
 depth_range_x = depth_range_y = depth_range_z = [0.00] * 9
 mavlink_lock = threading.Lock()
-mavlink_msg_queue = queue.Queue()
+mavlink_msg_queue = multiprocessing.Queue()
 mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
@@ -620,14 +623,15 @@ def send_msg_rangefinder():
     conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
     while True:
         try:
-            mutated_msg = mavlink_msg_queue.get(timeout=0.1)
+            mutated_msg = mavlink_msg_queue.get(block=False)
             depth_range_x = mutated_msg[0]
             depth_range_y = mutated_msg[1]
             depth_range_z = mutated_msg[2]
         except queue.Empty:
-            depth_range_x = numpy.random.uniform(9, 12, 9)
-            depth_range_y = numpy.random.uniform(9, 12, 9)
-            depth_range_z = numpy.random.uniform(9, 12, 9)
+            # depth_range_x = numpy.random.uniform(11, 12, 9)
+            # depth_range_y = numpy.random.uniform(11, 12, 9)
+            # depth_range_z = numpy.random.uniform(11, 12, 9)
+            depth_range_x = depth_range_y = depth_range_z = [12] * 9
         cur_ms_time = current_milli_time(start_time)
         for i in range(9):
             msg = mavlink2.MAVLink_obstacle_distance_3d_message(
@@ -678,9 +682,44 @@ def randomize_msg_rangefinder():
         3.4818020706529715,
         9.12005049574292,
     ]
-    val = random.choice([depth_range_1, depth_range_2, depth_range_3])
+    # val = random.choice([depth_range_1, depth_range_2, depth_range_3])
     # print("Selected value: ", val)
-    depth_range_x = depth_range_y = depth_range_z = val
+    # Push all values
+    depth_range_x = depth_range_y = depth_range_z = depth_range_1
+    combined_msg = [depth_range_x, depth_range_y, depth_range_z]
+    mavlink_msg_queue.put(combined_msg)
+
+    depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
+    depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
+    depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
+
+    print_param = ""
+    print_param += "R "
+    print_param += numpy.array2string(depth_range_x_str, separator=",")
+    print_param += "|"
+    print_param += numpy.array2string(depth_range_y_str, separator=",")
+    print_param += "|"
+    print_param += numpy.array2string(depth_range_z_str, separator=",")
+    print_param += "\n"
+
+    depth_range_x = depth_range_y = depth_range_z = depth_range_2
+    combined_msg = [depth_range_x, depth_range_y, depth_range_z]
+    mavlink_msg_queue.put(combined_msg)
+
+    depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
+    depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
+    depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
+
+    print_param = ""
+    print_param += "R "
+    print_param += numpy.array2string(depth_range_x_str, separator=",")
+    print_param += "|"
+    print_param += numpy.array2string(depth_range_y_str, separator=",")
+    print_param += "|"
+    print_param += numpy.array2string(depth_range_z_str, separator=",")
+    print_param += "\n"
+
+    depth_range_x = depth_range_y = depth_range_z = depth_range_3
     combined_msg = [depth_range_x, depth_range_y, depth_range_z]
     mavlink_msg_queue.put(combined_msg)
 
@@ -901,6 +940,7 @@ def handle_attitude(msg):
     global current_roll
     global current_pitch
     global current_yaw
+    global previous_yaw
 
     global current_flight_mode
 
@@ -936,6 +976,8 @@ def handle_attitude(msg):
 
     current_roll = (msg.roll * 180) / math.pi
     current_pitch = (msg.pitch * 180) / math.pi
+    # XXX: 2024-07-16T11:38:31-0400: silipwn: This approach should work to track a single value
+    previous_yaw = current_yaw
     current_yaw = (msg.yaw * 180) / math.pi
 
     if current_flight_mode == "FLIP":
@@ -1535,6 +1577,8 @@ def calculate_distance(guidance):
 
     global target_param
     global target_param_ready
+    global previous_yaw
+    global yaw_transition
     global target_param_value
 
     global Parachute_on
@@ -2829,6 +2873,14 @@ def calculate_distance(guidance):
         P[3] = 1
     else:
         P[3] = -1
+    # New policy check for transitions between previous_yaw and current_yaw
+    if abs(current_yaw - previous_yaw) >= 180:
+        yaw_transition += 1
+        log("[Custom_Policy] Let's go! Transition detected!")
+    if yaw_transition >= 50:
+        P[4] = 1
+    else:
+        P[4] = -1
 
     Global_distance = -1 * (min(P[0], max(P[1], P[3])))
 
