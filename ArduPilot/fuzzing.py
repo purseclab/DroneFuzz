@@ -970,7 +970,7 @@ def handle_attitude(msg):
     pitchspeed_previous = pitchspeed_current
     yawspeed_previous = yawspeed_current
 
-    rollspeed_current = msg.roll
+    rollspeed_current = msg.rollspeed
     pitchspeed_current = msg.pitchspeed
     yawspeed_current = msg.yawspeed
 
