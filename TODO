@@ -1,1 +1,0 @@
-TMUX spawning for AP, wouldn't work because we have this killing process that needs to be automatic, that wouldn'tbe possible with TMUX
