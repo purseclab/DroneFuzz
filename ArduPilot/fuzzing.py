@@ -3324,9 +3324,11 @@ def pick_up_cmd():
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
     # input_type = random.randint(1, 4)
-    input_type = random.choice(
-        [1, 4]
-    )  # XXX: Remove always set to 4, also enable the Flight_Mode to ensure LOITER
+    # NOTE: This is to test the policy for reproduction for prox sensor
+    if count_main_loop == 10:
+        input_type = 4
+    else:
+        input_type = 1
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
     # input_type = 1
@@ -3679,6 +3681,9 @@ def main(argv):
         while reboot_pause_event.is_set():
             log("Pausing main thread for 10 seconds because an event is set")
             time.sleep(10)
+        if count_main_loop >= 25:
+            print("We can exit now")
+            exit(0)
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
