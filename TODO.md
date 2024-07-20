@@ -11,3 +11,5 @@
 - simple reproducer #5
 - check if restarts fail
   - Mostly cause of the throttle not be neutral
+- Designated variables that need to be reset on relaunch
+  - Like especially default values?
