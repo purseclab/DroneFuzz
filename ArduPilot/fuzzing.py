@@ -3408,6 +3408,8 @@ def sma(data, window_size=10):
     # Get only the last window_size elements
     data = data[-window_size:]
     data = np.array(data)
+    # Convert all elements into absolute values
+    data = np.abs(data)
     sum = np.sum(data)
     return sum / window_size
 
