@@ -39,10 +39,12 @@ import read_inputs
 import timeit
 import re
 import math
+import numpy as np
 
 # ------------------------------------------------------------------------------------
 # Global variables
 # master = mavutil.mavlink_connection("127.0.0.1:14551")
+attitude_ctr = 0
 home_altitude = 0
 home_lat = 0
 home_lon = 0
@@ -67,9 +69,16 @@ MISSION_ATTITUDE = 50
 required_min_thr = 975
 
 current_roll = 0.0
+prev_roll = []
+prev_roll_sma = []
+roll_dips = 0
 current_pitch = 0.0
+prev_pitch = []
+prev_pitch_sma = []
+pitch_dips = 0
 current_yaw = 0.0
 previous_yaw = 0.0
+
 current_heading = 0.0
 
 yaw_transition = 0
@@ -160,6 +169,7 @@ mavlink_msg_queue = multiprocessing.Queue()
 mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
+sensor_triggered = False
 
 try:
     ardupilot_dir = os.getenv("ARDUPILOT_HOME")
@@ -685,24 +695,24 @@ def randomize_msg_rangefinder():
     # val = random.choice([depth_range_1, depth_range_2, depth_range_3])
     # print("Selected value: ", val)
     # Push all values
-    depth_range_x = depth_range_y = depth_range_z = depth_range_1
-    combined_msg = [depth_range_x, depth_range_y, depth_range_z]
-    mavlink_msg_queue.put(combined_msg)
-
-    depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
-    depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
-    depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
-
-    print_param = ""
-    print_param += "R "
-    print_param += numpy.array2string(depth_range_x_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_y_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_z_str, separator=",")
-    print_param += "\n"
-
-    write_log(print_param)
+    # depth_range_x = depth_range_y = depth_range_z = depth_range_1
+    # combined_msg = [depth_range_x, depth_range_y, depth_range_z]
+    # mavlink_msg_queue.put(combined_msg)
+    #
+    # depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
+    # depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
+    # depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
+    #
+    # print_param = ""
+    # print_param += "R "
+    # print_param += numpy.array2string(depth_range_x_str, separator=",")
+    # print_param += "|"
+    # print_param += numpy.array2string(depth_range_y_str, separator=",")
+    # print_param += "|"
+    # print_param += numpy.array2string(depth_range_z_str, separator=",")
+    # print_param += "\n"
+    #
+    # write_log(print_param)
     depth_range_x = depth_range_y = depth_range_z = depth_range_2
     combined_msg = [depth_range_x, depth_range_y, depth_range_z]
     mavlink_msg_queue.put(combined_msg)
@@ -956,6 +966,7 @@ def handle_attitude(msg):
     global pitchspeed_previous
     global yawspeed_current
     global yawspeed_previous
+    global attitude_ctr
 
     # attitude_data = (
     #     msg.roll,
@@ -976,16 +987,24 @@ def handle_attitude(msg):
     pitchspeed_current = msg.pitchspeed
     yawspeed_current = msg.yawspeed
 
+    prev_roll.append(msg.roll)
+    prev_pitch.append(msg.pitch)
     current_roll = (msg.roll * 180) / math.pi
     current_pitch = (msg.pitch * 180) / math.pi
     # XXX: 2024-07-16T11:38:31-0400: silipwn: This approach should work to track a single value
     previous_yaw = current_yaw
     current_yaw = (msg.yaw * 180) / math.pi
+    attitude_ctr += 1
 
     if current_flight_mode == "FLIP":
         if roll_initial == 0:
             roll_initial = current_roll
             pitch_initial = current_pitch
+
+    # Array maintainance
+    while len(prev_roll) > 30:
+        prev_roll.pop(0)
+        prev_pitch.pop(0)
 
 
 # ------------------------------------------------------------------------------------
@@ -1291,6 +1310,9 @@ def store_mutated_inputs():
 
     log("***************Policy violation!***************")
 
+    # Print attitude_ctr
+    log("[Attitude counter] %d" % attitude_ctr)
+
     f1 = open("mutated_log.txt", "r")
     lines = f1.readlines()
 
@@ -1329,6 +1351,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
     #         % policy
     #     )
     # )
+    log("Guidance {0}".format(guid))
     log("[Distance] ")
     for i in range(length):
         log("P%d: %f " % (i + 1, P_dist[i]))
@@ -2863,29 +2886,53 @@ def calculate_distance(guidance):
     else:
         P[0] = -1
     # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    if (roll_max - roll_min) > 5:
+    log(
+        "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
+            roll_max, roll_min, roll_max - roll_min
+        )
+    )
+    # if (roll_max - roll_min) > 10:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    # if (yaw_max - yaw_min) > 2:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    log(
+        "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
+            pitch_max, pitch_min, pitch_max - pitch_min
+        )
+    )
+    # if (pitch_max - pitch_min) > 10:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    # SMA policy
+    pitch_sma = sma(prev_pitch)
+    roll_sma = sma(prev_roll)
+    prev_pitch_sma.append(pitch_sma)
+    prev_roll_sma.append(roll_sma)
+    log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
+    log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
+    #
+
+    pitch_dips = find_dips(prev_pitch_sma, threshold=0.005)
+    roll_dips = find_dips(prev_roll_sma, threshold=0.005)
+    log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
+    if len(pitch_dips) >= 1:
         P[1] = 1
     else:
         P[1] = -1
-    if (yaw_max - yaw_min) > 5:
+    if len(roll_dips) >= 1:
         P[2] = 1
     else:
         P[2] = -1
-    if (pitch_max - pitch_min) > 5:
-        P[3] = 1
-    else:
-        P[3] = -1
-    # New policy check for transitions between previous_yaw and current_yaw
-    if abs(current_yaw - previous_yaw) >= 180:
-        yaw_transition += 1
-        log("[Custom_Policy] Let's go! Transition detected!")
-    if yaw_transition >= 50:
-        P[4] = 1
-    else:
-        P[4] = -1
 
-    Global_distance = -1 * (min(P[0], max(P[1], P[3])))
+    Global_distance = -1 * min(P[0], max(P[1], P[2]))
 
+    log("P values %s" % P)
     print_distance(
         G_dist=Global_distance,
         P_dist=P,
@@ -2894,21 +2941,20 @@ def calculate_distance(guidance):
         guid=guidance,
     )
 
-    log(
-        (
-            "[RANGEFINDER] Mode_t:%s, yaw_max:%f, yaw_min:%f, roll_max: %f, roll_min:%f, pitch_max:%f, pitch_min: %f"
-            % (
-                current_flight_mode,
-                yaw_max,
-                yaw_min,
-                roll_max,
-                roll_min,
-                pitch_max,
-                pitch_min,
-            )
-        )
-    )
-    log("P values %s" % P)
+    # log(
+    #     (
+    #         "[RANGEFINDER] Mode_t:%s, yaw_max:%f, yaw_min:%f, roll_max: %f, roll_min:%f, pitch_max:%f, pitch_min: %f"
+    #         % (
+    #             current_flight_mode,
+    #             yaw_max,
+    #             yaw_min,
+    #             roll_max,
+    #             roll_min,
+    #             pitch_max,
+    #             pitch_min,
+    #         )
+    #     )
+    # )
     # ----------------------- (end) A.RANGEFINDER policy -----------------------
 
     # ----------------------- (start) A.DRIFT1 policy -----------------------
@@ -3315,6 +3361,7 @@ def pick_up_cmd():
     global Current_input_val
     global Guidance_decision
     global RV_alive
+    global sensor_triggered
 
     RV_alive = 1
 
@@ -3355,6 +3402,26 @@ def pick_up_cmd():
     # 4) Add RangeFinder
     elif input_type == 4:
         randomize_msg_rangefinder()
+
+
+def sma(data, window_size=10):
+    # Get only the last window_size elements
+    data = data[-window_size:]
+    data = np.array(data)
+    sum = np.sum(data)
+    return sum / window_size
+
+
+def find_dips(data, threshold=0.01):
+    dips = []
+    if len(data) <= 2:
+        return dips
+    else:
+        diffs = np.diff(data)
+        for i in range(1, len(diffs)):
+            if diffs[i] < -threshold:
+                dips.append(i)
+        return dips
 
 
 # ------------------------------------------------------------------------------------
