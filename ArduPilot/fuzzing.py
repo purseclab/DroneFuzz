@@ -629,6 +629,16 @@ def start_rangefinder(process=None):
     return new_process
 
 
+def generate_sensor_msg():
+    # TODO: Ideally do some smart way of generating message
+    # Now just on a case to case basis
+    do_command_ctrl()
+
+
+def do_command_ctrl():
+    pass
+
+
 def send_msg_rangefinder():
     hz = 25
     conn_rangefinder = mavutil.mavlink_connection("127.0.0.1:1337")
@@ -3404,9 +3414,9 @@ def pick_up_cmd():
     elif input_type == 3:
         execute_env(num=random.randint(0, len(read_inputs.env_name) - 1))
 
-    # 4) Add RangeFinder
+    # 4) Add Sensor mutations
     elif input_type == 4:
-        randomize_msg_rangefinder()
+        generate_sensor_msg()
 
 
 def sma(data, window_size=10):
