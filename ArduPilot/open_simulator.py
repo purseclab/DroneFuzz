@@ -23,7 +23,7 @@ c = (
     + "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
     + "--add-param-file="  # Always load PRX parameters
     + ARDUPILOT_HOME
-    + "PRX.parm"
+    + "sensor.parm"
 )
 # "Tools/autotest/sim_vehicle.py -v ArduCopter --out=udp:127.0.0.1:1337 -D --gdb --out=tcpin:127.0.0.1:14560"
 # c = '~/ardupilot_pgfuzz/Tools/autotest/sim_vehicle.py -v ArduCopter --console --map -w'
