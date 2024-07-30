@@ -2917,8 +2917,8 @@ def calculate_distance(guidance):
     log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
 
-    pitch_dips = find_dips(prev_pitch_sma, threshold=0.005)
-    roll_dips = find_dips(prev_roll_sma, threshold=0.005)
+    pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
+    roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
     log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
     log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
     if len(pitch_dips) >= 1:
@@ -3408,6 +3408,7 @@ def sma(data, window_size=10):
     # Get only the last window_size elements
     data = data[-window_size:]
     data = np.array(data)
+    data = np.diff(data)
     # Convert all elements into absolute values
     data = np.abs(data)
     sum = np.sum(data)
