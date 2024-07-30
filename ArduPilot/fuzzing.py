@@ -66,6 +66,8 @@ executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
+DEMO_MODE = False
+DEMO_ROUNDS = 25
 required_min_thr = 975
 
 current_roll = 0.0
@@ -1338,6 +1340,9 @@ def store_mutated_inputs():
     mutated_log.close()
 
     log("Restarting the vehicle : Policy violation logged")
+    if DEMO_MODE:
+        log("[Demo mode] Exiting now")
+        exit(0)
     re_launch()
     count_main_loop = 0
 
@@ -3458,6 +3463,11 @@ def main(argv):
 
     log("Pymavlink version %s" % pymavlink.__version__)
 
+    # Check if in demo mode
+    if DEMO_MODE:
+        log("Demo mode is enabled")
+        log("Exits when a violation is found or is run for {DEMO_ROUNDS}")
+
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
     # Parsing parameters
@@ -3751,9 +3761,10 @@ def main(argv):
         while reboot_pause_event.is_set():
             log("Pausing main thread for 10 seconds because an event is set")
             time.sleep(10)
-        if count_main_loop >= 25:
-            print("We can exit now")
-            exit(0)
+        if DEMO_MODE:
+            if count_main_loop >= DEMO_ROUNDS:
+                log("[Demo mode] exiting now")
+                exit(0)
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
