@@ -290,6 +290,11 @@ def log(message, filename="fuzzing.log"):
         log_file.write(log_message + "\n")
 
 
+def sma_log(message, filename="sma.log"):
+    with open(filename, "a") as log_file:
+        log_file.write(message + "\n")
+
+
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
     log("Rebooting vehicle")
@@ -1339,10 +1344,10 @@ def store_mutated_inputs():
     mutated_log = open("mutated_log.txt", "w")
     mutated_log.close()
 
-    log("Restarting the vehicle : Policy violation logged")
     if DEMO_MODE:
-        log("[Demo mode] Exiting now")
-        exit(0)
+        log("[Demo mode] Returning without relauch")
+        return
+    log("Restarting the vehicle : Policy violation logged")
     re_launch()
     count_main_loop = 0
 
@@ -2925,6 +2930,8 @@ def calculate_distance(guidance):
     pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
     roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
     log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    if guidance == "true":
+        sma_log("{0},{1}".format(pitch_sma, roll_sma))
     log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
     if len(pitch_dips) >= 1:
         P[1] = 1
