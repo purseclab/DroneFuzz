@@ -553,6 +553,15 @@ def re_launch():
         0,
     )
 
+    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
+    if ack_msg is None:
+        log("[re-launch] [Failed to get a response]")
+    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+        log("[re-launch] [Failed to set mode]")
+        log("Exiting")
+        exit(-1)
+
     # Wait for finishing the landing
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     hb_msg = hb_msg.to_dict()
@@ -576,6 +585,15 @@ def re_launch():
         0,
     )
 
+    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
+    if ack_msg is None:
+        log("[re-launch] [Failed to get a response]")
+    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+        log("[re-launch] [Failed to set mode]")
+        log("Exiting")
+        exit(-1)
+
     time.sleep(3)
 
     mav_conn.mav.command_long_send(
@@ -589,16 +607,31 @@ def re_launch():
         0,  # param4
         0,  # param5
         0,  # param6
-        100,
-    )  # param7- altitude
+        MISSION_ATTITUDE,  # param7- altitude
+    )
 
-    time.sleep(25)
+    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
+    if ack_msg is None:
+        log("[re-launch] [Failed to get a response]")
+    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+        log("[re-launch] [Failed to set mode]")
+        log("Exiting")
+        exit(-1)
+
+    # Let's wait till we reach the height :)
+    while True:
+        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
+        if msg is not None:
+            altitude = msg.relative_alt / 1000.0  # Altitude in meters
+            if altitude >= MISSION_ATTITUDE:
+                log("Reached approximate height")
+                break
 
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
     log("Cleared reboot_pause_event")
     mav_conn.close()
-    goal_throttle = 1500
 
 
 # ------------------------------------------------------------------------------------
@@ -3114,12 +3147,12 @@ def set_rc_channel_pwm(id, pwm=1500):
 def throttle_th():
     # TODO: Check if global_throttle is correctly set
     while True:
-        if not mavlink_pause_event.is_set():
-            set_rc_channel_pwm(3, 1500)  # Default should be mid
-            time.sleep(0.5)
-        else:
-            log("Throttle disabled")
-            time.sleep(10)
+        # if not reboot_pause_event.is_set():
+        set_rc_channel_pwm(3, 1500)  # Default should be mid
+        time.sleep(0.5)
+        # else:
+        #     log("Throttle disabled")
+        #     time.sleep(10)
 
 
 # ------------------------------------------------------------------------------------
@@ -3382,12 +3415,7 @@ def pick_up_cmd():
     Guidance_decision = None
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
-    # input_type = random.randint(1, 4)
-    # NOTE: This is to test the policy for reproduction for prox sensor
-    if count_main_loop == 10:
-        input_type = 4
-    else:
-        input_type = 1
+    input_type = random.choice([1, 4])
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
     # input_type = 1
