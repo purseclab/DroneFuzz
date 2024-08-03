@@ -13,6 +13,7 @@ import sys
 import os
 
 import time
+import json
 import datetime
 import random
 import numpy
@@ -533,66 +534,7 @@ def re_launch():
     mavlink_pause_event.clear()
     time.sleep(5)
 
-    # Step 4. re-take off the vehicle
-    # master.mav.set_mode_send(
-    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
-    # )
-    mode_id = mav_conn.mode_mapping()["GUIDED"]
-    # mav_conn.set_mode(mode_id)
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-        0,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    # Wait for finishing the landing
-    hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
-    hb_msg = hb_msg.to_dict()
-    if hb_msg["custom_mode"] != mode_id:
-        log("Error mode setting failed")
-
-    time.sleep(3)
-
-    # Arming
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    time.sleep(3)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,  # target_system
-        mav_conn.target_component,  # target_component
-        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
-        0,  # confirmation
-        0,  # param1
-        0,  # param2
-        0,  # param3
-        0,  # param4
-        0,  # param5
-        0,  # param6
-        100,
-    )  # param7- altitude
-
-    time.sleep(25)
+    takeoff_copter(mav_conn)
 
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
@@ -3439,6 +3381,163 @@ def find_dips(data, threshold=0.01):
         return dips
 
 
+def upload_mission(master, filename):
+    if not os.path.exists(filename):
+        log(f"Mission file {filename} not found!")
+        return
+
+    with open(filename, "r") as f:
+        mission_list = json.load(f)
+
+    mission_count = len(mission_list)
+    master.mav.mission_count_send(
+        master.target_system, master.target_component, mission_count
+    )
+
+    # Check for mission_request_int
+    message = master.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
+    # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
+    log(message)
+
+    for i, item in enumerate(mission_list):
+        item["target_system"] = master.target_system
+        item["target_component"] = master.target_component
+        item["seq"] = i
+        # Ignore these fields
+        # mavpackettype
+        item.pop("mavpackettype", None)
+        master.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
+
+    # Wait for mission_ack
+    message = master.recv_match(type="MISSION_ACK", blocking=True)
+    if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+        log("Mission upload complete.")
+    else:
+        log("Mission upload failed.")
+        log(message)
+
+
+def takeoff_copter(mav_conn):
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+
+    while True:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+            log("Arming failed, exiting")
+            exit(0)
+        ack_msg = ack_msg.to_dict()
+        print(ack_msg)
+
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
+
+    time.sleep(1)
+    # Choose a mode
+    mode = "AUTO"
+
+    # Check if mode is available
+    if mode not in mav_conn.mode_mapping():
+        log(("Unknown mode : {}".format(mode)))
+        log(("Try:", list(mav_conn.mode_mapping().keys())))
+        exit(1)
+
+    # Get mode ID
+    mode_id = mav_conn.mode_mapping()[mode]
+
+    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        mode_id,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    # mav_conn.set_mode(mode_id)
+
+    # Wait for ACK command
+    # TODO: Figure out why we keep missing command_acks randomly
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
+    # Check if command in the same in `set_mode`
+    if ack_msg is None:
+        # Let's check if the mode is set via Heartbeat
+        hb_msg = mav_conn.recv_match(
+            type="HEARTBEAT", blocking=True
+        )  # XXX: Hoping this doesn't get stuck
+        hb_msg = hb_msg.to_dict()
+        if hb_msg["custom_mode"] != mode_id:
+            log("Failed set to guided mode")
+            log("Exiting")
+            exit(0)
+    else:
+        ack_msg = ack_msg.to_dict()
+        if (
+            ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE
+            or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
+        ):
+            # Print the ACK result !
+            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        else:
+            log("Failed set to guided mode")
+            log(ack_msg)
+
+    # Auto mode addition
+    # Send a mav_cmd_mission_start to start the mission
+    msg = mav_conn.mav.command_long_send(
+        mav_conn.target_system,  # target_system
+        mav_conn.target_component,  # target_component
+        mavutil.mavlink.MAV_CMD_MISSION_START,  # command
+        0,  # confirmation
+        0,  # param1
+        0,  # param2
+        0,  # param3
+        0,  # param4
+        0,  # param5
+        0,  # param6
+        MISSION_ATTITUDE,  # param7- altitude
+    )
+
+    ack = False
+    while not ack:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+            log("Mission start failed, exiting")
+            exit(0)
+        ack_msg = ack_msg.to_dict()
+
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
+
+    # Wait till we reach that height
+    while True:
+        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
+        if msg is not None:
+            altitude = msg.relative_alt / 1000.0  # Altitude in meters
+            if altitude >= MISSION_ATTITUDE:
+                log("Reached approximate height")
+                break
+
+
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
@@ -3567,6 +3666,7 @@ def main(argv):
     Precondition_path += "/preconditions.txt"
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
+    mission_file_path = "./mission.json"
 
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
@@ -3581,6 +3681,13 @@ def main(argv):
             log("Got GPS usage message")
             break
 
+    # Upload the mission
+    upload_mission(mav_conn, mission_file_path)
+
+    t4 = multiprocessing.Process(target=send_msg_rangefinder)
+    t4.daemon = True
+    t4.start()
+
     time.sleep(10)  # TODO: Figure out the ideal time to wait
     # This is because we need to get the second IMU also working
 
@@ -3590,144 +3697,61 @@ def main(argv):
         P.append(0)
         Previous_distance.append(0)
 
-    # Choose a mode
-    mode = "GUIDED"
+    takeoff_copter(mav_conn)
+    # This is for testing A.RTL1
+    time.sleep(25)
+    # time.sleep(3)
 
-    # Check if mode is available
-    if mode not in mav_conn.mode_mapping():
-        log(("Unknown mode : {}".format(mode)))
-        log(("Try:", list(mav_conn.mode_mapping().keys())))
-        exit(1)
-
-    # Get mode ID
-    mode_id = mav_conn.mode_mapping()[mode]
-
-    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    # )
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-        0,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
+    # NOTE: Currently disabling all the takeoff commands as mission is uploaded
+    # mav_conn.mav.command_long_send(
+    #     mav_conn.target_system,  # target_system
+    #     mav_conn.target_component,  # target_component
+    #     mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
+    #     0,  # confirmation
+    #     0,  # param1
+    #     0,  # param2
+    #     0,  # param3
+    #     0,  # param4
+    #     0,  # param5
+    #     0,  # param6
+    #     10,
+    # )  # param7- altitude
+    #
+    # ack = False
+    # while not ack:
+    #     # Wait for ACK command
+    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+    #     if ack_msg is None:
+    #         log("Takeoff failed, exiting")
+    #         exit(0)
+    #     ack_msg = ack_msg.to_dict()
+    #
+    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    #     break
+    #
+    # # This is for testing A.RTL1
+    # time.sleep(25)
+    # # time.sleep(3)
+    #
+    # mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
+    # # master.mav.set_mode_send(
+    # #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # # )
     # mav_conn.set_mode(mode_id)
+    #
+    # while True:
+    #     # Wait for ACK command
+    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+    #     ack_msg = ack_msg.to_dict()
+    #
+    #     # Check if command in the same in `set_mode`
+    #     if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+    #         continue
+    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    #     break
+    # # Set default throttle
+    # set_rc_channel_pwm(3, 1500)
 
-    # Wait for ACK command
-    # TODO: Figure out why we keep missing command_acks randomly
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
-    # Check if command in the same in `set_mode`
-    if ack_msg is None:
-        # Let's check if the mode is set via Heartbeat
-        hb_msg = mav_conn.recv_match(
-            type="HEARTBEAT", blocking=True
-        )  # XXX: Hoping this doesn't get stuck
-        hb_msg = hb_msg.to_dict()
-        if hb_msg["custom_mode"] != mode_id:
-            log("Failed set to guided mode")
-            log("Exiting")
-            exit(0)
-    else:
-        ack_msg = ack_msg.to_dict()
-        if (
-            ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE
-            or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
-        ):
-            # Print the ACK result !
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        else:
-            log("Failed set to guided mode")
-            log(ack_msg)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log("Arming failed, exiting")
-            exit(0)
-        ack_msg = ack_msg.to_dict()
-        print(ack_msg)
-
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-
-    time.sleep(1)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,  # target_system
-        mav_conn.target_component,  # target_component
-        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
-        0,  # confirmation
-        0,  # param1
-        0,  # param2
-        0,  # param3
-        0,  # param4
-        0,  # param5
-        0,  # param6
-        MISSION_ATTITUDE,  # param7- altitude
-    )
-
-    ack = False
-    while not ack:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log("Takeoff failed, exiting")
-            exit(0)
-        ack_msg = ack_msg.to_dict()
-
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-
-    # Wait till we reach that height
-    while True:
-        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
-        if msg is not None:
-            altitude = msg.relative_alt / 1000.0  # Altitude in meters
-            if altitude >= MISSION_ATTITUDE:
-                log("Reached approximate height")
-                break
-
-    # 2024-07-04T11:15:22-0400: silipwn:  TODO: Fix ALT_HOLD mechanism later?
-    mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
-    # master.mav.set_mode_send(
-    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    # )
-    mav_conn.set_mode(mode_id)
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        ack_msg = ack_msg.to_dict()
-        #
-        # Check if command in the same in `set_mode`
-        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-            break
-        else:
-            exit("Failed to set the mode")
-    # Set default throttle
-    set_rc_channel_pwm(3, 1500)
-    log("Setting default throttle")
     time.sleep(3)
     # Maintain mid-position of stick on RC controller
     goal_throttle = 1500
