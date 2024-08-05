@@ -21,6 +21,7 @@ c = (
     + "--out=udp:127.0.0.1:1337 "  # Sensor thread
     + "--out=udp:127.0.0.1:14555 "  # QGC port
     + "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
+    + "-l 51.8752066,14.6487840,54.15,0 "  # Zurich location as mission is based on that?
     + "--add-param-file="  # Always load PRX parameters
     + ARDUPILOT_HOME
     + "sensor.parm"
