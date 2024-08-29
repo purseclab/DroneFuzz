@@ -3391,7 +3391,7 @@ def find_dips(data, threshold=0.01):
         return dips
 
 
-def upload_mission(master, filename):
+def upload_mission(mav_conn, filename):
     if not os.path.exists(filename):
         log(f"Mission file {filename} not found!")
         return
@@ -3400,26 +3400,26 @@ def upload_mission(master, filename):
         mission_list = json.load(f)
 
     mission_count = len(mission_list)
-    master.mav.mission_count_send(
-        master.target_system, master.target_component, mission_count
+    mav_conn.mav.mission_count_send(
+        mav_conn.target_system, mav_conn.target_component, mission_count
     )
 
     # Check for mission_request_int
-    message = master.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
+    message = mav_conn.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
     # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
     log(message)
 
     for i, item in enumerate(mission_list):
-        item["target_system"] = master.target_system
-        item["target_component"] = master.target_component
+        item["target_system"] = mav_conn.target_system
+        item["target_component"] = mav_conn.target_component
         item["seq"] = i
         # Ignore these fields
         # mavpackettype
         item.pop("mavpackettype", None)
-        master.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
+        mav_conn.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
 
     # Wait for mission_ack
-    message = master.recv_match(type="MISSION_ACK", blocking=True)
+    message = mav_conn.recv_match(type="MISSION_ACK", blocking=True)
     if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
         log("Mission upload complete.")
     else:
