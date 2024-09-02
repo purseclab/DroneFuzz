@@ -261,6 +261,11 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
                 previous_flight_mode = current_flight_mode
             current_flight_mode = mavutil.mode_string_v10(msg)
             drone_status = msg.system_status
+            log(
+                "Current_flight_mode {} and drone_status {}".format(
+                    current_flight_mode, drone_status
+                )
+            )
             return msg, connection
         time.sleep(0.1)
         # If no heartbeat is received, close the connection and retry
@@ -3336,10 +3341,11 @@ def pick_up_cmd():
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
     # input_type = random.randint(1, 4)
     # NOTE: This is to test the policy for reproduction for prox sensor
-    if count_main_loop == 10:
-        input_type = 4
-    else:
-        input_type = 1
+    # if count_main_loop == 10:
+    #     input_type = 4
+    # else:
+    #     input_type = 1
+    input_type = 4
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
     # input_type = 1
@@ -3676,7 +3682,7 @@ def main(argv):
     Precondition_path += "/preconditions.txt"
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
-    mission_file_path = "./mission.json"
+    mission_file_path = "./simple_movement_AU.json"
 
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
