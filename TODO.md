@@ -9,6 +9,8 @@
 - simple reproducer #5
 - Designated variables that need to be reset on relaunch
   - Like especially default values?
+- Ensure that the hardcoded values are coming through a config file
+  - Configparser? should be good enough
 
 DONE
 - tmux spawning
