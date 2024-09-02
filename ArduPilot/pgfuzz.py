@@ -10,43 +10,46 @@ import psutil
 child_processes = []
 
 
+def goodbye():
+    print("SIGINT received, terminator program is now active (`ー´)...")
+    # use tmux kill-window to kill the tmux windows with pgfuzz in the name
+    # List all tmux windows
+    result = subprocess.check_output(["tmux", "list-windows"])
+    session_name = tmux_session_info()
+    for window in result.decode("utf-8").split("\n"):
+        if "pgfuzz" in window:
+            window_id = window.split(":")[0]
+            window_name = window.split(" ")[1]
+            window_target = "{0}:{1}".format(session_name, window_name)
+            cmd = ["tmux", "send-keys", "-t", window_target, "C-c", "C-m"]
+            subprocess.call(cmd)
+            time.sleep(1)  # Give the process some time to terminate
+            print("Closing window: {0}".format(window_name))
+            subprocess.call(["tmux", "kill-window", "-t", window_id])
+        # Find Xterm process running ArduCopter and kill it
+        arducopter_pid = None
+        for proc in psutil.process_iter():
+            if "xterm" in proc.name():
+                # See if the process is ArduCopter
+                if "ArduCopter" in proc.cmdline():
+                    arducopter_pid = proc.pid
+                    print("Terminating random ArduCopter")
+                    print("ArduCopter PID: " + str(arducopter_pid))
+                    proc.kill()
+            if "ruby" in proc.name():
+                gz_match = [x for x in proc.cmdline() if "gz" in x]
+                if gz_match:
+                    print("Terminating random gazebo process")
+                    proc.kill()
+
+
 def sigint_handler(signum, _frame):
     if signum == signal.SIGINT:
-        print("SIGINT received, terminator program is now active (`ー´)...")
-        # use tmux kill-window to kill the tmux windows with pgfuzz in the name
-        # List all tmux windows
-        result = subprocess.check_output(["tmux", "list-windows"])
-        session_name = tmux_session_info()
-        for window in result.decode("utf-8").split("\n"):
-            if "pgfuzz" in window:
-                window_id = window.split(":")[0]
-                window_name = window.split(" ")[1]
-                window_target = "{0}:{1}".format(session_name, window_name)
-                cmd = ["tmux", "send-keys", "-t", window_target, "C-c", "C-m"]
-                subprocess.call(cmd)
-                time.sleep(1)  # Give the process some time to terminate
-                print("Closing window: {0}".format(window_name))
-                subprocess.call(["tmux", "kill-window", "-t", window_id])
-            # Find Xterm process running ArduCopter and kill it
-            arducopter_pid = None
-            for proc in psutil.process_iter():
-                if "xterm" in proc.name():
-                    # See if the process is ArduCopter
-                    if "ArduCopter" in proc.cmdline():
-                        arducopter_pid = proc.pid
-                        print("Terminating random ArduCopter")
-                        print("ArduCopter PID: " + str(arducopter_pid))
-                        proc.kill()
-                if "ruby" in proc.name():
-                    gz_match = [x for x in proc.cmdline() if "gz" in x]
-                    if gz_match:
-                        print("Terminating random gazebo process")
-                        proc.kill()
-        print("Check for ArduPilot processes")
+        goodbye()
         exit(0)
     else:
         print("Received signal: {0}".format(signum))
-        print("Not sure what to do, bailing out now")
+        print("Not sure what to do, bailing out for now")
 
 
 def tmux_session_info() -> str | None:
@@ -61,6 +64,19 @@ def tmux_session_info() -> str | None:
         return session_name
     else:
         return None
+
+
+def tmux_window_exists(session_name: str, window_name: str) -> bool:
+    result = subprocess.Popen(
+        ["tmux", "list-windows", "-t", session_name],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    data = result.communicate()
+    if window_name in data[0].decode("utf-8"):
+        return True
+    else:
+        return False
 
 
 def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
@@ -154,6 +170,10 @@ spawn_tmux_window(window_name=prg_name, command=cmd)
 while True:
     time.sleep(1)
     f = open("restart.txt", "r")
+    if not tmux_window_exists("", "fuzzing"):
+        print("Fuzzing window closed, adios!")
+        goodbye()
+        exit(0)
     if f.read() == "restart":
         f.close()
         open("restart.txt", "w").close()
@@ -161,3 +181,4 @@ while True:
         # Get the current datetime in Unix seconds
         prg_name = "pgfuzz-sitl-" + str(int(time.time()))
         spawn_tmux_window(window_name=prg_name, command=cmd)
+    # Also check if the fuzzing window is open, if closed exit
