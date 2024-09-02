@@ -4,6 +4,7 @@ import subprocess
 
 # from subprocess import *
 import os
+import psutil
 
 # List to keep track of child processes
 child_processes = []
@@ -26,8 +27,21 @@ def sigint_handler(signum, _frame):
                 time.sleep(1)  # Give the process some time to terminate
                 print("Closing window: {0}".format(window_name))
                 subprocess.call(["tmux", "kill-window", "-t", window_id])
-            # Try to find xterm processes and print them
-            # TODO Fix the stray processes
+            # Find Xterm process running ArduCopter and kill it
+            arducopter_pid = None
+            for proc in psutil.process_iter():
+                if "xterm" in proc.name():
+                    # See if the process is ArduCopter
+                    if "ArduCopter" in proc.cmdline():
+                        arducopter_pid = proc.pid
+                        print("Terminating random ArduCopter")
+                        print("ArduCopter PID: " + str(arducopter_pid))
+                        proc.kill()
+                if "ruby" in proc.name():
+                    gz_match = [x for x in proc.cmdline() if "gz" in x]
+                    if gz_match:
+                        print("Terminating random gazebo process")
+                        proc.kill()
         print("Check for ArduPilot processes")
         exit(0)
     else:
