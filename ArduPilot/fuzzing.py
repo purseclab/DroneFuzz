@@ -67,8 +67,8 @@ executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
-DEMO_MODE = False
-DEMO_ROUNDS = 25
+DEMO_MODE = True
+DEMO_ROUNDS = 15
 required_min_thr = 975
 
 current_roll = 0.0
@@ -173,6 +173,7 @@ mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
 sensor_triggered = False
+gimbal_ctr = 0
 
 try:
     ardupilot_dir = os.getenv("ARDUPILOT_HOME")
@@ -216,8 +217,8 @@ Precondition_path = ""
 # Current_policy_P_length = 4
 # Current_policy = "A.RTL4"
 # Current_policy_P_length = 3
-Current_policy = "A.RANGEFINDER"
-Current_policy_P_length = 3
+Current_policy = "A.GIMBAL"
+Current_policy_P_length = 2
 
 # Debug parameter
 PRINT_DEBUG = 0
@@ -584,11 +585,30 @@ def start_rangefinder(process=None):
 def generate_sensor_msg():
     # TODO: Ideally do some smart way of generating message
     # Now just on a case to case basis
-    do_command_ctrl()
+    return do_command_ctrl()
 
 
 def do_command_ctrl():
-    pass
+    conn_sensor = mavutil.mavlink_connection("127.0.0.1:1337")
+    conn_sensor.recv_match(type="HEARTBEAT", blocking=True)
+    # Just don't generate 0
+    var_sensor_value = numpy.random.uniform(0, 180)
+    conn_sensor.mav.command_long_send(
+        0,
+        # self.settings.target_system,
+        154,
+        # self.settings.target_component,
+        mavutil.mavlink.MAV_CMD_DO_MOUNT_CONTROL,
+        0,  # confirmation
+        0,
+        0,
+        var_sensor_value,  # yaw
+        0,  # param4
+        0,  # lat
+        0,  # lon
+        mavutil.mavlink.MAV_MOUNT_MODE_MAVLINK_TARGETING,
+    )  # param7
+    return var_sensor_value
 
 
 def send_msg_rangefinder():
@@ -1428,7 +1448,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
 
 # ------------------------------------------------------------------------------------
 # ---------------(Start) Calculate propositional and global distances-----------------
-def calculate_distance(guidance):
+def calculate_distance(guidance, mutated_val: float | None = None):
     # State global variables
     global alt_series
     global roll_series
@@ -1491,6 +1511,7 @@ def calculate_distance(guidance):
     global pitchspeed_previous
     global yawspeed_current
     global yawspeed_previous
+    global gimbal_ctr
 
     global yaw_min
     global yaw_max
@@ -2832,83 +2853,83 @@ def calculate_distance(guidance):
     # ----------------------- (end) A.LOITER1 policy -----------------------
 
     # ----------------------- (start) A.RANGEFINDER policy -----------------------
-    # Adjust Yaw
-    if current_yaw > yaw_max:
-        yaw_max = current_yaw
-    if current_yaw < yaw_min:
-        yaw_min = current_yaw
-    # Adjust Roll
-    if current_roll > roll_max:
-        roll_max = current_roll
-    if current_roll < roll_min:
-        roll_min = current_roll
-    # Adjust Pitch
-    if current_pitch > pitch_max:
-        pitch_max = current_pitch
-    if current_pitch < pitch_min:
-        pitch_min = current_pitch
-
-    if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
-        P[0] = 1
-    else:
-        P[0] = -1
-    # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    log(
-        "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
-            roll_max, roll_min, roll_max - roll_min
-        )
-    )
-    # if (roll_max - roll_min) > 10:
+    # # Adjust Yaw
+    # if current_yaw > yaw_max:
+    #     yaw_max = current_yaw
+    # if current_yaw < yaw_min:
+    #     yaw_min = current_yaw
+    # # Adjust Roll
+    # if current_roll > roll_max:
+    #     roll_max = current_roll
+    # if current_roll < roll_min:
+    #     roll_min = current_roll
+    # # Adjust Pitch
+    # if current_pitch > pitch_max:
+    #     pitch_max = current_pitch
+    # if current_pitch < pitch_min:
+    #     pitch_min = current_pitch
+    #
+    # if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    # # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
+    # log(
+    #     "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
+    #         roll_max, roll_min, roll_max - roll_min
+    #     )
+    # )
+    # # if (roll_max - roll_min) > 10:
+    # #     P[1] = 1
+    # # else:
+    # #     P[1] = -1
+    # # if (yaw_max - yaw_min) > 2:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # log(
+    #     "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
+    #         pitch_max, pitch_min, pitch_max - pitch_min
+    #     )
+    # )
+    # # if (pitch_max - pitch_min) > 10:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # # SMA policy
+    # pitch_sma = sma(prev_pitch)
+    # roll_sma = sma(prev_roll)
+    # prev_pitch_sma.append(pitch_sma)
+    # prev_roll_sma.append(roll_sma)
+    # log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
+    # log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
+    # #
+    #
+    # pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
+    # roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
+    # log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    # if guidance == "true":
+    #     sma_log("{0},{1}".format(pitch_sma, roll_sma))
+    # log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
+    # if len(pitch_dips) >= 1:
     #     P[1] = 1
     # else:
     #     P[1] = -1
-    # if (yaw_max - yaw_min) > 2:
+    # if len(roll_dips) >= 1:
     #     P[2] = 1
     # else:
     #     P[2] = -1
-    log(
-        "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
-            pitch_max, pitch_min, pitch_max - pitch_min
-        )
-    )
-    # if (pitch_max - pitch_min) > 10:
-    #     P[2] = 1
-    # else:
-    #     P[2] = -1
-    # SMA policy
-    pitch_sma = sma(prev_pitch)
-    roll_sma = sma(prev_roll)
-    prev_pitch_sma.append(pitch_sma)
-    prev_roll_sma.append(roll_sma)
-    log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
-    log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
-
-    pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
-    roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
-    log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
-    if guidance == "true":
-        sma_log("{0},{1}".format(pitch_sma, roll_sma))
-    log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
-    if len(pitch_dips) >= 1:
-        P[1] = 1
-    else:
-        P[1] = -1
-    if len(roll_dips) >= 1:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    Global_distance = -1 * min(P[0], max(P[1], P[2]))
-
-    log("P values %s" % P)
-    print_distance(
-        G_dist=Global_distance,
-        P_dist=P,
-        length=3,
-        policy="A.RANGEFINDER",
-        guid=guidance,
-    )
+    # Global_distance = -1 * min(P[0], max(P[1], P[2]))
+    #
+    # log("P values %s" % P)
+    # print_distance(
+    #     G_dist=Global_distance,
+    #     P_dist=P,
+    #     length=3,
+    #     policy="A.RANGEFINDER",
+    #     guid=guidance,
+    # )
 
     # log(
     #     (
@@ -2925,6 +2946,45 @@ def calculate_distance(guidance):
     #     )
     # )
     # ----------------------- (end) A.RANGEFINDER policy -----------------------
+    #
+    # ----------------------- (start) A.GIMBAL policy -----------------------
+    # Cause the we do it like that
+    # XXX: Eventually replace
+    if current_flight_mode == "AUTO":
+        P[0] = 1
+    else:
+        P[0] = -1
+    log("[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_val))
+    # If current_yaw is not equal to mutated_val in a threshold, set distance to 1
+    # and mutated_val is not None
+    if guidance and mutated_val is not None:
+        if abs(current_yaw - mutated_val) > 10:
+            log(
+                "[GIMBAL] diff {0} ctr {1}".format(
+                    abs(current_yaw - mutated_val), gimbal_ctr
+                )
+            )
+            # defaults
+            gimbal_ctr = gimbal_ctr + 1
+            if gimbal_ctr > 3:
+                P[1] = 1
+        else:
+            log("Reset the ctr")
+            gimbal_ctr = 0
+            P[1] = -1
+
+    Global_distance = -1 * min(P[0], P[1])
+
+    log("[GIMBAL] P values %s" % P)
+    print_distance(
+        G_dist=Global_distance,
+        P_dist=P,
+        length=2,
+        policy="A.GIMBAL",
+        guid=guidance,
+    )
+    # )
+    # ----------------------- (end) A.GIMBAL policy -----------------------
 
     # ----------------------- (start) A.DRIFT1 policy -----------------------
     # P0: GPS_failsafe = on
@@ -3371,7 +3431,7 @@ def pick_up_cmd():
 
     # 4) Add Sensor mutations
     elif input_type == 4:
-        generate_sensor_msg()
+        return generate_sensor_msg()
 
 
 def sma(data, window_size=10):
@@ -3549,7 +3609,9 @@ def takeoff_copter(mav_conn):
         msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
         if msg is not None:
             altitude = msg.relative_alt / 1000.0  # Altitude in meters
-            if altitude >= MISSION_ATTITUDE:
+            if (
+                altitude >= MISSION_ATTITUDE / 2
+            ):  # Half the height is good enough for now (Mission based)
                 log("Reached approximate height")
                 break
 
@@ -3682,7 +3744,7 @@ def main(argv):
     Precondition_path += "/preconditions.txt"
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
-    mission_file_path = "./simple_movement_AU.json"
+    mission_file_path = "./triangle.json"
 
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
@@ -3844,11 +3906,11 @@ def main(argv):
             # Calculate propositional and global distances
             calculate_distance(guidance="false")
 
-            pick_up_cmd()
+            value = pick_up_cmd()
 
             # Calculate distances to evaluate effect of the executed input
             time.sleep(4)
-            calculate_distance(guidance="true")
+            calculate_distance(guidance="true", mutated_val=value)
             goal_throttle = 1500
 
             # XXX: 2024-07-11T11:37:53-0400: silipwn: See if this is absolutely necessary
