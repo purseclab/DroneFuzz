@@ -3770,10 +3770,10 @@ def main(argv):
 
     time.sleep(3)
     # Maintain mid-position of stick on RC controller
-    goal_throttle = 1500
-    new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
-    new_process.daemon = True
-    new_process.start()
+    # goal_throttle = 1500
+    # new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
+    # new_process.daemon = True
+    # new_process.start()
     # t1 = threading.Thread(name="Throttle", target=throttle_th, args=())
     # t1.daemon = True
     # t1.start()
