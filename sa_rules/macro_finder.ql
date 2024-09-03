@@ -7,33 +7,31 @@
 
 import cpp
 
-// Find all the if directives that enable the FAST_TASK or SCHED_TASK macros
-// from PreprocessorIf pbif
-// select pbif
-from PreprocessorIf ppIf, MacroInvocation mi
-where
-    ppIf.getFile().getBaseName().matches("Copter.cpp") and
-    // Ensure the macro invocation is in the same file as the `#if`
-    mi.getLocation().getFile() = ppIf.getLocation().getFile() and
-    
-    // Ensure the macro invocation is after the `#if` directive
-    // mi.getActualLocation() > ppIf.getLocation() and
-    
-    // Ensure the macro invocation is before any `#else`, `#elif`, or `#endif` that corresponds to the `#if`
-    // (
-    //     not exists(PreprocessorBranchDirective ppd |
-    //         ppd.getLocation() > ppIf.getLocation() and 
-    //         ppd.getLocation() < mi.getLocation() and
-    //         ppd = ppIf.getEndIf()
-    //     )
-    // ) and
-    
-    // Optionally, filter the macro invocation to match a specific macro (like `SCHED_TASK`)
-    mi.getMacro().hasName("SCHED_TASK")
+// Find all the if directives that are ENABLEd :)
+// from PreprocessorIf preprocessorIf
 
-select ppIf, mi, "Macro call within #if directive"
+// where
+//     preprocessorIf.getFile().getBaseName().matches("Copter.cpp")
+//     // Check if the If condition compares with string "ENABLED"
 
-// where ifd.getCondition().toString().matches(".*FAST_TASK.*") or ifd.getCondition().toString().matches(".*SCHED_TASK.*")
+//     // NOTE: Alternatively, we can check for exactly == ENABLED
+//     and preprocessorIf.getIf().toString().matches("%ENABLED%")
+//     // Find if there's a macro in the if condition
+//     // and preprocessorIf.getIf().findRootCause() instanceof Macro
+
+// select preprocessorIf, preprocessorIf.getIf().findRootCause().getLocation(),  "Macro call"
+import cpp
+
+from PreprocessorBranch branch, Macro macro
+where 
+  branch instanceof PreprocessorIf and
+  branch.getFile().getBaseName().matches("Copter.cpp") and
+  branch.getIf().toString().matches("%ENABLED%") and
+  macro.getAnInvocation().getLocation().getStartLine() = branch.getLocation().getStartLine()
+select branch, macro, "Macro '" + macro.getName() + "' is used in preprocessor if condition on line " + 
+  branch.getLocation().getStartLine().toString()
+
+
 // Macros from a file only
 //  from Macro m
 // where m.getFile().getAbsolutePath().toString().matches("Copter.cpp")
