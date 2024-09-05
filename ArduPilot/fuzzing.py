@@ -608,6 +608,16 @@ def do_command_ctrl():
         0,  # lon
         mavutil.mavlink.MAV_MOUNT_MODE_MAVLINK_TARGETING,
     )  # param7
+    # Convert var_sensor_value to bytes
+    var_sensor_value_str = str(var_sensor_value).encode()
+    # Send the value over udp
+    import socket
+
+    socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(
+        var_sensor_value_str, ("127.0.0.1", 5005)
+    )
+    log("Command sent!")
+
     return var_sensor_value
 
 
