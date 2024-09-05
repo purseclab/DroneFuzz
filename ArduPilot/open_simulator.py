@@ -53,6 +53,7 @@ cmd_ap_gz += "-f gazebo-iris --model JSON "
 cmd_ap_gz += "--out=udp:127.0.0.1:1337 "  # Sensor thread
 cmd_ap_gz += "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
 cmd_ap_gz += "--out=udp:127.0.0.1:14555 "  # QGC port
+cmd_ap_gz += "--out=udpout:127.0.0.1:1339 "  # Plotting thread
 cmd_ap_gz += "--add-param-file=" + ARDUPILOT_HOME + "sensor.parm"
 
 # TODO: Take the path from a config
