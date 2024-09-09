@@ -22,14 +22,19 @@ import cpp
 // select preprocessorIf, preprocessorIf.getIf().findRootCause().getLocation(),  "Macro call"
 import cpp
 
-from PreprocessorBranch branch, Macro macro
-where 
-  branch instanceof PreprocessorIf and
-  branch.getFile().getBaseName().matches("Copter.cpp") and
-  branch.getIf().toString().matches("%ENABLED%") and
-  macro.getAnInvocation().getLocation().getStartLine() = branch.getLocation().getStartLine()
-select branch, macro, "Macro '" + macro.getName() + "' is used in preprocessor if condition on line " + 
-  branch.getLocation().getStartLine().toString()
+// from PreprocessorBranch branch, Macro macro
+// where 
+//   branch instanceof PreprocessorIf and
+//   branch.getFile().getBaseName().matches("Copter.cpp") and
+//   branch.getIf().toString().matches("%RANGEFINDER%")
+
+// select branch,"Macro '" + branch.getIf() + "' is used in preprocessor if condition on line " + 
+//   branch.getLocation().getStartLine().toString()
+// import cpp
+
+from MacroAccess ma
+where ma.getMacroName() = "HAL_PROXIMITY_ENABLED"
+select ma, "PRX is accessed here.", ma.getLocation()
 
 
 // Macros from a file only
