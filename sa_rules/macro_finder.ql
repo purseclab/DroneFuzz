@@ -7,38 +7,11 @@
 
 import cpp
 
-// Find all the if directives that are ENABLEd :)
-// from PreprocessorIf preprocessorIf
-
-// where
-//     preprocessorIf.getFile().getBaseName().matches("Copter.cpp")
-//     // Check if the If condition compares with string "ENABLED"
-
-//     // NOTE: Alternatively, we can check for exactly == ENABLED
-//     and preprocessorIf.getIf().toString().matches("%ENABLED%")
-//     // Find if there's a macro in the if condition
-//     // and preprocessorIf.getIf().findRootCause() instanceof Macro
-
-// select preprocessorIf, preprocessorIf.getIf().findRootCause().getLocation(),  "Macro call"
-import cpp
-
-// from PreprocessorBranch branch, Macro macro
-// where 
-//   branch instanceof PreprocessorIf and
-//   branch.getFile().getBaseName().matches("Copter.cpp") and
-//   branch.getIf().toString().matches("%RANGEFINDER%")
-
-// select branch,"Macro '" + branch.getIf() + "' is used in preprocessor if condition on line " + 
-//   branch.getLocation().getStartLine().toString()
-// import cpp
-
-from MacroAccess ma
-where ma.getMacroName() = "HAL_PROXIMITY_ENABLED"
-select ma, "PRX is accessed here.", ma.getLocation()
-
-
-// Macros from a file only
-//  from Macro m
-// where m.getFile().getAbsolutePath().toString().matches("Copter.cpp")
-// Select only macros that start from HAL
-// select m, m.getLocation().getStartLine(), m.getLocation().getStartColumn(), m.getName(), m.getFile()
+// Find the sensor functions inside Parameters.cpp inside the AP_Periph folder
+from Function f, Parameter p, MacroInvocation m
+where
+  // f.getFile().getAbsolutePath().toString().indexOf("AP_Periph/Parameters.cpp") >= 0
+  // f.getFile().toString().matches("%Parameters.cpp")
+  m.getFile().toString().matches("%Parameters.cpp") and
+  m.getMacroName().matches("GOBJECT")
+select m, m.getStmt(), m.getExpr()
