@@ -11,6 +11,7 @@ master = mavutil.mavlink_connection("localhost:1337")
 # os.environ["MAVLINK_DIALECT"] = "ardupilotmega"
 
 print("Sending message for configuration")
+master.wait_heartbeat()
 # master.mav.mount_configure_send(
 #     0, 0, mavutil.mavlink.MAV_MOUNT_MODE_MAVLINK_TARGETING, 1, 1, 1
 # )
@@ -31,7 +32,7 @@ master.mav.command_long_send(
     0,  # confirmation
     0,
     0,
-    0,
+    90, # yaw
     0,  # param4
     0,  # lat
     0,  # lon
@@ -44,9 +45,8 @@ master.mav.command_long_send(
 #
 print("Command sent!")
 ack_msg = master.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
-if ack_msg: 
+if ack_msg:
     ack_msg = ack_msg.to_dict()
     print(ack_msg)
 else:
     print("No message man")
-

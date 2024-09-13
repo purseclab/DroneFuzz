@@ -1,7 +1,5 @@
 # TODOs
 
-- tmux spawning
-  - can't kill itself in the end (Maybe just exit the parent process)
 - fix misc hangs #10
   - timeout in the end?
 - explore adding more ports for monitoring #15
@@ -9,7 +7,13 @@
 - restructure the restart mechanism #11
 - enable focusing on a single policy #5
 - simple reproducer #5
-- check if restarts fail
-  - Mostly cause of the throttle not be neutral
 - Designated variables that need to be reset on relaunch
   - Like especially default values?
+- Ensure that the hardcoded values are coming through a config file
+  - Configparser? should be good enough
+
+DONE
+- tmux spawning
+  - can't kill itself in the end (Maybe just exit the parent process)
+- check if restarts fail
+  - Mostly cause of the throttle not be neutral

@@ -13,6 +13,7 @@ import sys
 import os
 
 import time
+import json
 import datetime
 import random
 import numpy
@@ -66,8 +67,8 @@ executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
-DEMO_MODE = False
-DEMO_ROUNDS = 25
+DEMO_MODE = True
+DEMO_ROUNDS = 15
 required_min_thr = 975
 
 current_roll = 0.0
@@ -172,6 +173,7 @@ mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
 sensor_triggered = False
+gimbal_ctr = 0
 
 try:
     ardupilot_dir = os.getenv("ARDUPILOT_HOME")
@@ -215,8 +217,8 @@ Precondition_path = ""
 # Current_policy_P_length = 4
 # Current_policy = "A.RTL4"
 # Current_policy_P_length = 3
-Current_policy = "A.RANGEFINDER"
-Current_policy_P_length = 3
+Current_policy = "A.GIMBAL"
+Current_policy_P_length = 2
 
 # Debug parameter
 PRINT_DEBUG = 0
@@ -260,6 +262,11 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
                 previous_flight_mode = current_flight_mode
             current_flight_mode = mavutil.mode_string_v10(msg)
             drone_status = msg.system_status
+            log(
+                "Current_flight_mode {} and drone_status {}".format(
+                    current_flight_mode, drone_status
+                )
+            )
             return msg, connection
         time.sleep(0.1)
         # If no heartbeat is received, close the connection and retry
@@ -533,100 +540,7 @@ def re_launch():
     mavlink_pause_event.clear()
     time.sleep(5)
 
-    # Step 4. re-take off the vehicle
-    # master.mav.set_mode_send(
-    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, 4
-    # )
-    mode_id = mav_conn.mode_mapping()["GUIDED"]
-    # mav_conn.set_mode(mode_id)
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-        0,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
-    if ack_msg is None:
-        log("[re-launch] [Failed to get a response]")
-    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-        log("[re-launch] [Failed to set mode]")
-        log("Exiting")
-        exit(-1)
-
-    # Wait for finishing the landing
-    hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
-    hb_msg = hb_msg.to_dict()
-    if hb_msg["custom_mode"] != mode_id:
-        log("Error mode setting failed")
-
-    time.sleep(3)
-
-    # Arming
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
-    if ack_msg is None:
-        log("[re-launch] [Failed to get a response]")
-    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-        log("[re-launch] [Failed to set mode]")
-        log("Exiting")
-        exit(-1)
-
-    time.sleep(3)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,  # target_system
-        mav_conn.target_component,  # target_component
-        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
-        0,  # confirmation
-        0,  # param1
-        0,  # param2
-        0,  # param3
-        0,  # param4
-        0,  # param5
-        0,  # param6
-        MISSION_ATTITUDE,  # param7- altitude
-    )
-
-    # Try to check for COMMAND_ACK for 5 seconds, if no response, then send a warning and continue
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=5)
-    if ack_msg is None:
-        log("[re-launch] [Failed to get a response]")
-    elif ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-        log("[re-launch] [Failed to set mode]")
-        log("Exiting")
-        exit(-1)
-
-    # Let's wait till we reach the height :)
-    while True:
-        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
-        if msg is not None:
-            altitude = msg.relative_alt / 1000.0  # Altitude in meters
-            if altitude >= MISSION_ATTITUDE:
-                log("Reached approximate height")
-                break
+    takeoff_copter(mav_conn)
 
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
@@ -665,6 +579,45 @@ def start_rangefinder(process=None):
     new_process.daemon = True
     new_process.start()
     return new_process
+
+
+def generate_sensor_msg():
+    # TODO: Ideally do some smart way of generating message
+    # Now just on a case to case basis
+    return do_command_ctrl()
+
+
+def do_command_ctrl():
+    conn_sensor = mavutil.mavlink_connection("127.0.0.1:1337")
+    conn_sensor.recv_match(type="HEARTBEAT", blocking=True)
+    # Just don't generate 0
+    var_sensor_value = numpy.random.uniform(0, 180)
+    conn_sensor.mav.command_long_send(
+        0,
+        # self.settings.target_system,
+        154,
+        # self.settings.target_component,
+        mavutil.mavlink.MAV_CMD_DO_MOUNT_CONTROL,
+        0,  # confirmation
+        0,
+        0,
+        var_sensor_value,  # yaw
+        0,  # param4
+        0,  # lat
+        0,  # lon
+        mavutil.mavlink.MAV_MOUNT_MODE_MAVLINK_TARGETING,
+    )  # param7
+    # Convert var_sensor_value to bytes
+    var_sensor_value_str = str(var_sensor_value).encode()
+    # Send the value over udp
+    import socket
+
+    socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(
+        var_sensor_value_str, ("127.0.0.1", 5005)
+    )
+    log("Command sent!")
+
+    return var_sensor_value
 
 
 def send_msg_rangefinder():
@@ -1504,7 +1457,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
 
 # ------------------------------------------------------------------------------------
 # ---------------(Start) Calculate propositional and global distances-----------------
-def calculate_distance(guidance):
+def calculate_distance(guidance, mutated_val: float | None = None):
     # State global variables
     global alt_series
     global roll_series
@@ -1567,6 +1520,7 @@ def calculate_distance(guidance):
     global pitchspeed_previous
     global yawspeed_current
     global yawspeed_previous
+    global gimbal_ctr
 
     global yaw_min
     global yaw_max
@@ -2908,83 +2862,83 @@ def calculate_distance(guidance):
     # ----------------------- (end) A.LOITER1 policy -----------------------
 
     # ----------------------- (start) A.RANGEFINDER policy -----------------------
-    # Adjust Yaw
-    if current_yaw > yaw_max:
-        yaw_max = current_yaw
-    if current_yaw < yaw_min:
-        yaw_min = current_yaw
-    # Adjust Roll
-    if current_roll > roll_max:
-        roll_max = current_roll
-    if current_roll < roll_min:
-        roll_min = current_roll
-    # Adjust Pitch
-    if current_pitch > pitch_max:
-        pitch_max = current_pitch
-    if current_pitch < pitch_min:
-        pitch_min = current_pitch
-
-    if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
-        P[0] = 1
-    else:
-        P[0] = -1
-    # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    log(
-        "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
-            roll_max, roll_min, roll_max - roll_min
-        )
-    )
-    # if (roll_max - roll_min) > 10:
+    # # Adjust Yaw
+    # if current_yaw > yaw_max:
+    #     yaw_max = current_yaw
+    # if current_yaw < yaw_min:
+    #     yaw_min = current_yaw
+    # # Adjust Roll
+    # if current_roll > roll_max:
+    #     roll_max = current_roll
+    # if current_roll < roll_min:
+    #     roll_min = current_roll
+    # # Adjust Pitch
+    # if current_pitch > pitch_max:
+    #     pitch_max = current_pitch
+    # if current_pitch < pitch_min:
+    #     pitch_min = current_pitch
+    #
+    # if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    # # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
+    # log(
+    #     "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
+    #         roll_max, roll_min, roll_max - roll_min
+    #     )
+    # )
+    # # if (roll_max - roll_min) > 10:
+    # #     P[1] = 1
+    # # else:
+    # #     P[1] = -1
+    # # if (yaw_max - yaw_min) > 2:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # log(
+    #     "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
+    #         pitch_max, pitch_min, pitch_max - pitch_min
+    #     )
+    # )
+    # # if (pitch_max - pitch_min) > 10:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # # SMA policy
+    # pitch_sma = sma(prev_pitch)
+    # roll_sma = sma(prev_roll)
+    # prev_pitch_sma.append(pitch_sma)
+    # prev_roll_sma.append(roll_sma)
+    # log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
+    # log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
+    # #
+    #
+    # pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
+    # roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
+    # log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    # if guidance == "true":
+    #     sma_log("{0},{1}".format(pitch_sma, roll_sma))
+    # log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
+    # if len(pitch_dips) >= 1:
     #     P[1] = 1
     # else:
     #     P[1] = -1
-    # if (yaw_max - yaw_min) > 2:
+    # if len(roll_dips) >= 1:
     #     P[2] = 1
     # else:
     #     P[2] = -1
-    log(
-        "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
-            pitch_max, pitch_min, pitch_max - pitch_min
-        )
-    )
-    # if (pitch_max - pitch_min) > 10:
-    #     P[2] = 1
-    # else:
-    #     P[2] = -1
-    # SMA policy
-    pitch_sma = sma(prev_pitch)
-    roll_sma = sma(prev_roll)
-    prev_pitch_sma.append(pitch_sma)
-    prev_roll_sma.append(roll_sma)
-    log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
-    log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
-
-    pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
-    roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
-    log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
-    if guidance == "true":
-        sma_log("{0},{1}".format(pitch_sma, roll_sma))
-    log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
-    if len(pitch_dips) >= 1:
-        P[1] = 1
-    else:
-        P[1] = -1
-    if len(roll_dips) >= 1:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    Global_distance = -1 * min(P[0], max(P[1], P[2]))
-
-    log("P values %s" % P)
-    print_distance(
-        G_dist=Global_distance,
-        P_dist=P,
-        length=3,
-        policy="A.RANGEFINDER",
-        guid=guidance,
-    )
+    # Global_distance = -1 * min(P[0], max(P[1], P[2]))
+    #
+    # log("P values %s" % P)
+    # print_distance(
+    #     G_dist=Global_distance,
+    #     P_dist=P,
+    #     length=3,
+    #     policy="A.RANGEFINDER",
+    #     guid=guidance,
+    # )
 
     # log(
     #     (
@@ -3001,6 +2955,45 @@ def calculate_distance(guidance):
     #     )
     # )
     # ----------------------- (end) A.RANGEFINDER policy -----------------------
+    #
+    # ----------------------- (start) A.GIMBAL policy -----------------------
+    # Cause the we do it like that
+    # XXX: Eventually replace
+    if current_flight_mode == "AUTO":
+        P[0] = 1
+    else:
+        P[0] = -1
+    log("[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_val))
+    # If current_yaw is not equal to mutated_val in a threshold, set distance to 1
+    # and mutated_val is not None
+    if guidance and mutated_val is not None:
+        if abs(current_yaw - mutated_val) > 10:
+            log(
+                "[GIMBAL] diff {0} ctr {1}".format(
+                    abs(current_yaw - mutated_val), gimbal_ctr
+                )
+            )
+            # defaults
+            gimbal_ctr = gimbal_ctr + 1
+            if gimbal_ctr > 3:
+                P[1] = 1
+        else:
+            log("Reset the ctr")
+            gimbal_ctr = 0
+            P[1] = -1
+
+    Global_distance = -1 * min(P[0], P[1])
+
+    log("[GIMBAL] P values %s" % P)
+    print_distance(
+        G_dist=Global_distance,
+        P_dist=P,
+        length=2,
+        policy="A.GIMBAL",
+        guid=guidance,
+    )
+    # )
+    # ----------------------- (end) A.GIMBAL policy -----------------------
 
     # ----------------------- (start) A.DRIFT1 policy -----------------------
     # P0: GPS_failsafe = on
@@ -3439,9 +3432,9 @@ def pick_up_cmd():
     elif input_type == 3:
         execute_env(num=random.randint(0, len(read_inputs.env_name) - 1))
 
-    # 4) Add RangeFinder
+    # 4) Add Sensor mutations
     elif input_type == 4:
-        randomize_msg_rangefinder()
+        return generate_sensor_msg()
 
 
 def sma(data, window_size=10):
@@ -3465,6 +3458,165 @@ def find_dips(data, threshold=0.01):
             if diffs[i] < -threshold:
                 dips.append(i)
         return dips
+
+
+def upload_mission(mav_conn, filename):
+    if not os.path.exists(filename):
+        log(f"Mission file {filename} not found!")
+        return
+
+    with open(filename, "r") as f:
+        mission_list = json.load(f)
+
+    mission_count = len(mission_list)
+    mav_conn.mav.mission_count_send(
+        mav_conn.target_system, mav_conn.target_component, mission_count
+    )
+
+    # Check for mission_request_int
+    message = mav_conn.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
+    # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
+    log(message)
+
+    for i, item in enumerate(mission_list):
+        item["target_system"] = mav_conn.target_system
+        item["target_component"] = mav_conn.target_component
+        item["seq"] = i
+        # Ignore these fields
+        # mavpackettype
+        item.pop("mavpackettype", None)
+        mav_conn.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
+
+    # Wait for mission_ack
+    message = mav_conn.recv_match(type="MISSION_ACK", blocking=True)
+    if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+        log("Mission upload complete.")
+    else:
+        log("Mission upload failed.")
+        log(message)
+
+
+def takeoff_copter(mav_conn):
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+
+    while True:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+            log("Arming failed, exiting")
+            exit(0)
+        ack_msg = ack_msg.to_dict()
+        print(ack_msg)
+
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
+
+    time.sleep(1)
+    # Choose a mode
+    mode = "AUTO"
+
+    # Check if mode is available
+    if mode not in mav_conn.mode_mapping():
+        log(("Unknown mode : {}".format(mode)))
+        log(("Try:", list(mav_conn.mode_mapping().keys())))
+        exit(1)
+
+    # Get mode ID
+    mode_id = mav_conn.mode_mapping()[mode]
+
+    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # )
+    mav_conn.mav.command_long_send(
+        mav_conn.target_system,
+        mav_conn.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
+        mode_id,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    # mav_conn.set_mode(mode_id)
+
+    # Wait for ACK command
+    # TODO: Figure out why we keep missing command_acks randomly
+    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
+    # Check if command in the same in `set_mode`
+    if ack_msg is None:
+        # Let's check if the mode is set via Heartbeat
+        hb_msg = mav_conn.recv_match(
+            type="HEARTBEAT", blocking=True
+        )  # XXX: Hoping this doesn't get stuck
+        hb_msg = hb_msg.to_dict()
+        if hb_msg["custom_mode"] != mode_id:
+            log("Failed set to guided mode")
+            log("Exiting")
+            exit(0)
+    else:
+        ack_msg = ack_msg.to_dict()
+        if (
+            ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE
+            or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
+        ):
+            # Print the ACK result !
+            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        else:
+            log("Failed set to guided mode")
+            log(ack_msg)
+
+    # Auto mode addition
+    # Send a mav_cmd_mission_start to start the mission
+    msg = mav_conn.mav.command_long_send(
+        mav_conn.target_system,  # target_system
+        mav_conn.target_component,  # target_component
+        mavutil.mavlink.MAV_CMD_MISSION_START,  # command
+        0,  # confirmation
+        0,  # param1
+        0,  # param2
+        0,  # param3
+        0,  # param4
+        0,  # param5
+        0,  # param6
+        MISSION_ATTITUDE,  # param7- altitude
+    )
+
+    ack = False
+    while not ack:
+        # Wait for ACK command
+        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+            log("Mission start failed, exiting")
+            exit(0)
+        ack_msg = ack_msg.to_dict()
+
+        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        break
+
+    # Wait till we reach that height
+    while True:
+        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
+        if msg is not None:
+            altitude = msg.relative_alt / 1000.0  # Altitude in meters
+            if (
+                altitude >= MISSION_ATTITUDE / 2
+            ):  # Half the height is good enough for now (Mission based)
+                log("Reached approximate height")
+                break
 
 
 # ------------------------------------------------------------------------------------
@@ -3595,6 +3747,7 @@ def main(argv):
     Precondition_path += "/preconditions.txt"
     # set_preconditions(Precondition_path)
     # reboot_vehicle()
+    mission_file_path = "./triangle.json"
 
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
@@ -3609,6 +3762,13 @@ def main(argv):
             log("Got GPS usage message")
             break
 
+    # Upload the mission
+    upload_mission(mav_conn, mission_file_path)
+
+    t4 = multiprocessing.Process(target=send_msg_rangefinder)
+    t4.daemon = True
+    t4.start()
+
     time.sleep(10)  # TODO: Figure out the ideal time to wait
     # This is because we need to get the second IMU also working
 
@@ -3618,150 +3778,67 @@ def main(argv):
         P.append(0)
         Previous_distance.append(0)
 
-    # Choose a mode
-    mode = "GUIDED"
+    takeoff_copter(mav_conn)
+    # This is for testing A.RTL1
+    time.sleep(25)
+    # time.sleep(3)
 
-    # Check if mode is available
-    if mode not in mav_conn.mode_mapping():
-        log(("Unknown mode : {}".format(mode)))
-        log(("Try:", list(mav_conn.mode_mapping().keys())))
-        exit(1)
-
-    # Get mode ID
-    mode_id = mav_conn.mode_mapping()[mode]
-
-    # master.mav.set_mode_send( master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    # )
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-        0,
-        mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
-        mode_id,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
+    # NOTE: Currently disabling all the takeoff commands as mission is uploaded
+    # mav_conn.mav.command_long_send(
+    #     mav_conn.target_system,  # target_system
+    #     mav_conn.target_component,  # target_component
+    #     mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
+    #     0,  # confirmation
+    #     0,  # param1
+    #     0,  # param2
+    #     0,  # param3
+    #     0,  # param4
+    #     0,  # param5
+    #     0,  # param6
+    #     10,
+    # )  # param7- altitude
+    #
+    # ack = False
+    # while not ack:
+    #     # Wait for ACK command
+    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+    #     if ack_msg is None:
+    #         log("Takeoff failed, exiting")
+    #         exit(0)
+    #     ack_msg = ack_msg.to_dict()
+    #
+    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    #     break
+    #
+    # # This is for testing A.RTL1
+    # time.sleep(25)
+    # # time.sleep(3)
+    #
+    # mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
+    # # master.mav.set_mode_send(
+    # #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
+    # # )
     # mav_conn.set_mode(mode_id)
+    #
+    # while True:
+    #     # Wait for ACK command
+    #     ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+    #     ack_msg = ack_msg.to_dict()
+    #
+    #     # Check if command in the same in `set_mode`
+    #     if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+    #         continue
+    #     log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+    #     break
+    # # Set default throttle
+    # set_rc_channel_pwm(3, 1500)
 
-    # Wait for ACK command
-    # TODO: Figure out why we keep missing command_acks randomly
-    ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
-    # Check if command in the same in `set_mode`
-    if ack_msg is None:
-        # Let's check if the mode is set via Heartbeat
-        hb_msg = mav_conn.recv_match(
-            type="HEARTBEAT", blocking=True
-        )  # XXX: Hoping this doesn't get stuck
-        hb_msg = hb_msg.to_dict()
-        if hb_msg["custom_mode"] != mode_id:
-            log("Failed set to guided mode")
-            log("Exiting")
-            exit(0)
-    else:
-        ack_msg = ack_msg.to_dict()
-        if (
-            ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE
-            or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
-        ):
-            # Print the ACK result !
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        else:
-            log("Failed set to guided mode")
-            log(ack_msg)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log("Arming failed, exiting")
-            exit(0)
-        ack_msg = ack_msg.to_dict()
-        print(ack_msg)
-
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-
-    time.sleep(1)
-
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,  # target_system
-        mav_conn.target_component,  # target_component
-        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
-        0,  # confirmation
-        0,  # param1
-        0,  # param2
-        0,  # param3
-        0,  # param4
-        0,  # param5
-        0,  # param6
-        MISSION_ATTITUDE,  # param7- altitude
-    )
-
-    ack = False
-    while not ack:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log("Takeoff failed, exiting")
-            exit(0)
-        ack_msg = ack_msg.to_dict()
-
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-        break
-
-    # Wait till we reach that height
-    while True:
-        msg = mav_conn.recv_match(type=["GLOBAL_POSITION_INT"], blocking=True)
-        if msg is not None:
-            altitude = msg.relative_alt / 1000.0  # Altitude in meters
-            if altitude >= MISSION_ATTITUDE:
-                log("Reached approximate height")
-                break
-
-    # 2024-07-04T11:15:22-0400: silipwn:  TODO: Fix ALT_HOLD mechanism later?
-    mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
-    # master.mav.set_mode_send(
-    #     master.target_system, mavutil.mavlink.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED, mode_id
-    # )
-    mav_conn.set_mode(mode_id)
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        ack_msg = ack_msg.to_dict()
-        #
-        # Check if command in the same in `set_mode`
-        if ack_msg["command"] == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
-            break
-        else:
-            exit("Failed to set the mode")
-    # Set default throttle
-    set_rc_channel_pwm(3, 1500)
-    log("Setting default throttle")
     time.sleep(3)
     # Maintain mid-position of stick on RC controller
-    goal_throttle = 1500
-    new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
-    new_process.daemon = True
-    new_process.start()
+    # goal_throttle = 1500
+    # new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
+    # new_process.daemon = True
+    # new_process.start()
     # t1 = threading.Thread(name="Throttle", target=throttle_th, args=())
     # t1.daemon = True
     # t1.start()
@@ -3832,11 +3909,11 @@ def main(argv):
             # Calculate propositional and global distances
             calculate_distance(guidance="false")
 
-            pick_up_cmd()
+            value = pick_up_cmd()
 
             # Calculate distances to evaluate effect of the executed input
             time.sleep(4)
-            calculate_distance(guidance="true")
+            calculate_distance(guidance="true", mutated_val=value)
             goal_throttle = 1500
 
             # XXX: 2024-07-11T11:37:53-0400: silipwn: See if this is absolutely necessary
