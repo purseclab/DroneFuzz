@@ -1,0 +1,7 @@
+---
+library: false
+warnOnImplicitThis: false
+name: pgfuzzplusplus/analysis
+version: 0.0.1
+dependencies:
+  codeql/cpp-all: 1.4.0
