@@ -1,6 +1,7 @@
 import time
 import signal
 import subprocess
+import configparser
 
 # from subprocess import *
 import os
@@ -134,51 +135,64 @@ def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
         print(("An error occurred: {0}".format(e)))
 
 
-# except Exception as e:
-#     print(f"An error occurred: {e}")
+def read_config():
+    config = configparser.ConfigParser()
+    # Check if the file exists
+    if not os.path.exists("pgfuzz.ini"):
+        raise Exception("Config file pgfuzz.ini not found!")
+    config.read("pgfuzz.ini")
+    # If config doesn't have the necessary sections, raise an exception
+    if "Required" not in config.sections():
+        raise Exception("pgfuzz required section not found in pgfuzz.ini")
+    return config
 
-PGFUZZ_HOME = os.getenv("PGFUZZ_HOME")
 
-if PGFUZZ_HOME is None:
-    raise Exception("PGFUZZ_HOME environment variable is not set!")
+# PGFUZZ_HOME = os.getenv("PGFUZZ_HOME")
+#
+# if PGFUZZ_HOME is None:
+#     raise Exception("PGFUZZ_HOME environment variable is not set!")
+#
+# ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
+#
+# if ARDUPILOT_HOME is None:
+#     raise Exception("ARDUPILOT_HOME environment variable is not set!")
+if __name__ == "__main__":
+    config = read_config()
+    pgfuzz_home = config["Required"]["PGFUZZHome"]
 
-ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
+    open("restart.txt", "w").close()
 
-if ARDUPILOT_HOME is None:
-    raise Exception("ARDUPILOT_HOME environment variable is not set!")
+    # Files to open
+    working_dir = pgfuzz_home + "/ArduPilot/"
+    open_simulator = working_dir + "open_simulator.py"
+    # setup_sh = working_dir + "setup.sh"
+    fuzzing_py = working_dir + "fuzzing.py"
 
-open("restart.txt", "w").close()
+    # Register the SIGINT handler
+    signal.signal(signal.SIGINT, sigint_handler)
 
-# Files to open
-working_dir = PGFUZZ_HOME + "ArduPilot/"
-open_simulator = working_dir + "open_simulator.py"
-setup_sh = working_dir + "setup.sh"
-fuzzing_py = working_dir + "fuzzing.py"
+    cmd = "python3 " + open_simulator + "; exit"
+    prg_name = "pgfuzz-sitl-" + str(int(time.time()))
+    spawn_tmux_window(window_name=prg_name, command=cmd)
 
-# Register the SIGINT handler
-signal.signal(signal.SIGINT, sigint_handler)
+    time.sleep(20)  # NOTE: Time reduced for testing
+    cmd = "python3 " + fuzzing_py
+    prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
+    spawn_tmux_window(window_name=prg_name, command=cmd)
 
-cmd = "source " + setup_sh + "; python3 " + open_simulator + "; exit"
-prg_name = "pgfuzz-sitl-" + str(int(time.time()))
-spawn_tmux_window(window_name=prg_name, command=cmd)
-
-time.sleep(20)  # NOTE: Time reduced for testing
-cmd = "source " + setup_sh + "; python3 " + fuzzing_py
-prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
-spawn_tmux_window(window_name=prg_name, command=cmd)
-
-while True:
-    time.sleep(1)
-    f = open("restart.txt", "r")
-    if not tmux_window_exists("", "fuzzing"):
-        print("Fuzzing window closed, adios!")
-        goodbye()
-        exit(0)
-    if f.read() == "restart":
-        f.close()
-        open("restart.txt", "w").close()
-        cmd = "source " + setup_sh + "; python3 " + open_simulator + "; exit"
-        # Get the current datetime in Unix seconds
-        prg_name = "pgfuzz-sitl-" + str(int(time.time()))
-        spawn_tmux_window(window_name=prg_name, command=cmd)
-    # Also check if the fuzzing window is open, if closed exit
+    while True:
+        time.sleep(1)
+        f = open("restart.txt", "r")
+        if not tmux_window_exists("", "fuzzing"):
+            print("Fuzzing window closed, adios!")
+            goodbye()
+            exit(0)
+        if f.read() == "restart":
+            f.close()
+            time.sleep(2)  # Sleep for a while to kill everyone
+            open("restart.txt", "w").close()
+            cmd = "python3 " + open_simulator + "; exit"
+            # Get the current datetime in Unix seconds
+            prg_name = "pgfuzz-sitl-" + str(int(time.time()))
+            spawn_tmux_window(window_name=prg_name, command=cmd)
+        # Also check if the fuzzing window is open, if closed exit

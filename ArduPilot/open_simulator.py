@@ -7,6 +7,8 @@ import time
 import os
 import signal
 
+from pgfuzz import read_config
+
 PR_SET_PDEATHSIG = 1  # This constant is for PR_SET_PDEATHSIG
 PR_SET_PDEATHSIG_VALUE = signal.SIGTERM  # The signal to send when the parent dies
 
@@ -32,29 +34,32 @@ def terminate_process_tree(pid, timeout=5):
         pass
 
 
-ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
+config = read_config()
+ardupilot_home = config["Required"]["ArdupilotHome"]
+sim = config["Required"]["Simulator"]
+handle = None
 
-print((os.getcwd()))
-if ARDUPILOT_HOME is None:
-    raise Exception("ARDUPILOT_HOME environment variable is not set!")
+if ardupilot_home is None:
+    raise Exception("config doesn't contain required info")
 
-c = (
-    ARDUPILOT_HOME
+cmd_ap_sitl = (
+    ardupilot_home
     + "Tools/autotest/sim_vehicle.py -v ArduCopter -D "  # Enable debug
     + "--out=udp:127.0.0.1:1337 "  # Sensor thread
+    + "--out=udp:127.0.0.1:14551 "  # Monitoring
     + "--out=udp:127.0.0.1:14555 "  # QGC port
     + "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
     + "--add-param-file="  # Always load PRX parameters
-    + ARDUPILOT_HOME
+    + ardupilot_home
     + "sensor.parm"
 )
-cmd_ap_gz = ARDUPILOT_HOME + "Tools/autotest/sim_vehicle.py -v ArduCopter -D "
+cmd_ap_gz = ardupilot_home + "Tools/autotest/sim_vehicle.py -v ArduCopter -D "
 cmd_ap_gz += "-f gazebo-iris --model JSON "
 cmd_ap_gz += "--out=udp:127.0.0.1:1337 "  # Sensor thread
 cmd_ap_gz += "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
 cmd_ap_gz += "--out=udp:127.0.0.1:14555 "  # QGC port
 cmd_ap_gz += "--out=udpout:127.0.0.1:1339 "  # Plotting thread
-cmd_ap_gz += "--add-param-file=" + ARDUPILOT_HOME + "sensor.parm"
+cmd_ap_gz += "--add-param-file=" + ardupilot_home + "sensor.parm"
 
 # TODO: Take the path from a config
 GZ_PLUGIN_PATH = "/home/silipwn/Documents/ardupilot_gazebo/"
@@ -68,35 +73,57 @@ cmd_gz += "&& gz sim --verbose 4 -r iris_runway.sdf"
 cmd_gz_topic = "source " + GZ_SRC_PATH + "install/setup.bash "
 cmd_gz_topic += "&& gz topic -t /world/iris_runway/model/iris_with_gimbal/model/gimbal/link/pitch_link/sensor/camera/image/enable_streaming -m gz.msgs.Boolean -p 'data: 1'"
 
-# handle = Popen(c, shell=True)
-# handle = Popen(cmd_gz, shell=True)
-handle = Popen(
-    ["bash", "-c", cmd_gz], stdout=PIPE, stderr=PIPE, shell=False, preexec_fn=os.setsid
-)
-time.sleep(5)
-handle_topic = Popen(
-    ["bash", "-c", cmd_gz_topic], stdout=PIPE, stderr=PIPE, shell=False
-)
-time.sleep(1)
-handle_ap_gz = Popen(
-    ["bash", "-c", cmd_ap_gz],
-    stdout=PIPE,
-    stderr=PIPE,
-    shell=False,
-    preexec_fn=os.setsid,
-)
-# Print return output from the command
-# print(handle_topic.communicate())
-# # Print return code from the command
-# print(handle_topic.returncode)
-# handle_topic = Popen(cmd_gz_topic, shell=True)
-print("The PID for the gazebo is: " + str(handle.pid))
-print("The PID for the ardupilot is: " + str(handle_ap_gz.pid))
+# Depending upon simulation type, spawn instances
+if sim == "Gazebo":
+    handle_gz_sim = Popen(
+        ["bash", "-c", cmd_gz],
+        stdout=PIPE,
+        stderr=PIPE,
+        shell=False,
+        preexec_fn=os.setsid,
+    )
+    time.sleep(5)
+    handle_topic = Popen(
+        ["bash", "-c", cmd_gz_topic], stdout=PIPE, stderr=PIPE, shell=False
+    )
+    time.sleep(1)
+    handle_ap_gz = Popen(
+        ["bash", "-c", cmd_ap_gz],
+        stdout=PIPE,
+        stderr=PIPE,
+        shell=False,
+        preexec_fn=os.setsid,
+    )
+    handle = handle_gz_sim  # XXX: Assuming that the gazebo process is the main process
+    print("The PID for the gazebo is: " + str(handle_gz_sim.pid))
+    print("The PID for the ardupilot is: " + str(handle_ap_gz.pid))
 
-# os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
+elif sim == "SITL":
+    print("Starting SITL")
+    print("Command: " + cmd_ap_sitl)
+    handle_ap_sitl = Popen(
+        ["bash", "-c", cmd_ap_sitl],
+        stdout=PIPE,
+        stderr=PIPE,
+        shell=False,
+        preexec_fn=os.setsid,
+    )
+    handle = handle_ap_sitl
+    time.sleep(1)
+    print("The PID for the ardupilot is: " + str(handle_ap_sitl.pid))
 
 while True:
     f = open("shared_variables.txt", "r")
+
+    if handle is None:
+        print("Can't find a process handle")
+        print("Exiting the process 0")
+        exit(0)
+
+    # Check if the process is still running
+    if handle.poll() is not None:
+        print("ERROR: Process has terminated unexpectedly")
+        exit(0)
 
     if f.read() == "reboot":
         open("shared_variables.txt", "w").close()
@@ -107,12 +134,14 @@ while True:
         print("[WOAH] About to kill some parents :|")
 
         # Kill all the children as well
-        # os.killpg(os.getpgid(handle.pid), signal.SIGTERM)
-        terminate_process_tree(handle.pid)
-        print("Terminated gazebo")
-
-        # os.killpg(os.getpgid(handle_ap_gz.pid), signal.SIGTERM)
-        terminate_process_tree(handle_ap_gz.pid)
+        if sim == "Gazebo":
+            terminate_process_tree(handle_gz_sim.pid)
+            print("Terminated gazebo")
+            terminate_process_tree(handle_ap_gz.pid)
+            print("Terminated ArduCopter")
+        elif sim == "SITL":
+            terminate_process_tree(handle_ap_sitl.pid)
+            print("Terminated ArduCopter")
 
         # Find Xterm process running ArduCopter and kill it
         arducopter_pid = None
