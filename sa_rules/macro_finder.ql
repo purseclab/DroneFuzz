@@ -5,13 +5,23 @@
  * @tags macro_custom 
  */
 
+// import cpp
+
+// // Find the sensor functions inside Parameters.cpp inside the AP_Periph folder
+// from Function f, Parameter p, MacroInvocation m
+// where
+//   // f.getFile().getAbsolutePath().toString().indexOf("AP_Periph/Parameters.cpp") >= 0
+//   // f.getFile().toString().matches("%Parameters.cpp")
+//   m.getFile().toString().matches("%Parameters.cpp") and
+//   m.getMacroName().matches("GOBJECT")
+// select m, m.getStmt(), m.getExpr()
+
 import cpp
 
-// Find the sensor functions inside Parameters.cpp inside the AP_Periph folder
-from Function f, Parameter p, MacroInvocation m
+from SwitchCase sc, SwitchStmt ss
 where
-  // f.getFile().getAbsolutePath().toString().indexOf("AP_Periph/Parameters.cpp") >= 0
-  // f.getFile().toString().matches("%Parameters.cpp")
-  m.getFile().toString().matches("%Parameters.cpp") and
-  m.getMacroName().matches("GOBJECT")
-select m, m.getStmt(), m.getExpr()
+  sc.getExpr().toString().regexpMatch("(?i).*MAV.*")
+  and sc.getSwitchStmt() = ss
+  and (ss.getExpr().toString().regexpMatch("(?i).*command.*") or
+  ss.getExpr().toString().regexpMatch("(?i).*id.*"))
+select sc.getExpr(), ss.getExpr()
