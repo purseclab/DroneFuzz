@@ -42,6 +42,9 @@ import re
 import math
 import numpy as np
 
+
+from pgfuzz import read_config
+
 # ------------------------------------------------------------------------------------
 # Global variables
 # master = mavutil.mavlink_connection("127.0.0.1:14551")
@@ -67,7 +70,7 @@ executing_commands = 0
 PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
-DEMO_MODE = True
+DEMO_MODE = False
 DEMO_ROUNDS = 15
 required_min_thr = 975
 
@@ -175,11 +178,6 @@ global_pause_event = threading.Event()
 sensor_triggered = False
 gimbal_ctr = 0
 
-try:
-    ardupilot_dir = os.getenv("ARDUPILOT_HOME")
-    pgfuzz_dir = os.getenv("PGFUZZ_HOME")
-except:
-    print("No ARDUPILOT_HOME/PGFUZZ_HOME set")
 # Distance
 P = []
 Global_distance = 0
@@ -217,8 +215,8 @@ Precondition_path = ""
 # Current_policy_P_length = 4
 # Current_policy = "A.RTL4"
 # Current_policy_P_length = 3
-Current_policy = "A.GIMBAL"
-Current_policy_P_length = 2
+# Current_policy = "A.GIMBAL"
+# Current_policy_P_length = 2
 
 # Debug parameter
 PRINT_DEBUG = 0
@@ -506,7 +504,7 @@ def re_launch():
             % (required_min_thr, goal_throttle)
         )
     )
-    set_rc_channel_pwm(1, 1500)
+    # set_rc_channel_pwm(1, 1500)
     set_rc_channel_pwm(2, 1500)
     set_rc_channel_pwm(4, 1500)
 
@@ -3635,6 +3633,22 @@ def main(argv):
     global failsafe_error
     global RV_alive
     global hit_ground
+    global Current_policy_P_length
+    global Current_policy
+    global ardupilot_dir
+    global pgfuzz_dir
+
+    # NOTE: Might be better to do it in a init function?
+    config = read_config()
+    try:
+        ardupilot_dir = config["Required"]["ArdupilotHome"]
+        pgfuzz_dir = config["Required"]["PGFUZZHome"]
+        Current_policy = config["Required"]["Policy"]
+        Current_policy_P_length = int(config["Required"]["PolicyVariables"])
+        Sensor_UT = config["Required"]["Sensor"]
+    except:  # XXX: Fix at some point
+        print("Invalid INI file")
+        exit(0)
 
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
