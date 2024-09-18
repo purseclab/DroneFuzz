@@ -3646,8 +3646,9 @@ def main(argv):
         Current_policy = config["Required"]["Policy"]
         Current_policy_P_length = int(config["Required"]["PolicyVariables"])
         Sensor_UT = config["Required"]["Sensor"]
-    except:  # XXX: Fix at some point
-        print("Invalid INI file")
+    except Exception as ex:
+        print("Failed to load config file with following exception")
+        print(ex)
         exit(0)
 
     # Get git commit in ardupilot_dir
