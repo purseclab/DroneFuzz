@@ -1,0 +1,32 @@
+[
+  {
+    "sensor_type": "AP_OpticalFlow",
+    "parameters": {
+      "FLOW_TYPE": 5
+    }
+  },
+  {
+    "sensor_type": "AP_Rangefinder",
+    "parameters": {
+      "RNGFND_TYPE": 5
+    }
+  },
+  {
+    "sensor_type": "AP_EFI",
+    "parameters": {
+      "EFI_TYPE": 9
+    }
+  },
+  {
+    "sensor_type": "AP_Proximity",
+    "parameters": {
+      "PRX_TYPE": 2
+    }
+  },
+  {
+    "sensor_type": "AP_ADSB",
+    "parameters": {
+      "ADSB_TYPE": 2
+    }
+  }
+]

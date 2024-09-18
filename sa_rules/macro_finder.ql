@@ -5,23 +5,15 @@
  * @tags macro_custom 
  */
 
-// import cpp
-
-// // Find the sensor functions inside Parameters.cpp inside the AP_Periph folder
-// from Function f, Parameter p, MacroInvocation m
-// where
-//   // f.getFile().getAbsolutePath().toString().indexOf("AP_Periph/Parameters.cpp") >= 0
-//   // f.getFile().toString().matches("%Parameters.cpp")
-//   m.getFile().toString().matches("%Parameters.cpp") and
-//   m.getMacroName().matches("GOBJECT")
-// select m, m.getStmt(), m.getExpr()
-
 import cpp
 
-from SwitchCase sc, SwitchStmt ss
+from SwitchCase sc, SwitchStmt ss, MacroInvocation mi
 where
   sc.getExpr().toString().regexpMatch("(?i).*MAV.*")
   and sc.getSwitchStmt() = ss
   and (ss.getExpr().toString().regexpMatch("(?i).*command.*") or
   ss.getExpr().toString().regexpMatch("(?i).*id.*"))
+  // BREAKPOINT: Check what can allow us to actualy find the macro that affects the case
+  // and ss.isAffectedByMacro() and mi.getMacroName() = ss.getExpr().toString()
+  // Check the case is affected by a Macro and print the macro name
 select sc.getExpr(), ss.getExpr()
