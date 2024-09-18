@@ -3645,11 +3645,28 @@ def main(argv):
         pgfuzz_dir = config["Required"]["PGFUZZHome"]
         Current_policy = config["Required"]["Policy"]
         Current_policy_P_length = int(config["Required"]["PolicyVariables"])
-        Sensor_UT = config["Required"]["Sensor"]
+        SUT = config["Required"]["Sensor"]  # Sensor Under Test
+        sensor_mapping_file = config["Required"]["SensorMapPath"]
     except Exception as ex:
         print("Failed to load config file with following exception")
         print(ex)
         exit(0)
+
+    # Print all the sensor_mapping
+    log("Sensor mapping at %s" % sensor_mapping_file)
+    with open(sensor_mapping_file, "r") as f:
+        sensor_map = json.load(f)
+
+    sensor_matching_flag = False
+    if SUT != "ALL":
+        for sensor in sensor_map:
+            if SUT in sensor["sensor_type"]:
+                sensor_matching_flag = True
+    else:
+        sensor_matching_flag = True
+    if not sensor_matching_flag:
+        log("Sensor not found in sensor mapping")
+        exit(-1)
 
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
@@ -3726,7 +3743,7 @@ def main(argv):
     mav_conn.wait_heartbeat()
 
     # request data to be sent at the given rate
-    for i in range(0, 3):
+    for _ in range(0, 3):
         mav_conn.mav.request_data_stream_send(
             mav_conn.target_system,
             mav_conn.target_component,
