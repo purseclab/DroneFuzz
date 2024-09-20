@@ -212,16 +212,16 @@ def send_telegram_message(message):
     # Get hostname
     hostname = os.uname()[1]
     # Get the os env commands to get the token and chat_id
-    token = os.getenv("TOKEN")
-    chat_id = os.getenv("CHAT_ID")
-    if token is None or chat_id is None:
+    # token = os.getenv("TOKEN")
+    # chat_id = os.getenv("CHAT_ID")
+    if telegram_chat_id is None or telegram_token is None:
         print("TOKEN and CHAT_ID environment variables not set")
         return
     final_msg = "pgfuzz++ raised an exception on " + hostname + ": " + message
     # Send a message to the telegram using requests
     requests.post(
-        "https://api.telegram.org/bot{}/sendMessage".format(token),
-        data={"chat_id": chat_id, "text": final_msg},
+        "https://api.telegram.org/bot{}/sendMessage".format(telegram_token),
+        data={"chat_id": telegram_chat_id, "text": final_msg},
     )
 
 
@@ -566,8 +566,8 @@ def start_rangefinder(process=None):
 
 
 def generate_sensor_msg():
-    # TODO: Ideally do some smart way of generating message
-    # Now just on a case to case basis
+    # Check the selected sensor to mutate
+    log("The selected sensor is {}".format(SUT))
     return do_command_ctrl()
 
 
@@ -3578,7 +3578,7 @@ def takeoff_copter(mav_conn):
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
-def main(argv):
+def main():
     global Precondition_path
     global home_altitude
     global drone_status
@@ -3591,55 +3591,8 @@ def main(argv):
     global failsafe_error
     global RV_alive
     global hit_ground
-    global Current_policy_P_length
-    global Current_policy
-    global ardupilot_dir
-    global pgfuzz_dir
-    global SUT
 
     # NOTE: Might be better to do it in a init function?
-    config = read_config()
-    try:
-        ardupilot_dir = config["Required"]["ArdupilotHome"]
-        pgfuzz_dir = config["Required"]["PGFUZZHome"]
-        Current_policy = config["Required"]["Policy"]
-        Current_policy_P_length = int(config["Required"]["PolicyVariables"])
-        SUT = config["Required"]["Sensor"]  # Sensor Under Test
-        sensor_mapping_file = config["Required"]["SensorMapPath"]
-    except Exception as ex:
-        print("Failed to load config file with following exception")
-        print(ex)
-        exit(0)
-
-    # Print all the sensor_mapping
-    log("Sensor mapping at %s" % sensor_mapping_file)
-    with open(sensor_mapping_file, "r") as f:
-        sensor_map = json.load(f)
-
-    sensor_matching_flag = False
-    if SUT != "ALL":
-        for sensor in sensor_map:
-            if SUT in sensor["sensor_type"]:
-                sensor_matching_flag = True
-    else:
-        sensor_matching_flag = True
-    if not sensor_matching_flag:
-        log("Sensor not found in sensor mapping")
-        exit(-1)
-
-    # Get git commit in ardupilot_dir
-    # Very bad programming practice, but it is a quick solution
-    current_commit = (
-        subprocess.check_output("git rev-parse HEAD", shell=True, cwd=ardupilot_dir)
-        .strip()
-        .decode("utf-8")
-    )
-    if current_commit == "":
-        log("No commit found in the Ardupilot directory")
-    else:
-        log("The commit being tested is: %s" % current_commit)
-
-    log("Pymavlink version %s" % pymavlink.__version__)
 
     # Check if in demo mode
     if DEMO_MODE:
@@ -3988,5 +3941,64 @@ def main(argv):
             raise Exception("Unhandled MAV_STATE please check what's wrong")
 
 
+def init():
+    global Current_policy_P_length
+    global Current_policy
+    global ardupilot_dir
+    global pgfuzz_dir
+    global SUT
+    global telegram_token
+    global telegram_chat_id
+    config = read_config()
+    # Required
+    try:
+        ardupilot_dir = config["Required"]["ArdupilotHome"]
+        pgfuzz_dir = config["Required"]["PGFUZZHome"]
+        Current_policy = config["Required"]["Policy"]
+        Current_policy_P_length = int(config["Required"]["PolicyVariables"])
+        SUT = config["Required"]["Sensor"]  # Sensor Under Test
+        sensor_mapping_file = config["Required"]["SensorMapPath"]
+    except Exception as ex:
+        print("Failed to load config file with following exception")
+        print(ex)
+        exit(0)
+    # Optional
+    try:
+        telegram_token = config["Optional"]["TelegramToken"]
+        telegram_chat_id = config["Optional"]["TelegramChatID"]
+    except Exception as ex:
+        log(f"Failed to load optional config with exception {ex}")
+
+    # Print all the sensor_mapping
+    log("Sensor mapping at %s" % sensor_mapping_file)
+    with open(sensor_mapping_file, "r") as f:
+        sensor_map = json.load(f)
+
+    sensor_matching_flag = False
+    if SUT != "ALL":
+        for sensor in sensor_map:
+            if SUT in sensor["sensor_type"]:
+                sensor_matching_flag = True
+    else:
+        sensor_matching_flag = True
+    if not sensor_matching_flag:
+        log("Sensor not found in sensor mapping")
+        exit(-1)
+    # Get git commit in ardupilot_dir
+    # Very bad programming practice, but it is a quick solution
+    current_commit = (
+        subprocess.check_output("git rev-parse HEAD", shell=True, cwd=ardupilot_dir)
+        .strip()
+        .decode("utf-8")
+    )
+    if current_commit == "":
+        log("No commit found in the Ardupilot directory")
+    else:
+        log("The commit being tested is: %s" % current_commit)
+
+    log("Pymavlink version %s" % pymavlink.__version__)
+
+
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    init()
+    main()
