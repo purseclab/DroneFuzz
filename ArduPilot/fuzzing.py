@@ -211,9 +211,6 @@ Precondition_path = ""
 def send_telegram_message(message):
     # Get hostname
     hostname = os.uname()[1]
-    # Get the os env commands to get the token and chat_id
-    # token = os.getenv("TOKEN")
-    # chat_id = os.getenv("CHAT_ID")
     if telegram_chat_id is None or telegram_token is None:
         print("TOKEN and CHAT_ID environment variables not set")
         return
@@ -257,6 +254,7 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
 
     log("No heartbeat received after maximum attempts.")
     log("Exiting as cannot talk to the vehicle")
+    send_telegram_message("No heartbeat received after maximum attempts.")
     exit(-1)
 
 
@@ -1324,23 +1322,12 @@ def store_mutated_inputs():
 
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
-    # Print distances
-    # print(
-    #     (
-    #         "#---------------------------------%s-------------------------------------------"
-    #         % policy
-    #     )
-    # )
     log("Guidance {0}".format(guid))
     log("[Distance] ")
     for i in range(length):
         log("P%d: %f " % (i + 1, P_dist[i]))
 
-    # print("")
     log(("[Distance] Global distance: %f" % Global_distance))
-    # print(
-    #     "#-----------------------------------------------------------------------------"
-    # )
 
     if G_dist < 0:
         log("The value of distance is low")
@@ -3683,7 +3670,6 @@ def main():
     # _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
     # log("Got the local position ned")
 
-    # Start the Rangefinder thread
     # Set some preconditions to test a policy
     # When I switch to another target policy, I need to update the 'Precondition_path'.
     Precondition_path += "./policies/"
