@@ -3,30 +3,49 @@
     "sensor_type": "AP_OpticalFlow",
     "parameters": {
       "FLOW_TYPE": 5
-    }
+    },
+    "msg_type": [
+      "OPTICAL_FLOW",
+      "OPTICAL_FLOW_RAD",
+      "HIL_OPTICAL_FLOW"
+    ]
   },
   {
     "sensor_type": "AP_Rangefinder",
     "parameters": {
       "RNGFND_TYPE": 5
-    }
+    },
+    "msg_type": [
+      "DISTANCE_SENSOR"
+    ]
   },
   {
     "sensor_type": "AP_EFI",
     "parameters": {
       "EFI_TYPE": 9
-    }
+    },
+    "msg_type": [
+      "EFI_STATUS"
+    ]
   },
   {
     "sensor_type": "AP_Proximity",
     "parameters": {
       "PRX_TYPE": 2
-    }
+    },
+    "msg_type": [
+      "DISTANCE_SENSOR",
+      "OBSTACLE_DISTANCE",
+      "OBSTACLE_DISTANCE_3D"
+    ]
   },
   {
     "sensor_type": "AP_ADSB",
     "parameters": {
       "ADSB_TYPE": 2
-    }
+    },
+    "msg_type": [
+      "NULL"
+    ]
   }
 ]
