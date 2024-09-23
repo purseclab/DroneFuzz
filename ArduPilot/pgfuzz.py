@@ -1,6 +1,7 @@
 import time
 import signal
 import subprocess
+import json
 import configparser
 
 # from subprocess import *
@@ -147,6 +148,31 @@ def read_config():
     return config
 
 
+def set_sensor_parm(config):
+    ap_home = config["Required"]["ArduPilotHome"]
+    ap_param_file = ap_home + "./sensor.parm"
+    ap_sensor = config["Required"]["Sensor"]
+    # Load the sensor value from the file
+    sensor_mapping_file = config["Required"]["SensorMapPath"]
+    with open(sensor_mapping_file, "r") as f:
+        sensor_map = json.load(f)
+    # Find the sensor in the map
+    sensor_row = None
+    parameters = None
+    for sensor_row in sensor_map:
+        if sensor_row["sensor_type"] == ap_sensor:
+            parameters = sensor_row["parameters"]
+            break
+    if parameters is None:
+        print("Sensor not found in the mapping file!")
+        exit(1)
+    # Write the sensor value with the parameter
+    with open(ap_param_file, "w") as f:
+        for keys in parameters.keys():
+            # print("Writing {0} {1}".format(keys, parameters[keys]))
+            f.write("{0} {1:0.5f}\n".format(keys, float(parameters[keys])))
+
+
 # PGFUZZ_HOME = os.getenv("PGFUZZ_HOME")
 #
 # if PGFUZZ_HOME is None:
@@ -158,9 +184,12 @@ def read_config():
 #     raise Exception("ARDUPILOT_HOME environment variable is not set!")
 if __name__ == "__main__":
     config = read_config()
+    set_sensor_parm(config)
     pgfuzz_home = config["Required"]["PGFUZZHome"]
 
     open("restart.txt", "w").close()
+
+    # Save the sensor value
 
     # Files to open
     working_dir = pgfuzz_home + "/ArduPilot/"
