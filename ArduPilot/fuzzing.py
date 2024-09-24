@@ -22,6 +22,7 @@ import queue
 import subprocess
 import requests
 import multiprocessing
+import xml.etree.ElementTree as ET
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -3562,6 +3563,42 @@ def takeoff_copter(mav_conn):
                 break
 
 
+def load_xml_messages(file_path: str) -> list:
+    # { "msg_id": 0, "msg_name": "", "fields": [] }
+    # { "msg_id" : 150, "msg_name": "SENSOR_OFFSET", "fields": [ { "name": "mag_ofs_x", "type": "int16_t" }, ... ] }
+    xml_msg = []
+    # Parse the XML file
+    try:
+        tree = ET.parse(file_path)
+    except Exception as e:
+        log("Error parsing XML file: {}".format(e))
+        return xml_msg
+    root = tree.getroot()
+
+    # Find the 'msg' element
+    msg_elements = root.find("messages")
+    if msg_elements is not None:
+        print("MSG found in ardupilotmega.xml:")
+        for msg in msg_elements.findall("message"):
+            msg_id = msg.get("id")
+            msg_name = msg.get("name")
+            # Optionally, print entries of each enum
+            fields = []
+            for entry in msg.findall("field"):
+                entry_name = entry.get("name")
+                entry_value = entry.get("type")
+                entry_desc = entry.text
+                fields.append(
+                    {"name": entry_name, "type": entry_value, "desc": entry_desc}
+                )
+            xml_msg.append({"msg_id": msg_id, "msg_name": msg_name, "fields": fields})
+
+    else:
+        print("No msgs found in the XML file.")
+
+    return xml_msg
+
+
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
@@ -3935,6 +3972,7 @@ def init():
     global SUT
     global telegram_token
     global telegram_chat_id
+    global mavlink_xml_file
     config = read_config()
     # Required
     try:
@@ -3944,6 +3982,7 @@ def init():
         Current_policy_P_length = int(config["Required"]["PolicyVariables"])
         SUT = config["Required"]["Sensor"]  # Sensor Under Test
         sensor_mapping_file = config["Required"]["SensorMapPath"]
+        mavlink_xml_file = config["Required"]["MavlinkXMLPath"]
     except Exception as ex:
         print("Failed to load config file with following exception")
         print(ex)
@@ -3983,6 +4022,11 @@ def init():
         log("The commit being tested is: %s" % current_commit)
 
     log("Pymavlink version %s" % pymavlink.__version__)
+
+    # Load messages for the XML
+    msg_list = load_xml_messages(mavlink_xml_file)
+    print(msg_list)
+    exit(0)
 
 
 if __name__ == "__main__":
