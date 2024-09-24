@@ -3563,7 +3563,24 @@ def takeoff_copter(mav_conn):
                 break
 
 
-def load_xml_messages(file_path: str) -> list:
+# Custom loader function to include XML files
+def include_xml(elem, base_path):
+    for include in elem.findall("include"):
+        filename = include.text
+        filepath = os.path.join(base_path, filename)
+        if os.path.exists(filepath):
+            tree = ET.parse(filepath)
+            include_root = tree.getroot()
+            # Recursively process includes in the included file
+            include_xml(include_root, os.path.dirname(filepath))
+            # Replace the include element with the contents of the included file
+            index = list(elem).index(include)
+            elem.remove(include)
+            for child in reversed(list(include_root)):
+                elem.insert(index, child)
+
+
+def load_xml_messages(file_path: str, filter: list) -> list:
     # { "msg_id": 0, "msg_name": "", "fields": [] }
     # { "msg_id" : 150, "msg_name": "SENSOR_OFFSET", "fields": [ { "name": "mag_ofs_x", "type": "int16_t" }, ... ] }
     xml_msg = []
@@ -3575,26 +3592,30 @@ def load_xml_messages(file_path: str) -> list:
         return xml_msg
     root = tree.getroot()
 
+    include_xml(root, os.path.dirname(os.path.abspath(file_path)))
     # Find the 'msg' element
     msg_elements = root.find("messages")
     if msg_elements is not None:
-        print("MSG found in ardupilotmega.xml:")
         for msg in msg_elements.findall("message"):
             msg_id = msg.get("id")
             msg_name = msg.get("name")
-            # Optionally, print entries of each enum
-            fields = []
-            for entry in msg.findall("field"):
-                entry_name = entry.get("name")
-                entry_value = entry.get("type")
-                entry_desc = entry.text
-                fields.append(
-                    {"name": entry_name, "type": entry_value, "desc": entry_desc}
+            # Check if the message name is inside the filter list
+            if msg_name in filter:
+                log("Debug: Found the message {}".format(msg_name))
+                fields = []
+                for entry in msg.findall("field"):
+                    entry_name = entry.get("name")
+                    entry_value = entry.get("type")
+                    entry_desc = entry.text
+                    fields.append(
+                        {"name": entry_name, "type": entry_value, "desc": entry_desc}
+                    )
+                xml_msg.append(
+                    {"msg_id": msg_id, "msg_name": msg_name, "fields": fields}
                 )
-            xml_msg.append({"msg_id": msg_id, "msg_name": msg_name, "fields": fields})
 
     else:
-        print("No msgs found in the XML file.")
+        log("No msgs found in the XML file.")
 
     return xml_msg
 
@@ -4000,6 +4021,7 @@ def init():
         sensor_map = json.load(f)
 
     sensor_matching_flag = False
+    # FIXME: Broken at the moment
     if SUT != "ALL":
         for sensor in sensor_map:
             if SUT in sensor["sensor_type"]:
@@ -4023,10 +4045,18 @@ def init():
 
     log("Pymavlink version %s" % pymavlink.__version__)
 
+    # Find the required msg in the sensor mapping
+    SUT_map = []
+    for sensor in sensor_map:
+        if SUT in sensor["sensor_type"]:
+            log("Found the sensor in the sensor mapping")
+            SUT_map = sensor
+            break
+        else:
+            log("Sensor not found in sensor mapping")
+    msg_filter = SUT_map["msg_type"]  # Breakpoint here?
     # Load messages for the XML
-    msg_list = load_xml_messages(mavlink_xml_file)
-    print(msg_list)
-    exit(0)
+    msg_list = load_xml_messages(mavlink_xml_file, msg_filter)
 
 
 if __name__ == "__main__":
