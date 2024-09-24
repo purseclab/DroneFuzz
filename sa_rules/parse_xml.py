@@ -1,27 +1,29 @@
 import xml.etree.ElementTree as ET
+import xml.etree.ElementInclude as EI
+import os
+
+
+def include_xml(elem, base_path):
+    for include in elem.findall("include"):
+        filename = include.text
+        filepath = os.path.join(base_path, filename)
+        if os.path.exists(filepath):
+            tree = ET.parse(filepath)
+            include_root = tree.getroot()
+            # Recursively process includes in the included file
+            include_xml(include_root, os.path.dirname(filepath))
+            # Replace the include element with the contents of the included file
+            index = list(elem).index(include)
+            elem.remove(include)
+            for child in reversed(list(include_root)):
+                elem.insert(index, child)
+
 
 # Parse the XML file
-tree = ET.parse("ardupilotmega.xml")
+main_file = "xmls/ardupilotmega.xml"
+tree = ET.parse(main_file)
 root = tree.getroot()
-
-# Find the 'enums' element
-enums_element = root.find("enums")
-
-if enums_element is not None:
-    print("Enums found in ardupilotmega.xml:")
-    for enum in enums_element.findall("enum"):
-        enum_name = enum.get("name")
-        print(f"Enum: {enum_name}")
-
-        # Optionally, print entries of each enum
-        for entry in enum.findall("entry"):
-            entry_name = entry.get("name")
-            entry_value = entry.get("value")
-            print(f"  Entry: {entry_name}, Value: {entry_value}")
-        print()
-else:
-    print("No enums found in the XML file.")
-
+include_xml(root, os.path.dirname(os.path.abspath(main_file)))
 msg_elements = root.find("messages")
 if msg_elements is not None:
     print("MSG found in ardupilotmega.xml:")
