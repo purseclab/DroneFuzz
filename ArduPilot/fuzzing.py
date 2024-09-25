@@ -11,6 +11,7 @@ Goal: Main loop of PGFUZZ
 
 import sys
 import os
+import string
 
 import time
 import json
@@ -564,10 +565,87 @@ def start_rangefinder(process=None):
     return new_process
 
 
-def generate_sensor_msg():
+def generate_field_value(field_type):
+    # NOTE: Currently assuming 32bit values
+    if field_type == "float":
+        # Return a value between FLOAT_MIN and FLOAT_MAX
+        return numpy.random.uniform(sys.float_info.min, sys.float_info.max)
+    elif field_type == "uint8_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(0, pow(2, 8) - 1)
+    elif field_type == "uint16_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(0, pow(2, 16) - 1)
+    elif field_type == "uint32_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(0, pow(2, 32) - 1)
+    elif field_type == "uint64_t":
+        # FIXME: This is not correct (Currently using int32)
+        return numpy.random.randint(0, pow(2, 32) - 1)
+    elif field_type == "int8_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(-pow(2, 7), pow(2, 7) - 1)
+    elif field_type == "int16_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(-pow(2, 15), pow(2, 15) - 1)
+    elif field_type == "int32_t":
+        # Return a value between INT_MIN and INT_MAX
+        return numpy.random.randint(-pow(2, 31), pow(2, 31) - 1)
+    elif field_type == "int64_t":
+        # FIXME: This is not correct (Currently using int32)
+        return numpy.random.randint(-pow(2, 31), pow(2, 31) - 1)
+    elif "char" in field_type:
+        length = int(field_type.split("[")[1][:-1])
+        # Return a random string of length
+        return "".join(random.choice(string.ascii_letters) for _ in range(length))
+    else:
+        log("Unknown field type {}".format(field_type))
+        exit(-1)
+
+
+def mavlink_send_msg_list(msg: list):
+    conn_sensor = mavutil.mavlink_connection("127.0.0.1:1337")
+    conn_sensor.recv_match(type="HEARTBEAT", blocking=True)
+    conn_sensor.close()
+    # TODO: Need to make this a bit more smarter based on the msg_type
+    # The msg can be either COMMAND_INT or COMMAND_LONG
+    # But in general it is not required to be a COMMAND_LONG
+    # BREAKPOINT // Need to fill the other values
+
+
+def generate_sensor_msg() -> list:
     # Check the selected sensor to mutate
-    log("The selected sensor is {}".format(SUT))
-    return do_command_ctrl()
+    log(
+        "The selected sensor is {}, have {} messages to mutate".format(
+            SUT, len(msg_list)
+        )
+    )
+    # Select a random value from the list
+    selected_msg = random.choice(msg_list)
+    log("Selected message: {}".format(selected_msg))
+    msg = []
+    msg_id = int(selected_msg["msg_id"])
+    msg.append(0)  # Add the target_system
+    msg.append(0)  # Add the target_component
+    msg.append(msg_id)  # Add the message ID
+    msg.append(0)  # Add the confirmation
+    fields = selected_msg["fields"]
+    # Generate a random value for each field
+    for field in fields:
+        # Ignore field if contains usec OR ....
+        field_name = field["name"]
+        field_type = field["type"]
+        if "usec" in field_name:
+            log("Ignoring field {} as it based on boot time".format(field_name))
+            continue
+        field_value = generate_field_value(field_type)
+        log("Added field {} with value {}".format(field_name, field_value))
+        msg.append(field_value)
+        # Depending upon the field type, generate values
+    # return do_command_ctrl()
+    log(msg)
+    mavlink_send_msg_list(msg)
+    return msg
 
 
 def do_command_ctrl():
@@ -1324,7 +1402,7 @@ def store_mutated_inputs():
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
     log("Guidance {0}".format(guid))
-    log("[Distance] ")
+    log(f"[Distance] for policy {policy}")
     for i in range(length):
         log("P%d: %f " % (i + 1, P_dist[i]))
 
@@ -3352,10 +3430,10 @@ def pick_up_cmd():
     Guidance_decision = None
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
-    input_type = random.choice([1, 4])
+    # input_type = random.choice([1, 4])
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
-    # input_type = 1
+    input_type = 4
 
     # True: input mutated from guidance, False: randomly mutate an input
     Guidance_decision = random.choice([True, False])
@@ -3994,6 +4072,7 @@ def init():
     global telegram_token
     global telegram_chat_id
     global mavlink_xml_file
+    global msg_list
     config = read_config()
     # Required
     try:
