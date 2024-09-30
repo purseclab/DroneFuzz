@@ -566,51 +566,59 @@ def start_rangefinder(process=None):
 
 
 def generate_field_value(field_type):
-    # NOTE: Currently assuming 32bit values
-    if field_type == "float":
-        # Return a value between FLOAT_MIN and FLOAT_MAX
-        return numpy.random.uniform(sys.float_info.min, sys.float_info.max)
-    elif field_type == "uint8_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(0, pow(2, 8) - 1)
-    elif field_type == "uint16_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(0, pow(2, 16) - 1)
-    elif field_type == "uint32_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(0, pow(2, 32) - 1)
-    elif field_type == "uint64_t":
-        # FIXME: This is not correct (Currently using int32)
-        return numpy.random.randint(0, pow(2, 32) - 1)
-    elif field_type == "int8_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(-pow(2, 7), pow(2, 7) - 1)
-    elif field_type == "int16_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(-pow(2, 15), pow(2, 15) - 1)
-    elif field_type == "int32_t":
-        # Return a value between INT_MIN and INT_MAX
-        return numpy.random.randint(-pow(2, 31), pow(2, 31) - 1)
-    elif field_type == "int64_t":
-        # FIXME: This is not correct (Currently using int32)
-        return numpy.random.randint(-pow(2, 31), pow(2, 31) - 1)
-    elif "char" in field_type:
+    c_type_to_py = {
+        "float": "float",
+        "double": "float",
+        "char": "bytes",
+        "int8_t": "int",
+        "uint8_t": "int",
+        "uint8_t_mavlink_version": "int",
+        "int16_t": "int",
+        "uint16_t": "int",
+        "int32_t": "int",
+        "uint32_t": "int",
+        "int64_t": "int",
+        "uint64_t": "int",
+    }
+
+    py_type = c_type_to_py.get(field_type)
+
+    if py_type == "float":
+        return np.random.rand()
+    elif py_type == "int":
+        if field_type.startswith("uint"):
+            return np.random.randint(0, 2 ** (int(field_type[4:-2])), dtype=np.uint64)
+        elif field_type == "uint8_t_mavlink_version":
+            return np.random.randint(0, 256)
+        else:
+            bits = int(field_type[3:-2])
+            return np.random.randint(
+                -(2 ** (bits - 1)), 2 ** (bits - 1) - 1, dtype=np.int64
+            )
+    elif py_type == "bytes":  # Should be the case where we have chars
         length = int(field_type.split("[")[1][:-1])
         # Return a random string of length
         return "".join(random.choice(string.ascii_letters) for _ in range(length))
     else:
-        log("Unknown field type {}".format(field_type))
-        exit(-1)
+        raise ValueError(f"Unsupported type: {field_type}")
 
 
-def mavlink_send_msg_list(msg: list):
+def mavlink_send_msg_list(msg_name: str | None, msg: list):
+    if msg_name is None:
+        log("MavlinkSend: Message name is None")
+        return
     conn_sensor = mavutil.mavlink_connection("127.0.0.1:1337")
+    msg_name = (
+        msg_name.lower()
+    )  # To ensure we match the expression inside generated MAVLINK messages
+    # Get the message class dynamically
+    message_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name}_message")
+    # Create an instance of the message
+    packed_msg = message_class(*msg)
+    # Send the message
     conn_sensor.recv_match(type="HEARTBEAT", blocking=True)
+    conn_sensor.mav.send(packed_msg)
     conn_sensor.close()
-    # TODO: Need to make this a bit more smarter based on the msg_type
-    # The msg can be either COMMAND_INT or COMMAND_LONG
-    # But in general it is not required to be a COMMAND_LONG
-    # BREAKPOINT // Need to fill the other values
 
 
 def generate_sensor_msg() -> list:
@@ -625,10 +633,11 @@ def generate_sensor_msg() -> list:
     log("Selected message: {}".format(selected_msg))
     msg = []
     msg_id = int(selected_msg["msg_id"])
-    msg.append(0)  # Add the target_system
-    msg.append(0)  # Add the target_component
-    msg.append(msg_id)  # Add the message ID
-    msg.append(0)  # Add the confirmation
+    msg_name = selected_msg["msg_name"]
+    # msg.append(0)  # Add the target_system
+    # msg.append(0)  # Add the target_component
+    # msg.append(msg_id)  # Add the message ID
+    # msg.append(0)  # Add the confirmation
     fields = selected_msg["fields"]
     # Generate a random value for each field
     for field in fields:
@@ -637,14 +646,14 @@ def generate_sensor_msg() -> list:
         field_type = field["type"]
         if "usec" in field_name:
             log("Ignoring field {} as it based on boot time".format(field_name))
-            continue
-        field_value = generate_field_value(field_type)
-        log("Added field {} with value {}".format(field_name, field_value))
-        msg.append(field_value)
-        # Depending upon the field type, generate values
-    # return do_command_ctrl()
+            current_time = current_milli_time(start_time)
+            msg.append(current_time)
+        else:
+            field_value = generate_field_value(field_type)
+            log("Added field {} with value {}".format(field_name, field_value))
+            msg.append(field_value)
     log(msg)
-    mavlink_send_msg_list(msg)
+    mavlink_send_msg_list(msg_name, msg)
     return msg
 
 
