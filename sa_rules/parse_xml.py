@@ -7,6 +7,7 @@ def include_xml(elem, base_path):
     for include in elem.findall("include"):
         filename = include.text
         filepath = os.path.join(base_path, filename)
+        print(f"Processing include: {filepath}")
         if os.path.exists(filepath):
             tree = ET.parse(filepath)
             include_root = tree.getroot()
@@ -14,7 +15,8 @@ def include_xml(elem, base_path):
             include_xml(include_root, os.path.dirname(filepath))
             # Replace the include element with the contents of the included file
             index = list(elem).index(include)
-            elem.remove(include)
+            # elem.remove(include)
+            print("Removing include element {}".format(include))
             for child in reversed(list(include_root)):
                 elem.insert(index, child)
 
