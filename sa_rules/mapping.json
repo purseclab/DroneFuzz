@@ -34,8 +34,6 @@
       "PRX_TYPE": 2
     },
     "msg_type": [
-      "DISTANCE_SENSOR",
-      "OBSTACLE_DISTANCE",
       "OBSTACLE_DISTANCE_3D"
     ]
   },
