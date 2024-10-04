@@ -35,6 +35,9 @@
     },
     "msg_type": [
       "OBSTACLE_DISTANCE_3D"
+    ],
+    "frequency": [
+      25
     ]
   },
   {

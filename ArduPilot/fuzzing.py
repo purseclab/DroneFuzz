@@ -4137,19 +4137,6 @@ def init():
     if not sensor_matching_flag:
         log("Sensor not found in sensor mapping")
         exit(-1)
-    # Get git commit in ardupilot_dir
-    # Very bad programming practice, but it is a quick solution
-    current_commit = (
-        subprocess.check_output("git rev-parse HEAD", shell=True, cwd=ardupilot_dir)
-        .strip()
-        .decode("utf-8")
-    )
-    if current_commit == "":
-        log("No commit found in the Ardupilot directory")
-    else:
-        log("The commit being tested is: %s" % current_commit)
-
-    log("Pymavlink version %s" % pymavlink.__version__)
 
     # Find the required msg in the sensor mapping
     SUT_map = []
@@ -4163,6 +4150,26 @@ def init():
     msg_filter = SUT_map["msg_type"]
     # Load messages for the XML
     msg_list = load_xml_messages(mavlink_xml_file, msg_filter)
+    # Also get if there's a frequency with the message
+    frequencies = SUT_map["frequency"]
+    # Sanity check if length of msg_list and frequencies are the same
+    if len(msg_list) != len(frequencies):
+        log("msg_list elements are different than frequencies")
+        log("Exiting")
+        exit(0)
+    # Get git commit in ardupilot_dir
+    # Very bad programming practice, but it is a quick solution
+    current_commit = (
+        subprocess.check_output("git rev-parse HEAD", shell=True, cwd=ardupilot_dir)
+        .strip()
+        .decode("utf-8")
+    )
+    if current_commit == "":
+        log("No commit found in the Ardupilot directory")
+    else:
+        log("The commit being tested is: %s" % current_commit)
+
+    log("Pymavlink version %s" % pymavlink.__version__)
 
 
 if __name__ == "__main__":
