@@ -16,6 +16,7 @@ import string
 import time
 import json
 import datetime
+import logging
 import random
 import numpy
 import threading
@@ -47,9 +48,11 @@ import numpy as np
 
 from pgfuzz import read_config
 
+
 # ------------------------------------------------------------------------------------
 # Global variables
 # master = mavutil.mavlink_connection("127.0.0.1:14551")
+logger = logging.getLogger("pgfuzz")
 attitude_ctr = 0
 home_altitude = 0
 home_lat = 0
@@ -234,18 +237,18 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
 
     while attempt < max_attempts:
         attempt += 1
-        log(f"Attempt {attempt} of {max_attempts}")
+        logger.info(f"Attempt {attempt} of {max_attempts}")
         # Establish a new connection
         connection = mavutil.mavlink_connection("localhost:14551")
         # Wait for a heartbeat
         msg = connection.recv_match(type="HEARTBEAT", blocking=True, timeout=timeout)
         if msg:
-            log("Heartbeat received! Updating vars")
+            logger.info("Heartbeat received! Updating vars")
             if previous_flight_mode != mavutil.mode_string_v10(msg):
                 previous_flight_mode = current_flight_mode
             current_flight_mode = mavutil.mode_string_v10(msg)
             drone_status = msg.system_status
-            log(
+            logger.info(
                 "Current_flight_mode {} and drone_status {}".format(
                     current_flight_mode, drone_status
                 )
@@ -253,33 +256,12 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
             return msg, connection
         time.sleep(0.1)
         # If no heartbeat is received, close the connection and retry
-        log("No heartbeat received, retrying...")
+        logger.info("No heartbeat received, retrying...")
 
-    log("No heartbeat received after maximum attempts.")
-    log("Exiting as cannot talk to the vehicle")
+    logger.info("No heartbeat received after maximum attempts.")
+    logger.info("Exiting as cannot talk to the vehicle")
     send_telegram_message("No heartbeat received after maximum attempts.")
     exit(-1)
-
-
-# Print with time
-def log(message, filename="fuzzing.log"):
-    # Get the current time
-    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    # Get the current thread name
-    thread_name = threading.current_thread().name
-
-    # Get the current process ID
-    process_id = os.getpid()
-
-    # Format the log message
-    log_message = "[{}] [Thread: {}] [Process: {}] {}".format(
-        current_time, thread_name, process_id, message
-    )
-    print(log_message)
-    # Append the message to the file
-    with open(filename, "a") as log_file:
-        log_file.write(log_message + "\n")
 
 
 def sma_log(message, filename="sma.log"):
@@ -289,7 +271,7 @@ def sma_log(message, filename="sma.log"):
 
 ## Reboot the Vehicle via MAVLINK
 def reboot_vehicle():
-    log("Rebooting vehicle")
+    logger.info("Rebooting vehicle")
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     # Send a reboot command to the vehicle
     mav_conn.mav.command_long_send(
@@ -306,13 +288,13 @@ def reboot_vehicle():
         0,
     )
     # Check for the response back
-    log("Waiting for response")
+    logger.info("Waiting for response")
     while True:
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
         resp = ack_msg.to_dict()
         if resp["command"] != mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN:
             continue
-        log("Received response back")
+        logger.info("Received response back")
         break
     mav_conn.close()
 
@@ -328,7 +310,7 @@ def check_liveness():
         if not reboot_pause_event.is_set():
             hb_msg, _ = reconn_heartbeat(timeout=5, max_attempts=2)
             if hb_msg is None:
-                log("Got an exception when attempting to reconnect")
+                logger.info("Got an exception when attempting to reconnect")
                 store_mutated_inputs()
                 # The RV software is crashed
                 f = open("shared_variables.txt", "w")
@@ -336,7 +318,7 @@ def check_liveness():
                 f.close()
             # mav_conn.close()
         else:
-            log("Liveness thread paused")
+            logger.info("Liveness thread paused")
         time.sleep(5)
 
 
@@ -356,8 +338,8 @@ def set_preconditions(_filepath):
     #     )
     #     time.sleep(1)
     #
-    #     log(("[Set_preconditions] %s = %s" % (row[0], row[1])))
-    log("[Set_preconditions] currently ignored: TODO Fix this")
+    #     logger.info(("[Set_preconditions] %s = %s" % (row[0], row[1])))
+    logger.info("[Set_preconditions] currently ignored: TODO Fix this")
 
 
 # mav_conn.close()
@@ -370,7 +352,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "a")
         guidance_log.write(print_log)
         guidance_log.close()
-        log(("[write_guidance_log] appending: %s" % print_log))
+        logger.info(("[write_guidance_log] appending: %s" % print_log))
 
     elif action == "write":
         guidance_log = open("guidance_log.txt", "w")
@@ -379,7 +361,7 @@ def write_guidance_log(print_log, action):
         guidance_log = open("guidance_log.txt", "w")
         guidance_log.write(print_log)
         guidance_log.close()
-        log(("[write_guidance_log] re-writing: %s" % print_log))
+        logger.info(("[write_guidance_log] re-writing: %s" % print_log))
 
 
 # ------------------------------------------------------------------------------------
@@ -425,7 +407,7 @@ def re_launch():
     PreArm_error = 0
 
     reboot_pause_event.set()
-    log("Enabled reboot_pause_event")
+    logger.info("Enabled reboot_pause_event")
 
     # Reset the prx_values
     for i in range(9):
@@ -452,10 +434,10 @@ def re_launch():
     # Read the LAST_LOG contents
     last_log_fd = open(LAST_LOG, "r")
     last_log_number = last_log_fd.readline()
-    log("The current log file is ")
-    log(last_log_number)
+    logger.info("The current log file is ")
+    logger.info(last_log_number)
 
-    log(
+    logger.info(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
 
@@ -485,7 +467,7 @@ def re_launch():
     goal_throttle = required_min_thr + 20
     #
     # 2024-07-12T10:18:19-0400: silipwn: Do we need this?
-    log(
+    logger.info(
         (
             "[re-launch] min_thr:%d, target throttle:%d"
             % (required_min_thr, goal_throttle)
@@ -514,14 +496,14 @@ def re_launch():
     global Precondition_path
     # set_preconditions(Precondition_path)
     mavlink_pause_event.set()
-    log("Setting event")
+    logger.info("Setting event")
     # reboot_vehicle()
 
     start_rangefinder()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
     mav_conn.wait_gps_fix()
 
-    log("Clearing event")
+    logger.info("Clearing event")
     mavlink_pause_event.clear()
     time.sleep(5)
 
@@ -529,7 +511,7 @@ def re_launch():
 
     hb_msg, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
     reboot_pause_event.clear()
-    log("Cleared reboot_pause_event")
+    logger.info("Cleared reboot_pause_event")
     mav_conn.close()
 
 
@@ -552,10 +534,10 @@ def current_milli_time(start_time):
     return int(round(time.time() * 1000) - start_time)
 
 
-# Rangefinder manager
+# Sensor manager
 def start_rangefinder(process=None):
     if process and process.is_alive():
-        log("Terminating the existing process...")
+        logger.info("Terminating the existing process...")
         process.terminate()
         process.join()  # Ensure the process has completely terminated
     new_process = multiprocessing.Process(
@@ -606,7 +588,7 @@ def generate_field_value(field_type):
 
 def mavlink_send_msg_list(msg_name: str | None, msg: list):
     if msg_name is None:
-        log("MavlinkSend: Message name is None")
+        logger.info("MavlinkSend: Message name is None")
         return
     conn_sensor = mavutil.mavlink_connection("127.0.0.1:1337")
     msg_name = (
@@ -624,14 +606,14 @@ def mavlink_send_msg_list(msg_name: str | None, msg: list):
 
 def generate_sensor_msg() -> list:
     # Check the selected sensor to mutate
-    log(
+    logger.info(
         "The selected sensor is {}, have {} messages to mutate".format(
             SUT, len(msg_list)
         )
     )
     # Select a random value from the list
     selected_msg = random.choice(msg_list)
-    log("Selected message: {}".format(selected_msg))
+    logger.info("Selected message: {}".format(selected_msg))
     msg = []
     msg_id = int(selected_msg["msg_id"])
     msg_name = selected_msg["msg_name"]
@@ -646,14 +628,14 @@ def generate_sensor_msg() -> list:
         field_name = field["name"]
         field_type = field["type"]
         if "usec" in field_name:
-            log("Ignoring field {} as it based on boot time".format(field_name))
+            logger.info("Ignoring field {} as it based on boot time".format(field_name))
             current_time = current_milli_time(start_time)
             msg.append(current_time)
         else:
             field_value = generate_field_value(field_type)
-            log("Added field {} with value {}".format(field_name, field_value))
+            logger.info("Added field {} with value {}".format(field_name, field_value))
             msg.append(field_value)
-    log(msg)
+    logger.info(msg)
     mavlink_send_msg_list(msg_name, msg)
     return msg
 
@@ -686,7 +668,7 @@ def do_command_ctrl():
     socket.socket(socket.AF_INET, socket.SOCK_DGRAM).sendto(
         var_sensor_value_str, ("127.0.0.1", 5005)
     )
-    log("Command sent!")
+    logger.info("Command sent!")
 
     return var_sensor_value
 
@@ -814,7 +796,7 @@ def randomize_msg_rangefinder():
     print_param += "\n"
 
     write_log(print_param)
-    log("Generated random msgs for rangefinder")
+    logger.info("Generated random msgs for rangefinder")
 
 
 # ------------------------------------------------------------------------------------
@@ -823,7 +805,7 @@ def change_parameter(selected_param):
     global Current_input
     global Current_input_val
 
-    log(
+    logger.info(
         ("# [Change_parameter()] selected params: %s")
         % read_inputs.param_name[selected_param]
     )
@@ -843,7 +825,7 @@ def change_parameter(selected_param):
     if range_min == "X":
         # no_range = 1
         param_value = random.randint(PARAM_MIN, PARAM_MAX)
-        log(
+        logger.info(
             (
                 "[param] selected params: %s, there is no min of valid range, random param value:%d"
                 % (read_inputs.param_name[selected_param], param_value)
@@ -854,7 +836,7 @@ def change_parameter(selected_param):
         # no_range = 0
         if range_min.isdigit() and range_max.isdigit():
             param_value = random.randint(int(range_min), int(range_max))
-            log(
+            logger.info(
                 (
                     "# [Change_parameter()] selected params: %s, min: %f, max: %f, random digit param value:%d"
                     % (
@@ -868,7 +850,7 @@ def change_parameter(selected_param):
 
         elif not range_min.isdigit() or not range_max.isdigit():
             param_value = random.uniform(float(range_min), float(range_max))
-            log(
+            logger.info(
                 (
                     "# [Change_parameter()] selected params: %s, min: %f, max: %f, random real param value:%f"
                     % (
@@ -887,11 +869,11 @@ def change_parameter(selected_param):
     if param_name == "FS_THR_VALUE":
         param_value = random.randint(925, 975)
         required_min_thr = param_value
-        log(("# Required minimum throttle is %d" % param_value))
+        logger.info(("# Required minimum throttle is %d" % param_value))
 
     if Current_input_val != "null":
         param_value = float(Current_input_val)
-        log(
+        logger.info(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (param_name, Current_input_val)
@@ -1204,7 +1186,7 @@ def handle_status(msg):
     global mission_cnt
 
     # status_data = (msg.severity, msg.text)
-    log(("[status_text] %s" % msg.text))
+    logger.info(("[status_text] %s" % msg.text))
 
     # Detecting a depolyed parachute
     if "Parachute: Released" in msg.text:
@@ -1275,7 +1257,7 @@ def handle_mission(msg):
     global mission_cnt
 
     mission_cnt = msg.count
-    log(("[Debug][MISSION_COUNT]%d" % mission_cnt))
+    logger.info(("[Debug][MISSION_COUNT]%d" % mission_cnt))
 
 
 # ------------------------------------------------------------------------------------
@@ -1309,7 +1291,7 @@ def read_loop():
     while True:
         monitor_conn = mavutil.mavlink_connection("127.0.0.1:1338")  # Custom addition
         while mavlink_pause_event.is_set():
-            log("Pausing reading loop for 10 seconds")
+            logger.info("Pausing reading loop for 10 seconds")
             time.sleep(10)
         # # current types
         types_msg = [
@@ -1373,10 +1355,10 @@ def store_mutated_inputs():
     global count_main_loop
     Policy_violation_cnt += 1
 
-    log("***************Policy violation!***************")
+    logger.info("***************Policy violation!***************")
 
     # Print attitude_ctr
-    log("[Attitude counter] %d" % attitude_ctr)
+    logger.info("[Attitude counter] %d" % attitude_ctr)
 
     f1 = open("mutated_log.txt", "r")
     lines = f1.readlines()
@@ -1393,7 +1375,7 @@ def store_mutated_inputs():
     except IOError:
         # Create the directory
         os.mkdir("./policy_violations/")
-        log("Create the policy_violations dir as not found")
+        logger.info("Create the policy_violations dir as not found")
         f2 = open(file_name, "w")
     f2.writelines(lines)
     f1.close()
@@ -1403,24 +1385,24 @@ def store_mutated_inputs():
     mutated_log.close()
 
     if DEMO_MODE:
-        log("[Demo mode] Returning without relaunch")
+        logger.info("[Demo mode] Returning without relaunch")
         return
-    log("Restarting the vehicle : Policy violation logged")
+    logger.info("Restarting the vehicle : Policy violation logged")
     re_launch()
     count_main_loop = 0
 
 
 # ------------------------------------------------------------------------------------
 def print_distance(G_dist, P_dist, length, policy, guid):
-    log("Guidance {0}".format(guid))
-    log(f"[Distance] for policy {policy}")
+    logger.info("Guidance {0}".format(guid))
+    logger.info(f"[Distance] for policy {policy}")
     for i in range(length):
-        log("P%d: %f " % (i + 1, P_dist[i]))
+        logger.info("P%d: %f " % (i + 1, P_dist[i]))
 
-    log(("[Distance] Global distance: %f" % Global_distance))
+    logger.info(("[Distance] Global distance: %f" % Global_distance))
 
     if G_dist < 0:
-        log("The value of distance is low")
+        logger.info("The value of distance is low")
         store_mutated_inputs()
 
     global Current_policy_P_length
@@ -1451,14 +1433,14 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                             row = line.rstrip().split(" ")
                             if int(row[2]) == i + 1:
                                 log_flag = 1
-                                log(
+                                logger.info(
                                     (
                                         "[Redundant input] {} {} {} {}".format(
                                             row[0], row[1], row[2], row[3]
                                         )
                                     )
                                 )
-                                log(
+                                logger.info(
                                     (
                                         "[Redundant input] old:%f - new:%f"
                                         % (
@@ -1481,7 +1463,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                                     )  # 3
                                     print_input += "\n"
                                     guide_line = guide_line.replace(line, print_input)
-                                    log(
+                                    logger.info(
                                         (
                                             "[Redundant input] we need to log %s because it increase more propositional distance %d"
                                             % (Current_input, i + 1)
@@ -1489,7 +1471,7 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                                     )
                 # Append a new input
                 if log_flag == 0:
-                    log(
+                    logger.info(
                         (
                             "[*Distance*] propositional distance %d is increased (input: %s, %s)"
                             % (i + 1, Current_input, Current_input_val)
@@ -1637,7 +1619,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # if PRINT_DEBUG == 1:
     # print('[Debug] stable_counter:%d' %stable_counter)
     # print('[Debug] alt_avg:%f (previous_alt:%f, current_alt:%f), roll_avg:%f, pitch_avg:%f, heading_avg:%f' %(alt_avg, previous_alt, current_alt, roll_avg, pitch_avg, heading_avg))
-    log(
+    logger.info(
         (
             "[Debug] lat_avg:%f, home_lat:%f, lon_avg:%f, home_lon:%f"
             % (lat_avg, home_lat, lon_avg, home_lon)
@@ -1761,7 +1743,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[1] = 0
     #
-    # log(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
+    # logger.info(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
     #
     # if current_flight_mode == "RTL":
     #     P[2] = 1
@@ -1807,7 +1789,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[1] = 0
     #
-    # log(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
+    # logger.info(("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt)))
     #
     # # P2: POS_t != Home_position
     # if lat_avg != home_lat and lon_avg != home_lon:
@@ -1873,7 +1855,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[3] = 0
     #
-    # log(("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round)))
+    # logger.info(("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round)))
     #
     # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
     #
@@ -1895,7 +1877,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[1] = 0
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] ALT_t:%f, Ground_ALT:%f"
     #         % (round(current_altitude, 1), round(home_altitude, 1))
@@ -1946,7 +1928,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[4] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f"
     #         % (
@@ -1991,7 +1973,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[3] = 1
     #
-    # log(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
+    # logger.info(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
     #
     # Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3])))
     #
@@ -2026,19 +2008,19 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     P[2] = 1
     #     P[3] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] roll_initial:%f, roll_current:%f"
     #         % (round(roll_initial, 0), round(current_roll, 0))
     #     )
     # )
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] pitch_initial:%f, pitch_current:%f"
     #         % (round(pitch_initial, 0), round(current_pitch, 0))
     #     )
     # )
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] yaw_initial:%f, yaw_current:%f"
     #         % (round(yaw_initial, 0), round(current_heading, 0))
@@ -2075,7 +2057,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     P[0] = -1
     #     P[1] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f"
     #         % (flip_start_time, timeit.default_timer(), elapsed)
@@ -2124,7 +2106,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     P[1] = 1
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f"
     #         % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1))
@@ -2157,7 +2139,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f"
     #         % (
@@ -2208,7 +2190,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[3] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
     #         % (current_rc_2, circle_radius_current, circle_radius_previous)
@@ -2249,7 +2231,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
     #         % (current_rc_2, circle_radius_current, circle_radius_previous)
@@ -2375,19 +2357,19 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[3] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f"
     #         % (rollspeed_current, rollspeed_previous)
     #     )
     # )
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f"
     #         % (pitchspeed_current, pitchspeed_previous)
     #     )
     # )
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f"
     #         % (yawspeed_current, yawspeed_previous)
@@ -2455,7 +2437,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
     #         % (relative_alt, vertical_speed, expected_landing_speed)
@@ -2510,7 +2492,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
     #         % (relative_alt, vertical_speed, expected_landing_speed)
@@ -2543,7 +2525,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f"
     #         % (
@@ -2599,7 +2581,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
+    # logger.info(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
     #
     # Global_distance = -1 * (min(P[0], P[1], P[2]))
     #
@@ -2647,7 +2629,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f"
     #         % (
@@ -2700,7 +2682,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = 1
     #
-    # log(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
+    # logger.info(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
     #
     # Global_distance = -1 * (min(P[0], P[1], P[2]))
     #
@@ -2737,7 +2719,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[1] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d"
     #         % (current_rc_3, fs_thr_val, RC_failsafe_error)
@@ -2779,7 +2761,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[1] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d"
     #         % (current_flight_mode, vertical_speed, pilot_speed_vertical)
@@ -2824,7 +2806,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[4] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
     #         % (
@@ -2848,8 +2830,8 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #
     # # ----------------------- (start) A.LOITER1 policy -----------------------
     # # P0: Mode_t = LOITER
-    # # log("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
-    # # log("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
+    # # logger.info("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
+    # # logger.info("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
     # if current_flight_mode == "LOITER":
     #     P[0] = 1
     # else:
@@ -2875,7 +2857,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[3] = 1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
     #         % (
@@ -2918,7 +2900,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     else:
         P[0] = -1
     # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    log(
+    logger.info(
         "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
             roll_max, roll_min, roll_max - roll_min
         )
@@ -2931,7 +2913,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     P[2] = 1
     # else:
     #     P[2] = -1
-    log(
+    logger.info(
         "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
             pitch_max, pitch_min, pitch_max - pitch_min
         )
@@ -2945,16 +2927,16 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     roll_sma = sma(prev_roll)
     prev_pitch_sma.append(pitch_sma)
     prev_roll_sma.append(roll_sma)
-    log("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
-    log("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
+    # logger.info("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
+    # logger.info("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
 
     pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
     roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
-    log("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    logger.info("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
     if guidance == "true":
         sma_log("{0},{1}".format(pitch_sma, roll_sma))
-    log("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
+    logger.info("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
     if len(pitch_dips) >= 1:
         P[1] = 1
     else:
@@ -2966,7 +2948,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
 
     Global_distance = -1 * min(P[0], max(P[1], P[2]))
 
-    log("P values %s" % P)
+    logger.info("P values %s" % P)
     print_distance(
         G_dist=Global_distance,
         P_dist=P,
@@ -2975,7 +2957,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
         guid=guidance,
     )
 
-    log(
+    logger.info(
         (
             "[RANGEFINDER] Mode_t:%s, yaw_max:%f, yaw_min:%f, roll_max: %f, roll_min:%f, pitch_max:%f, pitch_min: %f"
             % (
@@ -2998,12 +2980,12 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     P[0] = 1
     # else:
     #     P[0] = -1
-    # log("[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_val))
+    # logger.info("[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_val))
     # # If current_yaw is not equal to mutated_val in a threshold, set distance to 1
     # # and mutated_val is not None
     # if guidance and mutated_val is not None:
     #     if abs(current_yaw - mutated_val) > 10:
-    #         log(
+    #         logger.info(
     #             "[GIMBAL] diff {0} ctr {1}".format(
     #                 abs(current_yaw - mutated_val), gimbal_ctr
     #             )
@@ -3013,13 +2995,13 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #         if gimbal_ctr > 3:
     #             P[1] = 1
     #     else:
-    #         log("Reset the ctr")
+    #         logger.info("Reset the ctr")
     #         gimbal_ctr = 0
     #         P[1] = -1
     #
     # Global_distance = -1 * min(P[0], P[1])
     #
-    # log("[GIMBAL] P values %s" % P)
+    # logger.info("[GIMBAL] P values %s" % P)
     # print_distance(
     #     G_dist=Global_distance,
     #     P_dist=P,
@@ -3073,7 +3055,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     # else:
     #     P[2] = -1
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] GPS_failsafe:%d, Mode_(t-1):%s, Mode_t:%s, FS_EKF_ACTION:%d"
     #         % (
@@ -3118,7 +3100,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     #     brake_cnt = brake_cnt + 1
     #     Global_distance = -1 * Global_distance
     #
-    # log(
+    # logger.info(
     #     (
     #         "[Debug] Mode_t:%s, ground_speed:%f"
     #         % (current_flight_mode, round(ground_speed, 0))
@@ -3151,7 +3133,7 @@ def set_rc_channel_pwm(id, pwm=1500):
     if not reboot_pause_event.is_set():
         mav_conn.wait_heartbeat()
     if id < 1:
-        log("Channel does not exist.")
+        logger.info("Channel does not exist.")
         return
 
     # We only have 8 channels
@@ -3177,7 +3159,7 @@ def throttle_th():
         set_rc_channel_pwm(3, 1500)  # Default should be mid
         time.sleep(0.5)
         # else:
-        #     log("Throttle disabled")
+        #     logger.info("Throttle disabled")
         #     time.sleep(10)
 
 
@@ -3195,7 +3177,7 @@ def match_cmd(cmd):
         index = random.randint(0, len(cmds) - 1)
         row = cmds[index].rstrip().split(" ")
         # print("*****")
-        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # logger.info(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         # print("*****")
 
         return row[1]
@@ -3204,7 +3186,7 @@ def match_cmd(cmd):
         row = cmds[0].rstrip().split(" ")
 
         # print("*****")
-        # log(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
+        # logger.info(("[Matched input] {} {} {} {}".format(row[0], row[1], row[2], row[3])))
         # print("*****")
 
         return row[1]
@@ -3232,7 +3214,7 @@ def execute_cmd(num):
         Current_input_val = match_cmd(cmd=Current_input)
 
     if Current_input_val != "null":
-        log(
+        logger.info(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (Current_input, Current_input_val)
@@ -3276,7 +3258,7 @@ def execute_cmd(num):
 
         if Current_input_val == "null":
             rand_flight_mode = random.choice(mav_conn.mode_mapping().items())
-            log("Rand flight mode " + rand_flight_mode)
+            logger.info("Rand flight mode " + rand_flight_mode)
             Current_input_val = str(rand_flight_mode[1])
             rand_fligh_mode = rand_flight_mode[1]
         else:
@@ -3295,12 +3277,12 @@ def execute_cmd(num):
 
         # Check if the mode is supported
         if rand_fligh_mode not in modes.values():
-            log("ERROR selected value unavailable")
+            logger.info("ERROR selected value unavailable")
         else:
             # mav_conn.set_mode(rand_fligh_mode)
             msg, mav_conn = reconn_heartbeat(timeout=10)
             if msg is None:
-                log("Damn this is bad, msg is None")
+                logger.info("Damn this is bad, msg is None")
                 exit(-1)
             mav_conn.mav.command_long_send(
                 mav_conn.target_system,
@@ -3367,7 +3349,7 @@ def execute_cmd(num):
         )
     # ------------------------(end) execute a selected command-------------------------
 
-    log(("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val)))
+    logger.info(("[Execute_cmd] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the user command
     print_cmd = ""
@@ -3399,7 +3381,7 @@ def execute_env(num):
         rand = random.uniform(0, 100)
         Current_input_val = str(rand)
     else:
-        log(
+        logger.info(
             (
                 "@@@[Reuse stored input pair] (%s, %s)@@@"
                 % (Current_input, Current_input_val)
@@ -3414,7 +3396,7 @@ def execute_env(num):
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
     )
 
-    log(("[Execute_env] (%s, %s)" % (Current_input, Current_input_val)))
+    logger.info(("[Execute_env] (%s, %s)" % (Current_input, Current_input_val)))
 
     # Log executed the environmental factor
     print_env = ""
@@ -3495,7 +3477,7 @@ def find_dips(data, threshold=0.01):
 
 def upload_mission(mav_conn, filename):
     if not os.path.exists(filename):
-        log(f"Mission file {filename} not found!")
+        logger.info(f"Mission file {filename} not found!")
         return
 
     with open(filename, "r") as f:
@@ -3509,7 +3491,7 @@ def upload_mission(mav_conn, filename):
     # Check for mission_request_int
     message = mav_conn.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
     # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
-    log(message)
+    logger.info(message)
 
     for i, item in enumerate(mission_list):
         item["target_system"] = mav_conn.target_system
@@ -3523,10 +3505,10 @@ def upload_mission(mav_conn, filename):
     # Wait for mission_ack
     message = mav_conn.recv_match(type="MISSION_ACK", blocking=True)
     if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
-        log("Mission upload complete.")
+        logger.info("Mission upload complete.")
     else:
-        log("Mission upload failed.")
-        log(message)
+        logger.info("Mission upload failed.")
+        logger.info(message)
 
 
 def takeoff_copter(mav_conn):
@@ -3548,12 +3530,14 @@ def takeoff_copter(mav_conn):
         # Wait for ACK command
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
         if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            log("Arming failed, exiting")
+            logger.info("Arming failed, exiting")
             exit(0)
         ack_msg = ack_msg.to_dict()
         print(ack_msg)
 
-        log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+        logger.info(
+            (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+        )
         break
 
     time.sleep(1)
@@ -3564,8 +3548,8 @@ def takeoff_copter(mav_conn):
 
         # Check if mode is available
         if mode not in mav_conn.mode_mapping():
-            log(("Unknown mode : {}".format(mode)))
-            log(("Try:", list(mav_conn.mode_mapping().keys())))
+            logger.info(("Unknown mode : {}".format(mode)))
+            logger.info(("Try:", list(mav_conn.mode_mapping().keys())))
             exit(1)
 
         # Get mode ID
@@ -3599,8 +3583,8 @@ def takeoff_copter(mav_conn):
             )  # XXX: Hoping this doesn't get stuck
             hb_msg = hb_msg.to_dict()
             if hb_msg["custom_mode"] != mode_id:
-                log("Failed set to guided mode")
-                log("Exiting")
+                logger.info("Failed set to guided mode")
+                logger.info("Exiting")
                 exit(0)
         else:
             ack_msg = ack_msg.to_dict()
@@ -3609,12 +3593,12 @@ def takeoff_copter(mav_conn):
                 or ack_msg["result"] == mavutil.mavlink.MAV_RESULT_ACCEPTED
             ):
                 # Print the ACK result !
-                log(
+                logger.info(
                     (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
                 )
             else:
-                log("Failed set to guided mode")
-                log(ack_msg)
+                logger.info("Failed set to guided mode")
+                logger.info(ack_msg)
 
         # Auto mode addition
         # Send a mav_cmd_mission_start to start the mission
@@ -3637,11 +3621,13 @@ def takeoff_copter(mav_conn):
             # Wait for ACK command
             ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
             if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                log("Mission start failed, exiting")
+                logger.info("Mission start failed, exiting")
                 exit(0)
             ack_msg = ack_msg.to_dict()
 
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+            logger.info(
+                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+            )
             break
 
     else:
@@ -3656,7 +3642,9 @@ def takeoff_copter(mav_conn):
             # Check if command in the same in `set_mode`
             if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
                 continue
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+            logger.info(
+                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+            )
             break
 
         mav_conn.mav.command_long_send(
@@ -3677,11 +3665,13 @@ def takeoff_copter(mav_conn):
             # Wait for ACK command
             ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
             if ack_msg is None:
-                log("Takeoff failed, exiting")
+                logger.info("Takeoff failed, exiting")
                 exit(0)
             ack_msg = ack_msg.to_dict()
 
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+            logger.info(
+                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+            )
             break
 
         # This is for testing A.RTL1
@@ -3696,7 +3686,7 @@ def takeoff_copter(mav_conn):
                 if (
                     altitude >= MISSION_ATTITUDE
                 ):  # Half the height is good enough for now (Mission based)
-                    log("Reached approximate height")
+                    logger.info("Reached approximate height")
                     break
 
         mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
@@ -3710,13 +3700,15 @@ def takeoff_copter(mav_conn):
             # Check if command in the same in `set_mode`
             if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
                 continue
-            log((mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description))
+            logger.info(
+                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+            )
             break
         # Set default throttle
         set_rc_channel_pwm(3, 1500)
 
         # Maintain mid-position of stick on RC controller
-        log("Non mission mode, enabling a thread to keep drone in the air")
+        logger.info("Non mission mode, enabling a thread to keep drone in the air")
         new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
         new_process.daemon = True
         new_process.start()
@@ -3756,7 +3748,7 @@ def load_xml_messages(file_path: str, filter: list) -> list:
             msg_name = msg.get("name")
             # Check if the message name is inside the filter list
             if msg_name in filter:
-                log("Debug: Found the message {}".format(msg_name))
+                logger.info("Debug: Found the message {}".format(msg_name))
                 fields = []
                 for entry in msg.xpath(".//field"):
                     entry_name = entry.get("name")
@@ -3770,7 +3762,7 @@ def load_xml_messages(file_path: str, filter: list) -> list:
                 )
 
     else:
-        log("No msgs found in the XML file.")
+        logger.info("No msgs found in the XML file.")
 
     if xml_msg == []:
         print("Error empty sad")
@@ -3799,8 +3791,8 @@ def main():
 
     # Check if in demo mode
     if DEMO_MODE:
-        log("Demo mode is enabled")
-        log("Exits when a violation is found or is run for {DEMO_ROUNDS}")
+        logger.info("Demo mode is enabled")
+        logger.info("Exits when a violation is found or is run for {DEMO_ROUNDS}")
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -3817,40 +3809,40 @@ def main():
     params_path += f_path_def
     params_path += "/parameters.txt"
     read_inputs.parsing_parameter(params_path)
-    log(
+    logger.info(
         (
             "# Check whether parsing parameters well done or not, received # of params: %d"
             % len(read_inputs.param_name)
         )
     )
-    # log((read_inputs.param_name)) XXX: Enable the parameter printing via debug flag
+    # logger.info((read_inputs.param_name)) XXX: Enable the parameter printing via debug flag
 
     cmd_path = ""
     cmd_path += f_path_def
     cmd_path += "/cmds.txt"
 
     read_inputs.parsing_command(cmd_path)
-    log(
+    logger.info(
         (
             "# Check whether parsing user commands well done or not, received # of params: %d"
             % len(read_inputs.cmd_name)
         )
     )
-    # log((read_inputs.cmd_name)) XXX: Enable the parameter printing via debug flag
+    # logger.info((read_inputs.cmd_name)) XXX: Enable the parameter printing via debug flag
 
     env_path = ""
     env_path += f_path_def
     env_path += "/envs.txt"
 
     read_inputs.parsing_env(env_path)
-    log(
+    logger.info(
         (
             "# Check whether parsing environmental factors well done or not, received # of params: %d"
             % len(read_inputs.env_name)
         )
     )
-    # log((read_inputs.env_name)) XXX: Enable the parameter printing via debug flag
-    # log(
+    # logger.info((read_inputs.env_name)) XXX: Enable the parameter printing via debug flag
+    # logger.info(
     #     "#-----------------------------------------------------------------------------"
     # )
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
@@ -3869,7 +3861,7 @@ def main():
 
     message = mav_conn.recv_match(type="VFR_HUD", blocking=True)
     home_altitude = message.alt
-    log(("home_altitude: %f" % home_altitude))
+    logger.info(("home_altitude: %f" % home_altitude))
 
     message = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
     home_lat = message.lat
@@ -3878,13 +3870,13 @@ def main():
     home_lon = message.lon
     home_lon = home_lon / 1000
     home_lon = home_lon * 1000
-    log(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
+    logger.info(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
 
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
     # we get a LOCAL_POSITION_NED
     # _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    # log("Got the local position ned")
+    # logger.info("Got the local position ned")
 
     # Set some preconditions to test a policy
     # When I switch to another target policy, I need to update the 'Precondition_path'.
@@ -3905,12 +3897,12 @@ def main():
     while True:
         msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
         if "is using GPS" in msg.text:
-            log("Got GPS usage message")
+            logger.info("Got GPS usage message")
             break
 
     # Upload the mission
     if not mission_disabled:
-        log("Mission is enabled")
+        logger.info("Mission is enabled")
         upload_mission(mav_conn, mission_file_path)
 
     t4 = multiprocessing.Process(target=send_msg_rangefinder)
@@ -3957,26 +3949,26 @@ def main():
 
     # Main loop
     while True:
-        log(
+        logger.info(
             "[Debug] drone_status:%d prev_status_ctr %d"
             % (drone_status, prev_status_ctr)
         )
         while reboot_pause_event.is_set():
-            log("Pausing main thread for 10 seconds because an event is set")
+            logger.info("Pausing main thread for 10 seconds because an event is set")
             time.sleep(10)
         if DEMO_MODE:
             if count_main_loop >= DEMO_ROUNDS:
-                log("[Demo mode] exiting now")
+                logger.info("[Demo mode] exiting now")
                 exit(0)
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
-            log("Incrementing the status_ctr")
+            logger.info("Incrementing the status_ctr")
             if status_ctr >= 100 and (
                 drone_status != mavutil.mavlink.MAV_STATE_ACTIVE
                 and prev_status_ctr != mavutil.mavlink.MAV_STATE_ACTIVE
             ):
-                log(
+                logger.info(
                     "Counter reached 100, check if the status has been stuck there, the value for status is {0}".format(
                         drone_status
                     )
@@ -3990,11 +3982,13 @@ def main():
         if drone_status == mavutil.mavlink.MAV_STATE_ACTIVE:
             if drone_status != prev_status_ctr:
                 status_ctr = 0
-                log("Reset status_ctr")
+                logger.info("Reset status_ctr")
             prev_status_ctr = drone_status
             Armed = 1
             executing_commands = 1
-            log(("### Next round (%d) for fuzzing commands. ###" % count_main_loop))
+            logger.info(
+                ("### Next round (%d) for fuzzing commands. ###" % count_main_loop)
+            )
             count_main_loop += 1
 
             # Calculate propositional and global distances
@@ -4020,16 +4014,16 @@ def main():
         elif (drone_status == mavutil.mavlink.MAV_STATE_STANDBY and RV_alive == 1) or (
             hit_ground == 1
         ):
-            log(("[Debug] drone_status:%d" % drone_status))
+            logger.info(("[Debug] drone_status:%d" % drone_status))
             if drone_status != prev_status_ctr:
                 status_ctr = 0
-                log("Reset status_ctr")
+                logger.info("Reset status_ctr")
             prev_status_ctr = drone_status
 
             if hit_ground == 1:
-                log("[Debug] *the drone hits ground*")
+                logger.info("[Debug] *the drone hits ground*")
 
-            log(
+            logger.info(
                 (
                     "### Vehicle is grounded, Home alt:%f, Current alt:%f"
                     % (home_altitude, current_altitude)
@@ -4041,8 +4035,8 @@ def main():
             count_main_loop = 0
 
         elif drone_status == mavutil.mavlink.MAV_STATE_STANDBY:
-            log("It is in standby mode")
-            log(
+            logger.info("It is in standby mode")
+            logger.info(
                 "Drone status Status: %d Hit_ground: %d PreArm: %d"
                 % (drone_status, hit_ground, PreArm_error)
             )
@@ -4054,7 +4048,7 @@ def main():
         # It is in mayday and going down
         elif drone_status == mavutil.mavlink.MAV_STATE_EMERGENCY:
             Armed = 0
-            log(
+            logger.info(
                 "@@@@@@@@@@ Drone lost control. It is in mayday and going down @@@@@@@@@@"
             )
         elif (
@@ -4067,23 +4061,23 @@ def main():
             # critcal error raise ValueError("Unhandled drone status Status: %d
             # Hit_ground: %d PreArm: %d" %
             # (drone_status,hit_ground,PreArm_error))
-            log(
+            logger.info(
                 "Drone status Status: %d Hit_ground: %d PreArm: %d"
                 % (drone_status, hit_ground, PreArm_error)
             )
-            log("Restarting the vehicle")
+            logger.info("Restarting the vehicle")
             failsafe_error = hit_ground = 0
 
             re_launch()
             count_main_loop = 0
 
         elif drone_status == mavutil.mavlink.MAV_STATE_UNINIT:
-            log("Still initializing status, sleeping for 10")
+            logger.info("Still initializing status, sleeping for 10")
             reboot_pause_event.set()
             time.sleep(10)
             reboot_pause_event.clear()
         else:
-            log("Unhandled MAV_STATE, check what is wrong")
+            logger.info("Unhandled MAV_STATE, check what is wrong")
             send_telegram_message("Unhandled MAV_STATE, check what is wrong")
             raise Exception("Unhandled MAV_STATE please check what's wrong")
 
@@ -4119,10 +4113,10 @@ def init():
         telegram_token = config["Optional"]["TelegramToken"]
         telegram_chat_id = config["Optional"]["TelegramChatID"]
     except Exception as ex:
-        log(f"Failed to load optional config with exception {ex}")
+        logger.info(f"Failed to load optional config with exception {ex}")
 
     # Print all the sensor_mapping
-    log("Sensor mapping at %s" % sensor_mapping_file)
+    logger.info("Sensor mapping at %s" % sensor_mapping_file)
     with open(sensor_mapping_file, "r") as f:
         sensor_map = json.load(f)
 
@@ -4135,18 +4129,18 @@ def init():
     else:
         sensor_matching_flag = True
     if not sensor_matching_flag:
-        log("Sensor not found in sensor mapping")
+        logger.info("Sensor not found in sensor mapping")
         exit(-1)
 
     # Find the required msg in the sensor mapping
     SUT_map = []
     for sensor in sensor_map:
         if SUT in sensor["sensor_type"]:
-            log("Found the sensor in the sensor mapping")
+            logger.info("Found the sensor in the sensor mapping")
             SUT_map = sensor
             break
         else:
-            log("Sensor not found in sensor mapping")
+            logger.info("Sensor not found in sensor mapping")
     msg_filter = SUT_map["msg_type"]
     # Load messages for the XML
     msg_list = load_xml_messages(mavlink_xml_file, msg_filter)
@@ -4154,8 +4148,8 @@ def init():
     frequencies = SUT_map["frequency"]
     # Sanity check if length of msg_list and frequencies are the same
     if len(msg_list) != len(frequencies):
-        log("msg_list elements are different than frequencies")
-        log("Exiting")
+        logger.info("msg_list elements are different than frequencies")
+        logger.info("Exiting")
         exit(0)
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
@@ -4165,11 +4159,11 @@ def init():
         .decode("utf-8")
     )
     if current_commit == "":
-        log("No commit found in the Ardupilot directory")
+        logger.info("No commit found in the Ardupilot directory")
     else:
-        log("The commit being tested is: %s" % current_commit)
+        logger.info("The commit being tested is: %s" % current_commit)
 
-    log("Pymavlink version %s" % pymavlink.__version__)
+    logger.info("Pymavlink version %s" % pymavlink.__version__)
 
 
 if __name__ == "__main__":
