@@ -3,17 +3,68 @@ import signal
 import subprocess
 import json
 import configparser
+import logging
 
 # from subprocess import *
 import os
 import psutil
 
+
 # List to keep track of child processes
 child_processes = []
 
+# Setup the file for logging
+logger = logging.getLogger("pgfuzz")
+logger.setLevel(logging.INFO)
+# Create a custom formatter
+formatter = logging.Formatter(
+    "%(asctime)s | Thread: %(threadName)s | PID: %(process)d | %(levelname)s | %(filename)s:%(lineno)d  | %(message)s"
+)
+# Create handlers
+# Always add a stream handler to print to console
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
+# If a log file is specified, add a file handler
+file_handler = logging.FileHandler("pgfuzz.log")
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
+# class PGFUZZ_info:
+#     def __init__(self, config_path=None):
+#         self.config = {}
+#         map_config = read_config(config_path)
+#         try:
+#             config = {
+#                 "cur_pol_p_len": map_config["Required"]["Current_policy_P_length"],
+#                 "PGFUZZHome": map_config["Required"]["PGFUZZHome"],
+#                 "ArduPilotHome": map_config["Required"]["ArduPilotHome"],
+#                 "SensorMapPath": map_config["Required"]["SensorMapPath"],
+#                 "Sensor": map_config["Required"]["Sensor"],
+#                 "TelegramToken": map_config["Required"]["TelegramToken"],
+#                 "TelegramChatID": map_config["Required"]["TelegramChatID"],
+#                 "MavlinkXMLFile": map_config["Required"]["MavlinkXMLFile"],
+#                 "MissionDisabled": map_config["Required"]["MissionDisabled"],
+#             }
+#         except KeyError as e:
+#             log("KeyError: {0}".format(e))
+#
+#         global Current_policy_P_length
+#         global Current_policy
+#         global ardupilot_dir
+#         global pgfuzz_dir
+#         global SUT
+#         global telegram_token
+#         global telegram_chat_id
+#         global mavlink_xml_file
+#         global msg_list
+#         global mission_disabled
+#         return self.config
+#
+
 
 def goodbye():
-    print("SIGINT received, terminator program is now active (`ー´)...")
+    logger.info("SIGINT received, terminator program is now active (`ー´)...")
     # use tmux kill-window to kill the tmux windows with pgfuzz in the name
     # List all tmux windows
     result = subprocess.check_output(["tmux", "list-windows"])
@@ -26,7 +77,7 @@ def goodbye():
             cmd = ["tmux", "send-keys", "-t", window_target, "C-c", "C-m"]
             subprocess.call(cmd)
             time.sleep(1)  # Give the process some time to terminate
-            print("Closing window: {0}".format(window_name))
+            logger.info("Closing window: {0}".format(window_name))
             subprocess.call(["tmux", "kill-window", "-t", window_id])
         # Find Xterm process running ArduCopter and kill it
         arducopter_pid = None
@@ -35,13 +86,13 @@ def goodbye():
                 # See if the process is ArduCopter
                 if "ArduCopter" in proc.cmdline():
                     arducopter_pid = proc.pid
-                    print("Terminating random ArduCopter")
-                    print("ArduCopter PID: " + str(arducopter_pid))
+                    logger.info("Terminating random ArduCopter")
+                    logger.info("ArduCopter PID: " + str(arducopter_pid))
                     proc.kill()
             if "ruby" in proc.name():
                 gz_match = [x for x in proc.cmdline() if "gz" in x]
                 if gz_match:
-                    print("Terminating random gazebo process")
+                    logger.info("Terminating random gazebo process")
                     proc.kill()
 
 
@@ -50,8 +101,8 @@ def sigint_handler(signum, _frame):
         goodbye()
         exit(0)
     else:
-        print("Received signal: {0}".format(signum))
-        print("Not sure what to do, bailing out for now")
+        logger.info("Received signal: {0}".format(signum))
+        logger.info("Not sure what to do, bailing out for now")
 
 
 def tmux_session_info() -> str | None:
@@ -104,7 +155,7 @@ def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
             if result.returncode != 0:
                 # Create the session if it doesn't exist
                 subprocess.call(["tmux", "new-session", "-d", "-s", session_name])
-                print(("Created new session: {0}".format(session_name)))
+                logger.info(("Created new session: {0}".format(session_name)))
 
         if window_name == "":
             window_name = "default" + str(int(time.time()))
@@ -128,18 +179,18 @@ def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
             cmd = ["tmux", "send-keys", "-t", target, command, "C-m"]
             process = subprocess.Popen(cmd)
             child_processes.append(process.pid)
-            print(("Running command {0}".format(command)))
+            logger.info(("Running command {0}".format(command)))
 
-        print(("New window created in session {0}.".format(session_name)))
+        logger.info(("New window created in session {0}.".format(session_name)))
 
     except Exception as e:
-        print(("An error occurred: {0}".format(e)))
+        logger.info(("An error occurred: {0}".format(e)))
 
 
-def read_config():
+def read_config(config_path="pgfuzz.ini"):
     config = configparser.ConfigParser()
     # Check if the file exists
-    if not os.path.exists("pgfuzz.ini"):
+    if not os.path.exists(config_path):
         raise Exception("Config file pgfuzz.ini not found!")
     config.read("pgfuzz.ini")
     # If config doesn't have the necessary sections, raise an exception
@@ -164,12 +215,12 @@ def set_sensor_parm(config):
             parameters = sensor_row["parameters"]
             break
     if parameters is None:
-        print("Sensor not found in the mapping file!")
+        logger.info("Sensor not found in the mapping file!")
         exit(1)
     # Write the sensor value with the parameter
     with open(ap_param_file, "w") as f:
         for keys in parameters.keys():
-            # print("Writing {0} {1}".format(keys, parameters[keys]))
+            # logger.info("Writing {0} {1}".format(keys, parameters[keys]))
             f.write("{0} {1:0.5f}\n".format(keys, float(parameters[keys])))
 
 
@@ -213,7 +264,7 @@ if __name__ == "__main__":
         time.sleep(1)
         f = open("restart.txt", "r")
         if not tmux_window_exists("", "fuzzing"):
-            print("Fuzzing window closed, adios!")
+            logger.info("Fuzzing window closed, adios!")
             goodbye()
             exit(0)
         if f.read() == "restart":
