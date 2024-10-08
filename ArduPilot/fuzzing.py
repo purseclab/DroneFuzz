@@ -1663,7 +1663,7 @@ def calculate_distance(guidance, mutated_val: float | None = None):
     if relative_alt > 0:
         takeoff = 1
 
-    _, mav_conn = reconn_heartbeat(timeout=5, max_attempts=2)
+    _, mav_conn = reconn_heartbeat(timeout=5, max_attempts=3)
     # # ----------------------- (start) A.CHUTE1 policy -----------------------
     # # Propositional distances
     # # 0: turn off, 1: turn on
@@ -3423,10 +3423,10 @@ def pick_up_cmd():
     Guidance_decision = None
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
-    # input_type = random.choice([1, 4])
+    input_type = random.choice([1, 4])
 
     # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
-    input_type = 4
+    # input_type = 4
 
     # True: input mutated from guidance, False: randomly mutate an input
     Guidance_decision = random.choice([True, False])
