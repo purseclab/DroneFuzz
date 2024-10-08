@@ -6,11 +6,13 @@ import psutil
 import time
 import os
 import signal
+import logging
 
 from pgfuzz import read_config
 
 PR_SET_PDEATHSIG = 1  # This constant is for PR_SET_PDEATHSIG
 PR_SET_PDEATHSIG_VALUE = signal.SIGTERM  # The signal to send when the parent dies
+logger = logging.getLogger("pgfuzz")
 
 
 def terminate_process_tree(pid, timeout=5):
@@ -95,12 +97,12 @@ if sim == "Gazebo":
         preexec_fn=os.setsid,
     )
     handle = handle_gz_sim  # XXX: Assuming that the gazebo process is the main process
-    print("The PID for the gazebo is: " + str(handle_gz_sim.pid))
-    print("The PID for the ardupilot is: " + str(handle_ap_gz.pid))
+    logger.info("The PID for the gazebo is: " + str(handle_gz_sim.pid))
+    logger.info("The PID for the ardupilot is: " + str(handle_ap_gz.pid))
 
 elif sim == "SITL":
-    print("Starting SITL")
-    print("Command: " + cmd_ap_sitl)
+    logger.info("Starting SITL")
+    logger.info("Command: " + cmd_ap_sitl)
     handle_ap_sitl = Popen(
         ["bash", "-c", cmd_ap_sitl],
         stdout=PIPE,
@@ -110,19 +112,19 @@ elif sim == "SITL":
     )
     handle = handle_ap_sitl
     time.sleep(1)
-    print("The PID for the ardupilot is: " + str(handle_ap_sitl.pid))
+    logger.info("The PID for the ardupilot is: " + str(handle_ap_sitl.pid))
 
 while True:
     f = open("shared_variables.txt", "r")
 
     if handle is None:
-        print("Can't find a process handle")
-        print("Exiting the process 0")
+        logger.info("Can't find a process handle")
+        logger.info("Exiting the process 0")
         exit(0)
 
     # Check if the process is still running
     if handle.poll() is not None:
-        print("ERROR: Process has terminated unexpectedly")
+        logger.info("ERROR: Process has terminated unexpectedly")
         exit(0)
 
     if f.read() == "reboot":
@@ -131,17 +133,17 @@ while True:
         fi = open("restart.txt", "w")
         fi.write("restart")
         fi.close()
-        print("[WOAH] About to kill some parents :|")
+        logger.info("[WOAH] About to kill some parents :|")
 
         # Kill all the children as well
         if sim == "Gazebo":
             terminate_process_tree(handle_gz_sim.pid)
-            print("Terminated gazebo")
+            logger.info("Terminated gazebo")
             terminate_process_tree(handle_ap_gz.pid)
-            print("Terminated ArduCopter")
+            logger.info("Terminated ArduCopter")
         elif sim == "SITL":
             terminate_process_tree(handle_ap_sitl.pid)
-            print("Terminated ArduCopter")
+            logger.info("Terminated ArduCopter")
 
         # Find Xterm process running ArduCopter and kill it
         arducopter_pid = None
@@ -150,14 +152,14 @@ while True:
                 # See if the process is ArduCopter
                 if "ArduCopter" in proc.cmdline():
                     arducopter_pid = proc.pid
-                    print("Terminating ArduCopter")
-                    print("ArduCopter PID: " + str(arducopter_pid))
+                    logger.info("Terminating ArduCopter")
+                    logger.info("ArduCopter PID: " + str(arducopter_pid))
                     proc.kill()
         if arducopter_pid is None:
-            print("Warning: ArduCopter process not found")
-            print("Might create issues with the next simulation")
+            logger.info("Warning: ArduCopter process not found")
+            logger.info("Might create issues with the next simulation")
 
-        print("Terminated AP processes")
+        logger.info("Terminated AP processes")
         exit(0)
 
     time.sleep(1)

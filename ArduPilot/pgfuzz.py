@@ -224,15 +224,6 @@ def set_sensor_parm(config):
             f.write("{0} {1:0.5f}\n".format(keys, float(parameters[keys])))
 
 
-# PGFUZZ_HOME = os.getenv("PGFUZZ_HOME")
-#
-# if PGFUZZ_HOME is None:
-#     raise Exception("PGFUZZ_HOME environment variable is not set!")
-#
-# ARDUPILOT_HOME = os.getenv("ARDUPILOT_HOME")
-#
-# if ARDUPILOT_HOME is None:
-#     raise Exception("ARDUPILOT_HOME environment variable is not set!")
 if __name__ == "__main__":
     config = read_config()
     set_sensor_parm(config)
@@ -240,12 +231,9 @@ if __name__ == "__main__":
 
     open("restart.txt", "w").close()
 
-    # Save the sensor value
-
     # Files to open
     working_dir = pgfuzz_home + "/ArduPilot/"
     open_simulator = working_dir + "open_simulator.py"
-    # setup_sh = working_dir + "setup.sh"
     fuzzing_py = working_dir + "fuzzing.py"
 
     # Register the SIGINT handler
@@ -269,10 +257,14 @@ if __name__ == "__main__":
             exit(0)
         if f.read() == "restart":
             f.close()
-            time.sleep(2)  # Sleep for a while to kill everyone
+            time.sleep(5)  # Sleep for a while to kill everyone
+            # Check if the process is still running
+            for pid in child_processes:
+                while psutil.pid_exists(pid):
+                    logger.info("Waiting for process to terminate: {0}".format(pid))
+                    time.sleep(2)
             open("restart.txt", "w").close()
             cmd = "python3 " + open_simulator + "; exit"
             # Get the current datetime in Unix seconds
             prg_name = "pgfuzz-sitl-" + str(int(time.time()))
             spawn_tmux_window(window_name=prg_name, command=cmd)
-        # Also check if the fuzzing window is open, if closed exit
