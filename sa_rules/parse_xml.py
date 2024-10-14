@@ -1,43 +1,87 @@
-import xml.etree.ElementTree as ET
-import xml.etree.ElementInclude as EI
+from lxml import etree
 import os
 
 
-def include_xml(elem, base_path):
-    for include in elem.findall("include"):
+def include_xml(elem, base_path, processed_files=None):
+    if processed_files is None:
+        processed_files = set()
+
+    for include in elem.xpath(".//include"):
         filename = include.text
         filepath = os.path.join(base_path, filename)
         print(f"Processing include: {filepath}")
+
+        # Check if the file has already been processed
+        if filepath in processed_files:
+            print(f"Skipping already processed file: {filepath}")
+            continue
+
         if os.path.exists(filepath):
-            tree = ET.parse(filepath)
-            include_root = tree.getroot()
+            parser = etree.XMLParser(remove_blank_text=True)
+            include_tree = etree.parse(filepath, parser)
+            include_root = include_tree.getroot()
+
+            # Mark the file as processed
+            processed_files.add(filepath)
+
             # Recursively process includes in the included file
-            include_xml(include_root, os.path.dirname(filepath))
+            include_xml(include_root, os.path.dirname(filepath), processed_files)
+
             # Replace the include element with the contents of the included file
-            index = list(elem).index(include)
-            # elem.remove(include)
-            print("Removing include element {}".format(include))
+            parent = include.getparent()
+            index = parent.index(include)
+            parent.remove(include)
             for child in reversed(list(include_root)):
-                elem.insert(index, child)
+                parent.insert(index, child)
 
 
-# Parse the XML file
-main_file = "xmls/ardupilotmega.xml"
-tree = ET.parse(main_file)
-root = tree.getroot()
-include_xml(root, os.path.dirname(os.path.abspath(main_file)))
-msg_elements = root.find("messages")
-if msg_elements is not None:
-    print("MSG found in ardupilotmega.xml:")
-    for msg in msg_elements.findall("message"):
-        msg_name = msg.get("name")
-        print(f"msg: {msg_name}")
+def parse_xml_file(file_path):
+    parser = etree.XMLParser(remove_blank_text=True)
+    tree = etree.parse(file_path, parser)
+    root = tree.getroot()
+    include_xml(root, os.path.dirname(os.path.abspath(file_path)))
+    return root
 
-        # Optionally, print entries of each enum
-        for entry in msg.findall("field"):
-            entry_name = entry.get("name")
-            entry_value = entry.get("type")
-            print(f"  Field: {entry_name}, Type: {entry_value}")
-        print()
-else:
-    print("No msgs found in the XML file.")
+
+def print_messages(root, filter):
+    msg_elements = root.xpath("//messages/message")
+    msg_elements += root.xpath("//entry")
+    if msg_elements:
+        print("Messages found in XML:")
+        for msg in msg_elements:
+            msg_name = msg.get("name")
+            if msg_name in filter:
+                print(f"Message: {msg_name}")
+                if msg.xpath(".//field"):
+                    for field in msg.xpath(".//field"):
+                        field_name = field.get("name")
+                        field_type = field.get("type")
+                        print(f"  Field: {field_name}, Type: {field_type}")
+                elif msg.xpath(".//param"):
+                    for param in msg.xpath(".//param"):
+                        param_name = param.get("label")
+                        if param_name is None:
+                            continue
+                        if param.get("minValue"):
+                            param_min = param.get("minValue")
+                        else:
+                            param_min = "float"
+                        if param.get("maxValue"):
+                            param_max = param.get("maxValue")
+                        else:
+                            param_max = "float"
+                        print(f"  Param: {param_name}, Range: {param_min}, {param_max}")
+                print()
+    else:
+        print("No messages found in the XML file.")
+
+
+def main():
+    main_file = "xmls/ardupilotmega.xml"
+    root = parse_xml_file(main_file)
+    filter = ["MAV_CMD_DO_MOUNT_CONTROL"]
+    print_messages(root, filter)
+
+
+if __name__ == "__main__":
+    main()
