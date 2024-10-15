@@ -229,7 +229,7 @@ def send_telegram_message(message):
 
 
 # Check for heartbeat and restablish connection and try to get hb
-def reconn_heartbeat(timeout=10, max_attempts=3):
+def reconn_heartbeat(timeout=10, max_attempts=3, host="localhost", port=14551):
     attempt = 0
     global current_flight_mode
     global previous_flight_mode
@@ -239,7 +239,7 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
         attempt += 1
         logger.info(f"Attempt {attempt} of {max_attempts}")
         # Establish a new connection
-        connection = mavutil.mavlink_connection("localhost:14551")
+        connection = mavutil.mavlink_connection(f"{host}:{port}")
         # Wait for a heartbeat
         msg = connection.recv_match(type="HEARTBEAT", blocking=True, timeout=timeout)
         if msg:
@@ -261,7 +261,7 @@ def reconn_heartbeat(timeout=10, max_attempts=3):
     logger.info("No heartbeat received after maximum attempts.")
     logger.info("Exiting as cannot talk to the vehicle")
     send_telegram_message("No heartbeat received after maximum attempts.")
-    exit(-1)
+    os._exit(-1)  # Weird way to exit, but else need to come up with a fancier messaging
 
 
 def sma_log(message, filename="sma.log"):
@@ -303,12 +303,16 @@ def reboot_vehicle():
 # ------------------------------------------------------------------------------------
 # If the RV does not response within 5 seconds, we consider the RV's program crashed.
 def check_liveness():
+    # Track liveness of the RV's control program
+    liveness_pause = 0
     while True:
         # 2024-07-08T11:05:48-0400: silipwn: We connect every loop to ensure we don't miss
         # the message somehow
         # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
         if not reboot_pause_event.is_set():
-            hb_msg, _ = reconn_heartbeat(timeout=5, max_attempts=2)
+            hb_msg, _ = reconn_heartbeat(
+                timeout=5, max_attempts=2, host="localhost", port=1339
+            )
             if hb_msg is None:
                 logger.info("Got an exception when attempting to reconnect")
                 store_mutated_inputs()
@@ -319,6 +323,10 @@ def check_liveness():
             # mav_conn.close()
         else:
             logger.info("Liveness thread paused")
+            liveness_pause += 1
+        if liveness_pause > 50:
+            send_telegram_message("Liveness thread paused for too long")
+            raise Exception("Liveness thread paused for too long")
         time.sleep(5)
 
 
