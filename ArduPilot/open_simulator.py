@@ -64,16 +64,14 @@ cmd_ap_gz += "--out=udpout:127.0.0.1:1339 "  # Plotting thread
 cmd_ap_gz += "--add-param-file=" + ardupilot_home + "sensor.parm"
 
 # TODO: Take the path from a config
-GZ_PLUGIN_PATH = "/home/silipwn/Documents/ardupilot_gazebo/"
-GZ_SRC_PATH = "/home/silipwn/Documents/gz-src/"
 # Setup gazebo
-cmd_gz = "export DISPLAY=:0 "
-cmd_gz += "&& source " + GZ_SRC_PATH + "install/setup.bash "
-cmd_gz += "&& source /home/silipwn/Documents/GAZEBO_ENV.sh "
+cmd_gz = "export DISPLAY=:1 "
+# cmd_gz += "&& source " + GZ_SRC_PATH + "install/setup.bash "
+cmd_gz += "&& source /home/silipwn/Documents/Drone/ardupilot_gazebo/setup.sh "
 cmd_gz += "&& gz sim --verbose 4 -r iris_runway.sdf"
 # Enable camera via gz topic
-cmd_gz_topic = "source " + GZ_SRC_PATH + "install/setup.bash "
-cmd_gz_topic += "&& gz topic -t /world/iris_runway/model/iris_with_gimbal/model/gimbal/link/pitch_link/sensor/camera/image/enable_streaming -m gz.msgs.Boolean -p 'data: 1'"
+# cmd_gz_topic = "source " + GZ_SRC_PATH + "install/setup.bash "
+cmd_gz_topic = "gz topic -t /world/iris_runway/model/iris_with_gimbal/model/gimbal/link/pitch_link/sensor/camera/image/enable_streaming -m gz.msgs.Boolean -p 'data: 1'"
 
 # Depending upon simulation type, spawn instances
 if sim == "Gazebo":
