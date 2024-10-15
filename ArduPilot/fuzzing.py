@@ -170,7 +170,7 @@ alt_GPS_series = 0.0
 vertical_speed_series = 0.0
 gps_message_cnt = 0
 actual_throttle = 0
-mission_disabled = False
+mission_enabled = False
 
 # Sensor metrics
 start_time = int(round(time.time() * 1000))
@@ -3542,7 +3542,7 @@ def takeoff_copter(mav_conn):
 
     time.sleep(1)
 
-    if not mission_disabled:
+    if mission_enabled:
         # Choose a mode
         mode = "AUTO"
 
@@ -3786,6 +3786,7 @@ def main():
     global failsafe_error
     global RV_alive
     global hit_ground
+    global mission_enabled
 
     # NOTE: Might be better to do it in a init function?
 
@@ -3901,7 +3902,7 @@ def main():
             break
 
     # Upload the mission
-    if not mission_disabled:
+    if mission_enabled:
         logger.info("Mission is enabled")
         upload_mission(mav_conn, mission_file_path)
 
@@ -4092,7 +4093,7 @@ def init():
     global telegram_chat_id
     global mavlink_xml_file
     global msg_list
-    global mission_disabled
+    global mission_enabled
     config = read_config()
     # Required
     try:
@@ -4103,7 +4104,7 @@ def init():
         SUT = config["Required"]["Sensor"]  # Sensor Under Test
         sensor_mapping_file = config["Required"]["SensorMapPath"]
         mavlink_xml_file = config["Required"]["MavlinkXMLPath"]
-        mission_disabled = config["Required"]["MissionDisable"]
+        mission_enabled = bool(config["Required"]["MissionEnable"])
     except Exception as ex:
         print("Failed to load config file with following exception")
         print(ex)
