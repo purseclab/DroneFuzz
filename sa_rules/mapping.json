@@ -48,5 +48,14 @@
     "msg_type": [
       "NULL"
     ]
+  },
+  {
+    "sensor_type": "AP_Gimbal",
+    "parameters": {
+      "MNT_TYPE": 4
+    },
+    "msg_type": [
+      "MAV_CMD_DO_MOUNT_CONTROL"
+    ]
   }
 ]

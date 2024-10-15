@@ -62,15 +62,13 @@ def print_messages(root, filter):
                         param_name = param.get("label")
                         if param_name is None:
                             continue
-                        if param.get("minValue"):
-                            param_min = param.get("minValue")
-                        else:
-                            param_min = "float"
-                        if param.get("maxValue"):
-                            param_max = param.get("maxValue")
-                        else:
-                            param_max = "float"
-                        print(f"  Param: {param_name}, Range: {param_min}, {param_max}")
+                        param_min = param.get("minValue", "float")
+                        param_max = param.get("maxValue", "float")
+                        param_inc = param.get("increment", None)
+                        param_text = param.text
+                        print(
+                            f"  Param: {param_name} Desc: {param_text} Range: {param_min}, {param_max}, {param_inc}"
+                        )
                 print()
     else:
         print("No messages found in the XML file.")
