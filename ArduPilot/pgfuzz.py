@@ -88,12 +88,22 @@ def goodbye():
                     arducopter_pid = proc.pid
                     logger.info("Terminating random ArduCopter")
                     logger.info("ArduCopter PID: " + str(arducopter_pid))
-                    proc.kill()
+                    try:
+                        proc.kill()
+                    except psutil.NoSuchProcess:
+                        logger.info("Process already terminated or is zombie")
+                    except Exception as e:
+                        logger.info("An error occurred: {0}".format(e))
             if "ruby" in proc.name():
                 gz_match = [x for x in proc.cmdline() if "gz" in x]
                 if gz_match:
                     logger.info("Terminating random gazebo process")
-                    proc.kill()
+                    try:
+                        proc.kill()
+                    except psutil.NoSuchProcess:
+                        logger.info("Process already terminated or is zombie")
+                    except Exception as e:
+                        logger.info("An error occurred: {0}".format(e))
 
 
 def sigint_handler(signum, _frame):
@@ -244,7 +254,7 @@ if __name__ == "__main__":
     spawn_tmux_window(window_name=prg_name, command=cmd)
 
     time.sleep(20)  # NOTE: Time reduced for testing
-    cmd = "python3 -i " + fuzzing_py
+    cmd = "python3 " + fuzzing_py
     prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 
@@ -252,7 +262,7 @@ if __name__ == "__main__":
         time.sleep(1)
         f = open("restart.txt", "r")
         if not tmux_window_exists("", "fuzzing"):
-            logger.info("Fuzzing window closed, adios!")
+            logger.info("Fuzzing window closed, not good!")
             goodbye()
             exit(0)
         if f.read() == "restart":
