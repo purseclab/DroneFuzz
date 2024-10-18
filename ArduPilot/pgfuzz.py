@@ -110,15 +110,19 @@ def goodbye():
                     except Exception as e:
                         logger.info("An error occurred: {0}".format(e))
             if "ruby" in proc.name():
-                gz_match = [x for x in proc.cmdline() if "gz" in x]
-                if gz_match:
-                    logger.info("Terminating random gazebo process")
-                    try:
+                gz_match = []
+                try:
+                    # Try to get the command line arguments of the process
+                    gz_match += [x for x in proc.cmdline() if "gz" in x]
+                    if gz_match:
+                        logger.info("Terminating random gazebo process")
                         proc.kill()
-                    except psutil.NoSuchProcess:
-                        logger.info("Process already terminated or is zombie")
-                    except Exception as e:
-                        logger.info("An error occurred: {0}".format(e))
+                except (
+                    psutil.ZombieProcess,
+                    psutil.AccessDenied,
+                    psutil.NoSuchProcess,
+                ):
+                    logger.info("Can't find that ruby process")
 
 
 def sigint_handler(signum, _frame):
