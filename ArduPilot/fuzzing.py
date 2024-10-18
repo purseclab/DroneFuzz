@@ -4196,7 +4196,8 @@ def init():
         SUT = config["Required"]["Sensor"]  # Sensor Under Test
         sensor_mapping_file = config["Required"]["SensorMapPath"]
         mavlink_xml_file = config["Required"]["MavlinkXMLPath"]
-        mission_enabled = bool(config["Required"]["MissionEnable"])
+        mission_enabled = config["Required"]["MissionEnable"] == "True"
+        logger.critical("Mission enabled: %s" % mission_enabled)
     except Exception as ex:
         print("Failed to load config file with following exception")
         print(ex)
