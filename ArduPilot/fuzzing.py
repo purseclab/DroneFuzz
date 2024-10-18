@@ -3580,10 +3580,8 @@ def takeoff_copter(mav_conn):
         # Wait for ACK command
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
         if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            logger.info("Arming failed, exiting")
-            exit(0)
+            logger.error("Arming failed")
         ack_msg = ack_msg.to_dict()
-        print(ack_msg)
 
         logger.info(
             (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
@@ -3633,8 +3631,8 @@ def takeoff_copter(mav_conn):
             )  # XXX: Hoping this doesn't get stuck
             hb_msg = hb_msg.to_dict()
             if hb_msg["custom_mode"] != mode_id:
-                logger.info("Failed set to guided mode")
-                logger.info("Exiting")
+                logger.error("Failed set to guided mode")
+                logger.error("Exiting")
                 exit(0)
         else:
             ack_msg = ack_msg.to_dict()
@@ -3646,8 +3644,9 @@ def takeoff_copter(mav_conn):
                 logger.info(
                     (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
                 )
+                logger.debug(ack_msg)
             else:
-                logger.info("Failed set to guided mode")
+                logger.info("Failed set to current mode")
                 logger.info(ack_msg)
 
         # Auto mode addition
