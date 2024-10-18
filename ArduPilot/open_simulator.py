@@ -48,6 +48,7 @@ cmd_ap_sitl = (
     ardupilot_home
     + "Tools/autotest/sim_vehicle.py -v ArduCopter -D "  # Enable debug
     + "--out=udp:127.0.0.1:1337 "  # Sensor thread
+    + "--out=udp:127.0.0.1:1339 "  # Liveness thread
     + "--out=udp:127.0.0.1:14551 "  # Monitoring
     + "--out=udp:127.0.0.1:14555 "  # QGC port
     + "--out=udpout:127.0.0.1:1338 "  # Monitoring thread
