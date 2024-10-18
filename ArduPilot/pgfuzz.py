@@ -4,6 +4,7 @@ import subprocess
 import json
 import configparser
 import logging
+import colorlog
 
 # from subprocess import *
 import os
@@ -15,15 +16,29 @@ child_processes = []
 
 # Setup the file for logging
 logger = logging.getLogger("pgfuzz")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 # Create a custom formatter
 formatter = logging.Formatter(
     "%(asctime)s | Thread: %(threadName)s | PID: %(process)d | %(levelname)s | %(filename)s:%(lineno)d  | %(message)s"
 )
+color_formatter = colorlog.ColoredFormatter(
+    "%(asctime)s | Thread: %(threadName)s | PID: %(process)d | %(levelname)s | %(filename)s:%(lineno)d %(log_color)s%(message)s",
+    log_colors={
+        "DEBUG": "cyan",
+        "INFO": "green",
+        "WARNING": "yellow",
+        "ERROR": "red",
+        "CRITICAL": "red,bg_white",
+    },
+    secondary_log_colors={},
+    style="%",
+)
+
+
 # Create handlers
 # Always add a stream handler to print to console
 stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(formatter)
+stream_handler.setFormatter(color_formatter)
 logger.addHandler(stream_handler)
 # If a log file is specified, add a file handler
 file_handler = logging.FileHandler("pgfuzz.log")
