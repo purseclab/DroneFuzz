@@ -117,32 +117,32 @@ def goodbye():
         # Find Xterm process running ArduCopter and kill it
         arducopter_pid = None
         for proc in psutil.process_iter():
-            if "xterm" in proc.name():
-                # See if the process is ArduCopter
-                if "ArduCopter" in proc.cmdline():
-                    arducopter_pid = proc.pid
-                    logger.info("Terminating random ArduCopter")
-                    logger.info("ArduCopter PID: " + str(arducopter_pid))
-                    try:
-                        proc.kill()
-                    except psutil.NoSuchProcess:
-                        logger.info("Process already terminated or is zombie")
-                    except Exception as e:
-                        logger.info("An error occurred: {0}".format(e))
-            if "ruby" in proc.name():
-                gz_match = []
-                try:
+            try:
+                if "xterm" in proc.name():
+                    # See if the process is ArduCopter
+                    if "ArduCopter" in proc.cmdline():
+                        arducopter_pid = proc.pid
+                        logger.info("Terminating random ArduCopter")
+                        logger.info("ArduCopter PID: " + str(arducopter_pid))
+                        try:
+                            proc.kill()
+                        except psutil.NoSuchProcess:
+                            logger.info("Process already terminated or is zombie")
+                        except Exception as e:
+                            logger.info("An error occurred: {0}".format(e))
+                if "ruby" in proc.name():
+                    gz_match = []
                     # Try to get the command line arguments of the process
                     gz_match += [x for x in proc.cmdline() if "gz" in x]
                     if gz_match:
                         logger.info("Terminating random gazebo process")
                         proc.kill()
-                except (
-                    psutil.ZombieProcess,
-                    psutil.AccessDenied,
-                    psutil.NoSuchProcess,
-                ):
-                    logger.info("Can't find that ruby process")
+            except (
+                psutil.ZombieProcess,
+                psutil.AccessDenied,
+                psutil.NoSuchProcess,
+            ):
+                logger.info("Can't find that process")
 
 
 def sigint_handler(signum, _frame):
