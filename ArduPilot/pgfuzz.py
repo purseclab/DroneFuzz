@@ -5,6 +5,7 @@ import json
 import configparser
 import logging
 import colorlog
+import sys
 
 # from subprocess import *
 import os
@@ -76,6 +77,25 @@ logger.addHandler(file_handler)
 #         global mission_disabled
 #         return self.config
 #
+
+
+# Some utitlity functions
+def pgfuzz_wait_for_gps(mav_conn):
+    """
+    Wait for the GPS to be used by the system, slightly modified from original wait as we wait till IMU starts using it
+    """
+    while True:
+        msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
+        if "is using GPS" in msg.text:
+            logger.info("Got GPS usage message")
+            break
+
+
+def good_path(path: str) -> bool:
+    if os.path.exists(path):
+        return True
+    else:
+        return False
 
 
 def goodbye():
@@ -216,12 +236,15 @@ def spawn_tmux_window(session_name="pgfuzz++", window_name="", command=""):
         logger.info(("An error occurred: {0}".format(e)))
 
 
-def read_config(config_path="pgfuzz.ini"):
+def read_config(config_path=None):
+    if config_path is None:
+        logger.info("No config file specified, using default path")
+        config_path = "pgfuzz.ini"
     config = configparser.ConfigParser()
     # Check if the file exists
     if not os.path.exists(config_path):
         raise Exception("Config file pgfuzz.ini not found!")
-    config.read("pgfuzz.ini")
+    config.read(config_path)
     # If config doesn't have the necessary sections, raise an exception
     if "Required" not in config.sections():
         raise Exception("pgfuzz required section not found in pgfuzz.ini")
@@ -254,7 +277,12 @@ def set_sensor_parm(config):
 
 
 if __name__ == "__main__":
-    config = read_config()
+    if len(sys.argv) > 1:
+        config_path = sys.argv[1]
+        logger.debug("Using config file: {0}".format(config_path))
+    else:
+        config_path = "pgfuzz.ini"
+    config = read_config(config_path)
     set_sensor_parm(config)
     pgfuzz_home = config["Required"]["PGFUZZHome"]
 
@@ -262,8 +290,8 @@ if __name__ == "__main__":
 
     # Files to open
     working_dir = pgfuzz_home + "/ArduPilot/"
-    open_simulator = working_dir + "open_simulator.py"
-    fuzzing_py = working_dir + "fuzzing.py"
+    open_simulator = working_dir + "open_simulator.py " + config_path
+    fuzzing_py = working_dir + "fuzzing.py " + config_path
 
     # Register the SIGINT handler
     signal.signal(signal.SIGINT, sigint_handler)
@@ -273,7 +301,7 @@ if __name__ == "__main__":
     spawn_tmux_window(window_name=prg_name, command=cmd)
 
     time.sleep(20)  # NOTE: Time reduced for testing
-    cmd = "python3 " + fuzzing_py
+    cmd = "python3 " + fuzzing_py + "; exit"  # NOTE: Added exit to close the window
     prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 

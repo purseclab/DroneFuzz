@@ -46,7 +46,7 @@ import math
 import numpy as np
 
 
-from pgfuzz import read_config
+from pgfuzz import pgfuzz_wait_for_gps, read_config
 
 
 # ------------------------------------------------------------------------------------
@@ -76,7 +76,7 @@ PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
 DEMO_MODE = False
-DEMO_ROUNDS = 15
+DEMO_ROUNDS = 1000
 required_min_thr = 975
 
 current_roll = 0.0
@@ -237,31 +237,31 @@ def reconn_heartbeat(timeout=10, max_attempts=3, host="localhost", port=14551):
 
     while attempt < max_attempts:
         attempt += 1
-        logger.info(f"Attempt {attempt} of {max_attempts}")
+        logger.debug(f"Attempt {attempt} of {max_attempts}")
         # Establish a new connection
         connection = mavutil.mavlink_connection(f"{host}:{port}")
         # Wait for a heartbeat
         msg = connection.recv_match(type="HEARTBEAT", blocking=True, timeout=timeout)
         if msg:
-            logger.info("Heartbeat received! Updating vars")
             if previous_flight_mode != mavutil.mode_string_v10(msg):
                 previous_flight_mode = current_flight_mode
             current_flight_mode = mavutil.mode_string_v10(msg)
             drone_status = msg.system_status
-            logger.info(
-                "Current_flight_mode {} and drone_status {}".format(
+            logger.debug(
+                "HB recvd! Current_flight_mode {} and drone_status {}".format(
                     current_flight_mode, drone_status
                 )
             )
             return msg, connection
         time.sleep(0.1)
         # If no heartbeat is received, close the connection and retry
-        logger.info("No heartbeat received, retrying...")
+        logger.debug("No heartbeat received, retrying...")
 
-    logger.info("No heartbeat received after maximum attempts.")
-    logger.info("Exiting as cannot talk to the vehicle")
+    logger.warning("No heartbeat received after maximum attempts.")
+    logger.critical("Exiting as cannot talk to the vehicle")
     send_telegram_message("No heartbeat received after maximum attempts.")
-    os._exit(-1)  # Weird way to exit, but else need to come up with a fancier messaging
+    # TODO: Fix this, this leads other threads to just run in the background
+    # os._exit(-1)  # Weird way to exit, but else need to come up with a fancier messaging
 
 
 def sma_log(message, filename="sma.log"):
@@ -311,8 +311,9 @@ def check_liveness():
         # mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
         if not reboot_pause_event.is_set():
             hb_msg, _ = reconn_heartbeat(
-                timeout=5, max_attempts=2, host="localhost", port=1339
+                timeout=5, max_attempts=3, host="localhost", port=1339
             )
+            liveness_pause = 0
             if hb_msg is None:
                 logger.info("Got an exception when attempting to reconnect")
                 store_mutated_inputs()
@@ -324,9 +325,10 @@ def check_liveness():
         else:
             logger.info("Liveness thread paused")
             liveness_pause += 1
-        if liveness_pause > 50:
-            send_telegram_message("Liveness thread paused for too long")
-            raise Exception("Liveness thread paused for too long")
+            if liveness_pause > 50:
+                send_telegram_message("Liveness thread paused for too long")
+                logger.error("Liveness thread paused for too long")
+                sys.exit(-1)
         time.sleep(5)
 
 
@@ -442,9 +444,7 @@ def re_launch():
     # Read the LAST_LOG contents
     last_log_fd = open(LAST_LOG, "r")
     last_log_number = last_log_fd.readline()
-    logger.info("The current log file is ")
-    logger.info(last_log_number)
-
+    logger.info("The current log file is {0}".format(last_log_number))
     logger.info(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
@@ -509,7 +509,7 @@ def re_launch():
 
     start_rangefinder()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
-    mav_conn.wait_gps_fix()
+    pgfuzz_wait_for_gps(mav_conn)
 
     logger.info("Clearing event")
     mavlink_pause_event.clear()
@@ -571,9 +571,20 @@ def generate_field_value(field_type):
         "int64_t": "int",
         "uint64_t": "int",
     }
+    is_array = False
+
+    # Handle the special case for array
+    if "[" in field_type:
+        logger.debug("Custom case for array")
+        # Extract the value between brackets
+        length = int(field_type.split("[")[1][:-1])
+        field_type = field_type.split("[")[0]
+        is_array = True
 
     py_type = c_type_to_py.get(field_type)
 
+    if is_array:
+        return [generate_field_value(field_type) for _ in range(length)]
     if py_type == "float":
         return np.random.rand()
     elif py_type == "int":
@@ -599,7 +610,7 @@ def mavlink_send_msg_list(msg_name: str | None, msg_id: int | None, msg: list):
         logger.critical("MavlinkSend: Message name is None")
         return
     if "MAV_CMD" in msg_name:
-        logger.debug("CMD MSG")
+        logger.debug("mavlinksend: Sending command")
         # Create a CMD_LONG message with the msg_id
         packed_msg = mavutil.mavlink.MAVLink_command_long_message(
             0,  # target_system
@@ -677,6 +688,8 @@ def generate_sensor_msg() -> list:
             msg.append(field_value)
     logger.info(msg)
     mavlink_send_msg_list(msg_name, msg_id, msg)
+    msg_str = "[S]" + str(msg) + "\n"
+    write_log(msg_str)
     return msg
 
 
@@ -1425,8 +1438,9 @@ def store_mutated_inputs():
     mutated_log.close()
 
     if DEMO_MODE:
-        logger.info("[Demo mode] Returning without relaunch")
-        return
+        if Policy_violation_cnt > 2:
+            logger.info("Exiting as demo")
+            sys.exit(0)
     logger.info("Restarting the vehicle : Policy violation logged")
     re_launch()
     count_main_loop = 0
@@ -1709,1219 +1723,1219 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # 0: turn off, 1: turn on
 
     # P1
-    if Parachute_on == 1:
-        P[0] = 1
-    else:
-        P[0] = -1
-    # P2
-    if Armed == 0:
-        P[1] = 1
-    else:
-        P[1] = -1
-    # P3
-    if current_flight_mode == "FLIP" or current_flight_mode == "ACRO":
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P4
-    if current_alt > 0:
-        P[3] = (current_alt - previous_alt) / current_alt
-    else:
-        P[3] = 0
-
-    # P5
-    # Request parameter
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"CHUTE_ALT_MIN", -1
-    )
-
-    target_param = "CHUTE_ALT_MIN"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    if target_param_value > 0:
-        P[4] = (target_param_value - current_alt) / target_param_value
-    else:
-        P[4] = 0
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=5, policy="A.CHUTE", guid=guidance
-    )
-
-    # ----------------------- (end) A.CHUTE1 policy -----------------------
-
-    target_param_ready = 0
-    # ----------------------- (start) A.RTL1 policy -----------------------
-    # P1
-    if lat_avg == home_lat and lon_avg == home_lon:
-        P[0] = -1
-    else:
-        P[0] = 1
-
-    # P2
-    # Request parameter
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
-    )
-
-    target_param = "RTL_ALT"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # Convert centimeters to meters
-    target_param_value = target_param_value / 100
-
-    if target_param_value > 0:
-        P[1] = (target_param_value - current_alt) / target_param_value
-    else:
-        P[1] = 0
-
-    logger.info(
-        ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
-    )
-
-    if current_flight_mode == "RTL":
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    if previous_alt != 0:
-        P[3] = (previous_alt - current_alt) / previous_alt
-    else:
-        P[3] = 0
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL1", guid=guidance
-    )
-    # ----------------------- (end) A.RTL1 policy -----------------------
-
-    # ----------------------- (start) A.RTL2 policy -----------------------
-    # P0: Mode_t = RTL
-    if current_flight_mode == "RTL":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: (ALT_t - RTL_ALT)/ALT_t
-    # Request parameter
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
-    )
-
-    target_param = "RTL_ALT"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # Convert centimeters to meters
-    target_param_value = target_param_value / 100
-
-    if target_param_value > 0:
-        P[1] = (current_alt - target_param_value) / current_alt
-    else:
-        P[1] = 0
-
-    logger.info(
-        ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
-    )
-
-    # P2: POS_t != Home_position
-    if lat_avg != home_lat and lon_avg != home_lon:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P3: POS_(t-1) != POS_(t)
-    if lat_current != lat_previous or lon_current != lon_previous:
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    # P4: ALT_(t-1) = ALT_t
-    if previous_alt != 0 and previous_alt == current_alt:
-        P[4] = -1
-    else:
-        P[4] = 1
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], max(P[3], P[4])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=5, policy="A.RTL2", guid=guidance
-    )
-    # ----------------------- (end) A.RTL2 policy -----------------------
-
-    # ----------------------- (start) A.RTL3 policy -----------------------
-    # P0: Mode_t = RTL
-    if current_flight_mode == "RTL":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: (ALT_t - RTL_ALT)/ALT_t
-    # Request parameter
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
-    )
-
-    target_param = "RTL_ALT"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # Convert centimeters to meters
-    target_param_value = target_param_value / 100
-
-    if target_param_value > 0:
-        P[1] = (current_alt - target_param_value) / current_alt
-    else:
-        P[1] = 0
-
-    # P2: POS_t != Home_position
-    if lat_avg == home_lat and lon_avg == home_lon:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P3: (ALT_t - ALT_(t-1)) / ALT_t
-    if previous_alt_round != 0 and current_alt_round != 0:
-        P[3] = (current_alt_round - previous_alt_round) / current_alt_round
-    else:
-        P[3] = 0
-
-    logger.info(
-        ("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round))
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL3", guid=guidance
-    )
-    # ----------------------- (end) A.RTL3 policy -----------------------
-
-    # ----------------------- (start) A.RTL4 policy -----------------------
-    # P0: Mode_(t-1) = RTL ^ Mode_t = LAND
-    if previous_flight_mode == "RTL" and current_flight_mode == "LAND":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: ALT_t = Ground_ALT
-    if round(current_altitude, 1) == round(home_altitude, 1):
-        P[1] = 1
-    else:
-        P[1] = 0
-
-    logger.info(
-        (
-            "[Debug] ALT_t:%f, Ground_ALT:%f"
-            % (round(current_altitude, 1), round(home_altitude, 1))
-        )
-    )
-
-    # P2: Disarm = on
-    if Armed == 0:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.RTL4", guid=guidance
-    )
-    # ----------------------- (end) A.RTL4 policy -----------------------
-
-    # ----------------------- (start) A.FLIP1 policy -----------------------
-    # P0: Mode_t = FLIP
-    if current_flight_mode == "FLIP":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: Mode_(t-1) = ACRO/ALT_HOLD
-    if previous_flight_mode == "ACRO" or previous_flight_mode == "ALT_HOLD":
-        P[1] = -1
-    else:
-        P[1] = 1
-
-    # P2: Roll_t <= 45
-    if abs(roll_avg) <= 45:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    # P3: Throttle >= 1,500 (Yet, we can infer the actual throttle from current and previous altitudes)
-    if round(current_altitude, 0) >= round(previous_altitude, 0):
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    # P4: ALT_t >= 10
-    if current_alt >= 10:
-        P[4] = -1
-    else:
-        P[4] = 1
-
-    logger.info(
-        (
-            "[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f"
-            % (
-                roll_avg,
-                round(current_altitude, 0),
-                round(previous_altitude, 0),
-                current_alt,
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=5, policy="A.FLIP1", guid=guidance
-    )
-    # ----------------------- (end) A.FLIP1 policy -----------------------
-
-    # ----------------------- (start) A.FLIP2 policy -----------------------
-    # P0: Mode_t = FLIP
-    if current_flight_mode == "FLIP":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: -90 <= Roll_t <= 45
-    if -90 <= abs(roll_avg_flip) <= 45:
-        P[1] = 1
-    else:
-        P[1] = -1
-
-        # P2: Roll_rate = 400
-        P[
-            2
-        ] = (
-            -1
-        )  # We cannot monitor the roll rate; thus, we assume that it's always true.
-
-    # P3: Roll_Direction = Right
-    if abs(roll_avg_flip) > 0:
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    logger.info(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
-
-    Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP2", guid=guidance
-    )
-    # ----------------------- (end) A.FLIP2 policy -----------------------
-
-    # ----------------------- (start) A.FLIP3 policy -----------------------
-    # P0: Mode_t = FLIP
-    if previous_flight_mode == "FLIP":
-        P[0] = 1
-
-        if round(roll_initial, 0) == round(current_roll, 0):
-            P[1] = -1
-        else:
-            P[1] = 1
-
-        if round(pitch_initial, 0) == round(current_pitch, 0):
-            P[2] = -1
-        else:
-            P[2] = 1
-
-        if (yaw_initial - current_heading) < 20:
-            P[3] = -1
-        else:
-            P[3] = 1
-
-    else:
-        P[0] = -1
-        P[1] = 1
-        P[2] = 1
-        P[3] = 1
-
-    logger.info(
-        (
-            "[Debug] roll_initial:%f, roll_current:%f"
-            % (round(roll_initial, 0), round(current_roll, 0))
-        )
-    )
-    logger.info(
-        (
-            "[Debug] pitch_initial:%f, pitch_current:%f"
-            % (round(pitch_initial, 0), round(current_pitch, 0))
-        )
-    )
-    logger.info(
-        (
-            "[Debug] yaw_initial:%f, yaw_current:%f"
-            % (round(yaw_initial, 0), round(current_heading, 0))
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP3", guid=guidance
-    )
-
-    roll_initial = 0.0
-    pitch_initial = 0.0
-    yaw_initial = 0.0
-
-    # ----------------------- (end) A.FLIP3 policy -----------------------
-
-    # ----------------------- (start) A.FLIP4 policy -----------------------
-    elapsed = 0.0
-    # P0: Mode_t = FLIP
-    if previous_flight_mode == "FLIP":
-        P[0] = 1
-
-        elapsed = timeit.default_timer() - flip_start_time
-
-        # P1: Mode_t != FLIP (within 2.5 seconds)
-        if elapsed <= 2.5:
-            P[1] = -1
-        else:
-            P[1] = 1
-
-    else:
-        P[0] = -1
-        P[1] = 1
-
-    logger.info(
-        (
-            "[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f"
-            % (flip_start_time, timeit.default_timer(), elapsed)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=2, policy="A.FLIP4", guid=guidance
-    )
-
-    flip_start_time = 0.0
-
-    # ----------------------- (end) A.FLIP4 policy -----------------------
-
-    # ----------------------- (start) A.ALT_HOLD1 policy -----------------------
-    # P0: ALT_src = Baro
-    ## EK2_ALT_SOURCE - 0: Baro, 1: Range finder, 2: GPS, 3: Range Beacon
-
-    # Request parameter
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"EK2_ALT_SOURCE", -1
-    )
-
-    target_param = "EK2_ALT_SOURCE"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # Convert centimeters to meters
-    alt_source = int(target_param_value)
-
-    if alt_source == 0:
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: ALT_t = ALT_baro
-    # P2: ALT_t != ALT_GPS
-    if round(alt_avg, 1) != round(alt_GPS_avg, 1):
-        P[1] = -1
-        P[2] = -1
-    else:
-        P[1] = 1
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f"
-            % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1))
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD1", guid=guidance
-    )
-    # ----------------------- (end) A.ALT_HOLD1 policy -----------------------
-
-    # ----------------------- (start) A.ALT_HOLD2 policy -----------------------
-    # P0: Mode_t = ALT_HOLD
-    if current_flight_mode == "ALT_HOLD":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: Throttle_t = 1,500
-    if actual_throttle == 34:
-        P[1] = 1
-    else:
-        P[1] = -1
-
-    # P2: ALT_t = ALT_(t-1)
-    if round(current_altitude, 0) == round(previous_altitude, 0):
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f"
-            % (
-                actual_throttle,
-                round(current_altitude, 0),
-                round(previous_altitude, 0),
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD2", guid=guidance
-    )
-    # ----------------------- (end) A.ALT_HOLD2 policy -----------------------
-
-    # ----------------------- (start) A.CIRCLE1 policy -----------------------
-    # P0: Mode_t = CIRCLE
-    if current_flight_mode == "CIRCLE":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_pitch < 1,500
-    ## (1,500 - RC_pitch) / 1,500
-    ## current_rc_2: RC_pitch
-
-    if current_rc_2 == 1500:
-        P[1] = 0
-    else:
-        P[1] = (1500 - current_rc_2) / 1500
-
-    # P2: Circle_radius_t > 0
-    if circle_radius_current > 0:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P3: Circle_radius_t < Circle_radius_(t-1)
-    ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
-
-    if (
-        circle_radius_previous == 0
-        or (circle_radius_previous - circle_radius_current) == 0
-    ):
-        P[3] = 0
-    else:
-        P[3] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
-
-    logger.info(
-        (
-            "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
-            % (current_rc_2, circle_radius_current, circle_radius_previous)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE1", guid=guidance
-    )
-    # ----------------------- (end) A.CIRCLE1 policy -----------------------
-
-    # ----------------------- (start) A.CIRCLE2 policy -----------------------
-    # P0: Mode_t = CIRCLE
-    if current_flight_mode == "CIRCLE":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_pitch > 1,500
-    ## (RC_pitch - 1,500) / RC_pitch
-    ## current_rc_2: RC_pitch
-
-    if current_rc_2 == 0 or current_rc_2 == 1500:
-        P[1] = 0
-    else:
-        P[1] = (current_rc_2 - 1500) / current_rc_2
-
-    # P2: Circle_radius_t > Circle_radius_(t-1)
-    ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
-
-    if (
-        circle_radius_previous == 0
-        or (circle_radius_previous - circle_radius_current) == 0
-    ):
-        P[2] = 0
-    else:
-        P[2] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
-
-    logger.info(
-        (
-            "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
-            % (current_rc_2, circle_radius_current, circle_radius_previous)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.CIRCLE2", guid=guidance
-    )
-    # ----------------------- (end) A.CIRCLE2 policy -----------------------
-
-    # ----------------------- (start) A.CIRCLE3 policy -----------------------
-    # P0: Mode_t = CIRCLE
-    if current_flight_mode == "CIRCLE":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_roll > 1,500
-    ## (RC_roll - 1,500) / RC_proll
-    ## current_rc_1: RC_roll
-
-    if current_rc_1 == 0 or current_rc_1 == 1500:
-        P[1] = 0
-    else:
-        P[1] = (current_rc_1 - 1500) / current_rc_1
-
-    # P2: circle_detection_t = clockwise
-    ## circle_radius_current > 0: clockwise, circle_radius_current < 0: counter-clockwise
-    if circle_radius_current > 0:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P3: Circle_speed_t > Circle_speed_(t-1)
-    ## There is no direct way to measure the circle speed; thus, let's assume that it's aways hold.
-    P[3] = -1
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE3", guid=guidance
-    )
-    # ----------------------- (end) A.CIRCLE3 policy -----------------------
-
-    # ----------------------- (start) A.CIRCLE4-6 policy -----------------------
-    # P0: Mode_t = CIRCLE
-    if current_flight_mode == "CIRCLE":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_roll < 1,500
-    ## (1,500 - RC_roll) / 1,500
-    ## current_rc_1: RC_roll
-
-    if (1500 - current_rc_1) == 0:
-        P[1] = 0
-    else:
-        P[1] = (1500 - current_rc_1) / 1500
-
-    # P2: circle_detection_t = counter-clockwise
-    ## circle_radius_current > 0: clockwise, circle_radius_current < 0: counter-clockwise
-    if circle_radius_current < 0:
-        P[2] = 1
-    else:
-        P[2] = -1
-
-    # P3: Circle_speed_t < Circle_speed_(t-1)
-    ## There is no direct way to measure the circle speed; thus, let's assume that it's aways hold.
-    P[3] = -1
-
-    Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE4-6", guid=guidance
-    )
-    # ----------------------- (end) A.CIRCLE4-6 policy -----------------------
-
-    rollspeed_current_raw = rollspeed_current
-    rollspeed_previous_raw = rollspeed_previous
-    pitchspeed_current_raw = pitchspeed_current
-    pitchspeed_previous_raw = pitchspeed_previous
-    yawspeed_current_raw = yawspeed_current
-    yawspeed_previous_raw = yawspeed_previous
-
-    rollspeed_current = round(rollspeed_current, 0)
-    rollspeed_previous = round(rollspeed_previous, 0)
-    pitchspeed_current = round(pitchspeed_current, 0)
-    pitchspeed_previous = round(pitchspeed_previous, 0)
-    yawspeed_current = round(yawspeed_current, 0)
-    yawspeed_previous = round(yawspeed_previous, 0)
-    # ----------------------- (start) A.CIRCLE7 policy -----------------------
-    # P0: Mode_t = CIRCLE
-    if current_flight_mode == "CIRCLE":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_roll_speed_t = RC_roll_speed_t-1
-    ## RC_roll_speed_t: rollspeed_current, RC_roll_speed_t-1: rollspeed_previous
-
-    if rollspeed_current == rollspeed_previous:
-        P[1] = -1
-    else:
-        P[1] = 1
-
-    # P2: RC_pitch_speed_t = RC_pitch_speed_t-1
-    ## RC_pitch_speed_t: pitchspeed_current, RC_pitch_speed_t-1: pitchspeed_previous
-
-    if pitchspeed_current == pitchspeed_previous:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    # P3: RC_yaw_speed_t = RC_yaw_speed_t-1
-    ## RC_yaw_speed_t: yawspeed_current, RC_yaw_speed_t-1: yawspeed_previous
-
-    if yawspeed_current == yawspeed_previous:
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    logger.info(
-        (
-            "[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f"
-            % (rollspeed_current, rollspeed_previous)
-        )
-    )
-    logger.info(
-        (
-            "[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f"
-            % (pitchspeed_current, pitchspeed_previous)
-        )
-    )
-    logger.info(
-        (
-            "[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f"
-            % (yawspeed_current, yawspeed_previous)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE7", guid=guidance
-    )
-    # ----------------------- (end) A.CIRCLE7 policy -----------------------
-
-    # ----------------------- (start) A.LAND1 policy -----------------------
-    # P0: Mode_t = LAND
-    if current_flight_mode == "LAND":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: ALT_t >= 10
-    ## (ALT_t - 10) / ALT_t
-    ## Use 'relative_alt': relative altitude from the ground
-    if relative_alt == 0:
-        P[1] = -1  # Preventing false alarms when the drone lands on the ground
-    else:
-        P[1] = (relative_alt - 10) / relative_alt
-
-    # P2: Speed_vertical_t = LAND_SPEED_HIGH
-    expected_landing_speed = 0
-    ## Request parameter
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"LAND_SPEED_HIGH", -1
-    )
-
-    target_param = "LAND_SPEED_HIGH"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # If 'LAND_SPEED_HIGH' configuration parameter is zero then WPNAV_SPEED_DN is used.
-    if target_param_value == 0:
-        ## Request parameter
-        target_param_ready = 0
-
-        mav_conn.mav.param_request_read_send(
-            mav_conn.target_system, mav_conn.target_component, b"WPNAV_SPEED_DN", -1
-        )
-
-        target_param = "WPNAV_SPEED_DN"
-        count = 0
-        while target_param_ready == 0 and count < 5:
-            time.sleep(1)
-            count += 1
-
-    expected_landing_speed = target_param_value
-
-    # The drone's actual landing speed cannot be exactly matched with the parameter value; thus, we leverage the following predicate.
-    if abs(vertical_speed - expected_landing_speed) <= 10:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
-            % (relative_alt, vertical_speed, expected_landing_speed)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND1", guid=guidance
-    )
-    # ----------------------- (end) A.LAND1 policy -----------------------
-
-    # ----------------------- (start) A.LAND2 policy -----------------------
-    # P0: Mode_t = LAND
-    if current_flight_mode == "LAND":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: ALT_t < 10
-    ## (10 - ALT_t) / 10
-    ## Use 'relative_alt': relative altitude from the ground
-    if relative_alt == 10:
-        P[1] = 0
-    elif relative_alt == 0:
-        P[1] = -1  # Preventing false alarms when the drone lands on the ground
-    else:
-        P[1] = (10 - relative_alt) / 10
-
-    # P2: Speed_vertical_t = LAND_SPEED
-    expected_landing_speed = 0
-    ## Request parameter
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"LAND_SPEED", -1
-    )
-
-    target_param = "LAND_SPEED"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    expected_landing_speed = target_param_value
-
-    # The drone's actual landing speed cannot be exactly matched with the parameter value; thus, we leverage the following predicate.
-    if abs(vertical_speed - expected_landing_speed) <= 10:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
-            % (relative_alt, vertical_speed, expected_landing_speed)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND2", guid=guidance
-    )
-    # ----------------------- (end) A.LAND2 policy -----------------------
-
-    # ----------------------- (start) A.AUTO1 policy -----------------------
-    # P0: Mode_t = AUTO
-    if current_flight_mode == "AUTO":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: RC_yaw_t != 1500
-    if current_rc_4 != 1500:
-        P[1] = 1
-    else:
-        P[1] = -1
-
-    # P2: Yaw_t != Yaw_(t-1)
-    if round(yawspeed_current_raw, 2) != round(yawspeed_previous_raw, 2):
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f"
-            % (
-                current_rc_4,
-                round(yawspeed_current_raw, 2),
-                round(yawspeed_previous_raw, 2),
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.AUTO1", guid=guidance
-    )
-    # ----------------------- (end) A.AUTO1 policy -----------------------
-
-    global gps_failsafe_cnt
-    global brake_cnt
-    # ----------------------- (start) A.GPS.FS1 policy -----------------------
-    # P0: Mode_t = AUTO, AUTOTUNE, BRAKE, CIRCLE, DRIFT, FOLLOW, GUIDED, LOITER, POSHOLD, RTL, Simple, SMART_RTL, THROW, ZIGZAG
-    ## When the drone's flight mode leverages a GPS receiver
-    if (
-        (current_flight_mode == "AUTO")
-        or (current_flight_mode == "AUTOTUNE")
-        or (current_flight_mode == "BRAKE")
-        or (current_flight_mode == "CIRCLE")
-        or (current_flight_mode == "DRIFT")
-        or (current_flight_mode == "FOLLOW")
-        or (current_flight_mode == "GUIDED")
-        or (current_flight_mode == "LOITER")
-        or (current_flight_mode == "POSHOLD")
-        or (current_flight_mode == "RTL")
-        or (current_flight_mode == "SIMPLE")
-        or (current_flight_mode == "SMART_RTL")
-        or (current_flight_mode == "THROW")
-        or (current_flight_mode == "ZIGZAG")
-    ):
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: GPS_count < 4
-    ## (4 - GPS_count) / 4
-    if (num_GPS - 4) == 0:
-        P[1] = 0
-    else:
-        P[1] = float((4 - num_GPS) / 4.0)
-
-    # P2: GPS_failsafe = on
-    if failsafe_error == 1:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    # Triggering failsafe requires specific time;
-    # thus, we give two more chance before the control software trigger the failsafe
-    if (Global_distance < 0) and (gps_failsafe_cnt < 2):
-        gps_failsafe_cnt = gps_failsafe_cnt + 1
-        Global_distance = -1 * Global_distance
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS1", guid=guidance
-    )
-    # ----------------------- (end) A.GPS.FS1 policy -----------------------
-
-    # ----------------------- (start) A.GPS.FS2 policy -----------------------
-    # P0: GPS_failsafe = on
-    if failsafe_error == 1:
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: Baro = on
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"SIM_BARO_DISABLE", -1
-    )
-
-    target_param = "SIM_BARO_DISABLE"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    # If 'SIM_BARO_DISABLE' configuration parameter is zero then a barometer sensor is activated and used.
-    if target_param_value == 0:
-        P[1] = 1
-    else:
-        P[1] = -1
-
-    # P2: ALT_src = Baro
-    if round(alt_avg, 1) != round(alt_GPS_avg, 1):
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(
-        (
-            "[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f"
-            % (
-                failsafe_error,
-                target_param_value,
-                round(alt_avg, 1),
-                round(alt_GPS_avg, 1),
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS2", guid=guidance
-    )
-    # ----------------------- (end) A.GPS.FS2 policy -----------------------
-
-    # ----------------------- (start) A.RC.FS1 policy -----------------------
-    # P0: Takeoff != on
-    if takeoff != 1:
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"FS_THR_VALUE", -1
-    )
-
-    target_param = "FS_THR_VALUE"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    fs_thr_val = target_param_value
-    # P1: Throttle_t < FS_THR_VALUE
-    ## (FS_THR_VALUE - Throttle_t) / FS_THR_VALUE
-    if (fs_thr_val == 0) or (fs_thr_val - current_rc_3) == 0:
-        P[1] = 0
-    else:
-        P[1] = float((fs_thr_val - current_rc_3) / fs_thr_val)
-
-    # P2: Disarm = on
-    if Armed == 0:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    logger.info(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS1", guid=guidance
-    )
-    # ----------------------- (end) A.RC.FS1 policy -----------------------
-
-    # ----------------------- (start) A.RC.FS2 policy -----------------------
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"FS_THR_VALUE", -1
-    )
-
-    target_param = "FS_THR_VALUE"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    fs_thr_val = target_param_value
-    # P0: Throttle_t < FS_THR_VALUE
-    ## (FS_THR_VALUE - Throttle_t) / FS_THR_VALUE
-    if (fs_thr_val == 0) or (fs_thr_val - current_rc_3) == 0:
-        P[0] = 0
-    else:
-        P[0] = float((fs_thr_val - current_rc_3) / fs_thr_val)
-
-    # P1: RC_fail = on
-    if RC_failsafe_error == 1:
-        P[1] = -1
-    else:
-        P[1] = 1
-
-    logger.info(
-        (
-            "[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d"
-            % (current_rc_3, fs_thr_val, RC_failsafe_error)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], P[2]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS2", guid=guidance
-    )
-    # ----------------------- (end) A.RC.FS2 policy -----------------------
-
-    # ----------------------- (start) A.SPORT1 policy -----------------------
-    # P0: Mode_t = SPORT
-    if current_flight_mode == "SPORT":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    target_param_ready = 0
-    target_param_value = 0
-
-    mav_conn.mav.param_request_read_send(
-        mav_conn.target_system, mav_conn.target_component, b"PILOT_SPEED_UP", -1
-    )
-
-    target_param = "PILOT_SPEED_UP"
-    count = 0
-    while target_param_ready == 0 and count < 5:
-        time.sleep(1)
-        count += 1
-
-    pilot_speed_vertical = target_param_value
-
-    # P1: Vertical_speed_t = PILOT_SPEED_UP
-    if abs(vertical_speed - pilot_speed_vertical) <= 10:
-        P[1] = -1
-    else:
-        P[1] = 1
-
-    logger.info(
-        (
-            "[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d"
-            % (current_flight_mode, vertical_speed, pilot_speed_vertical)
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1]))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=2, policy="A.SPORT1", guid=guidance
-    )
-    # ----------------------- (end) A.SPORT1 policy -----------------------
-
-    # ----------------------- (start) A.GUIDED1 policy -----------------------
-    # P0: Mode_t = GUIDED
-    if current_flight_mode == "GUIDED":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: waypoint_count = 0
-    if mission_cnt == 0:
-        P[1] = 1
-    else:
-        P[1] = -1
-
-    # P3: Yaw_t = Yaw_(t-1)
-    if round(yawspeed_current, 1) == round(yawspeed_previous, 1):
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    # P3: POS_t = POS_(t-1)
-    if round(ground_speed, 0) == 0:
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    # P4: ALT_t = ALT_(t-1)
-    if round(current_altitude, 0) == round(previous_altitude, 0):
-        P[4] = -1
-    else:
-        P[4] = 1
-
-    logger.info(
-        (
-            "[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
-            % (
-                current_flight_mode,
-                mission_cnt,
-                round(yawspeed_current, 1),
-                round(yawspeed_previous, 1),
-                round(ground_speed, 0),
-                round(current_altitude, 0),
-                round(previous_altitude, 0),
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3], P[4])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=5, policy="A.GUIDED1", guid=guidance
-    )
-    # ----------------------- (end) A.GUIDED1 policy -----------------------
-
-    # ----------------------- (start) A.LOITER1 policy -----------------------
-    # P0: Mode_t = LOITER
-    # logger.info("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
-    # logger.info("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
-    if current_flight_mode == "LOITER":
-        P[0] = 1
-    else:
-        P[0] = -1
-
-    # P1: Yaw_t = Yaw_(t-1)
-    if round(yawspeed_current, 1) == round(yawspeed_previous, 1):
-        P[1] = -1
-    else:
-        P[1] = 1
-
-    # P2: POS_t = POS_(t-1)
-    # XXX: 2024-05-29T18:49:45+0000: silipwn: Is this a good assumption?
-    # Would have to def change this based on what Hyungsub mentioned in slack
-    if round(ground_speed, 0) == 0:
-        P[2] = -1
-    else:
-        P[2] = 1
-
-    # P3: ALT_t = ALT_(t-1)
-    if round(current_altitude, 0) == round(previous_altitude, 0):
-        P[3] = -1
-    else:
-        P[3] = 1
-
-    logger.info(
-        (
-            "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
-            % (
-                current_flight_mode,
-                yawspeed_current,
-                yawspeed_previous,
-                ground_speed,
-                current_altitude,
-                previous_altitude,
-            )
-        )
-    )
-
-    Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
-
-    print_distance(
-        G_dist=Global_distance, P_dist=P, length=4, policy="A.LOITER1", guid=guidance
-    )
+    # if Parachute_on == 1:
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    # # P2
+    # if Armed == 0:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    # # P3
+    # if current_flight_mode == "FLIP" or current_flight_mode == "ACRO":
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P4
+    # if current_alt > 0:
+    #     P[3] = (current_alt - previous_alt) / current_alt
+    # else:
+    #     P[3] = 0
+    #
+    # # P5
+    # # Request parameter
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"CHUTE_ALT_MIN", -1
+    # )
+    #
+    # target_param = "CHUTE_ALT_MIN"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # if target_param_value > 0:
+    #     P[4] = (target_param_value - current_alt) / target_param_value
+    # else:
+    #     P[4] = 0
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=5, policy="A.CHUTE", guid=guidance
+    # )
+    #
+    # # ----------------------- (end) A.CHUTE1 policy -----------------------
+    #
+    # target_param_ready = 0
+    # # ----------------------- (start) A.RTL1 policy -----------------------
+    # # P1
+    # if lat_avg == home_lat and lon_avg == home_lon:
+    #     P[0] = -1
+    # else:
+    #     P[0] = 1
+    #
+    # # P2
+    # # Request parameter
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
+    # )
+    #
+    # target_param = "RTL_ALT"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # Convert centimeters to meters
+    # target_param_value = target_param_value / 100
+    #
+    # if target_param_value > 0:
+    #     P[1] = (target_param_value - current_alt) / target_param_value
+    # else:
+    #     P[1] = 0
+    #
+    # logger.info(
+    #     ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+    # )
+    #
+    # if current_flight_mode == "RTL":
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # if previous_alt != 0:
+    #     P[3] = (previous_alt - current_alt) / previous_alt
+    # else:
+    #     P[3] = 0
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL1", guid=guidance
+    # )
+    # # ----------------------- (end) A.RTL1 policy -----------------------
+    #
+    # # ----------------------- (start) A.RTL2 policy -----------------------
+    # # P0: Mode_t = RTL
+    # if current_flight_mode == "RTL":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: (ALT_t - RTL_ALT)/ALT_t
+    # # Request parameter
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
+    # )
+    #
+    # target_param = "RTL_ALT"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # Convert centimeters to meters
+    # target_param_value = target_param_value / 100
+    #
+    # if target_param_value > 0:
+    #     P[1] = (current_alt - target_param_value) / current_alt
+    # else:
+    #     P[1] = 0
+    #
+    # logger.info(
+    #     ("[Debug] RTL_ALT:%f, current_alt:%f" % (target_param_value, current_alt))
+    # )
+    #
+    # # P2: POS_t != Home_position
+    # if lat_avg != home_lat and lon_avg != home_lon:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P3: POS_(t-1) != POS_(t)
+    # if lat_current != lat_previous or lon_current != lon_previous:
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # # P4: ALT_(t-1) = ALT_t
+    # if previous_alt != 0 and previous_alt == current_alt:
+    #     P[4] = -1
+    # else:
+    #     P[4] = 1
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], max(P[3], P[4])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=5, policy="A.RTL2", guid=guidance
+    # )
+    # # ----------------------- (end) A.RTL2 policy -----------------------
+    #
+    # # ----------------------- (start) A.RTL3 policy -----------------------
+    # # P0: Mode_t = RTL
+    # if current_flight_mode == "RTL":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: (ALT_t - RTL_ALT)/ALT_t
+    # # Request parameter
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"RTL_ALT", -1
+    # )
+    #
+    # target_param = "RTL_ALT"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # Convert centimeters to meters
+    # target_param_value = target_param_value / 100
+    #
+    # if target_param_value > 0:
+    #     P[1] = (current_alt - target_param_value) / current_alt
+    # else:
+    #     P[1] = 0
+    #
+    # # P2: POS_t != Home_position
+    # if lat_avg == home_lat and lon_avg == home_lon:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P3: (ALT_t - ALT_(t-1)) / ALT_t
+    # if previous_alt_round != 0 and current_alt_round != 0:
+    #     P[3] = (current_alt_round - previous_alt_round) / current_alt_round
+    # else:
+    #     P[3] = 0
+    #
+    # logger.info(
+    #     ("[Debug] ALT_t:%f, ALT_(t-1):%f" % (previous_alt_round, current_alt_round))
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.RTL3", guid=guidance
+    # )
+    # # ----------------------- (end) A.RTL3 policy -----------------------
+    #
+    # # ----------------------- (start) A.RTL4 policy -----------------------
+    # # P0: Mode_(t-1) = RTL ^ Mode_t = LAND
+    # if previous_flight_mode == "RTL" and current_flight_mode == "LAND":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: ALT_t = Ground_ALT
+    # if round(current_altitude, 1) == round(home_altitude, 1):
+    #     P[1] = 1
+    # else:
+    #     P[1] = 0
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] ALT_t:%f, Ground_ALT:%f"
+    #         % (round(current_altitude, 1), round(home_altitude, 1))
+    #     )
+    # )
+    #
+    # # P2: Disarm = on
+    # if Armed == 0:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.RTL4", guid=guidance
+    # )
+    # # ----------------------- (end) A.RTL4 policy -----------------------
+    #
+    # # ----------------------- (start) A.FLIP1 policy -----------------------
+    # # P0: Mode_t = FLIP
+    # if current_flight_mode == "FLIP":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: Mode_(t-1) = ACRO/ALT_HOLD
+    # if previous_flight_mode == "ACRO" or previous_flight_mode == "ALT_HOLD":
+    #     P[1] = -1
+    # else:
+    #     P[1] = 1
+    #
+    # # P2: Roll_t <= 45
+    # if abs(roll_avg) <= 45:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # # P3: Throttle >= 1,500 (Yet, we can infer the actual throttle from current and previous altitudes)
+    # if round(current_altitude, 0) >= round(previous_altitude, 0):
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # # P4: ALT_t >= 10
+    # if current_alt >= 10:
+    #     P[4] = -1
+    # else:
+    #     P[4] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] roll_avg:%f, ALT_t:%f, ALT_(t-1):%f, current_alt:%f"
+    #         % (
+    #             roll_avg,
+    #             round(current_altitude, 0),
+    #             round(previous_altitude, 0),
+    #             current_alt,
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3], P[4])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=5, policy="A.FLIP1", guid=guidance
+    # )
+    # # ----------------------- (end) A.FLIP1 policy -----------------------
+    #
+    # # ----------------------- (start) A.FLIP2 policy -----------------------
+    # # P0: Mode_t = FLIP
+    # if current_flight_mode == "FLIP":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: -90 <= Roll_t <= 45
+    # if -90 <= abs(roll_avg_flip) <= 45:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    #
+    #     # P2: Roll_rate = 400
+    #     P[
+    #         2
+    #     ] = (
+    #         -1
+    #     )  # We cannot monitor the roll rate; thus, we assume that it's always true.
+    #
+    # # P3: Roll_Direction = Right
+    # if abs(roll_avg_flip) > 0:
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # logger.info(("[Debug] roll_avg_flip:%f" % roll_avg_flip))
+    #
+    # Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP2", guid=guidance
+    # )
+    # # ----------------------- (end) A.FLIP2 policy -----------------------
+    #
+    # # ----------------------- (start) A.FLIP3 policy -----------------------
+    # # P0: Mode_t = FLIP
+    # if previous_flight_mode == "FLIP":
+    #     P[0] = 1
+    #
+    #     if round(roll_initial, 0) == round(current_roll, 0):
+    #         P[1] = -1
+    #     else:
+    #         P[1] = 1
+    #
+    #     if round(pitch_initial, 0) == round(current_pitch, 0):
+    #         P[2] = -1
+    #     else:
+    #         P[2] = 1
+    #
+    #     if (yaw_initial - current_heading) < 20:
+    #         P[3] = -1
+    #     else:
+    #         P[3] = 1
+    #
+    # else:
+    #     P[0] = -1
+    #     P[1] = 1
+    #     P[2] = 1
+    #     P[3] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] roll_initial:%f, roll_current:%f"
+    #         % (round(roll_initial, 0), round(current_roll, 0))
+    #     )
+    # )
+    # logger.info(
+    #     (
+    #         "[Debug] pitch_initial:%f, pitch_current:%f"
+    #         % (round(pitch_initial, 0), round(current_pitch, 0))
+    #     )
+    # )
+    # logger.info(
+    #     (
+    #         "[Debug] yaw_initial:%f, yaw_current:%f"
+    #         % (round(yaw_initial, 0), round(current_heading, 0))
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.FLIP3", guid=guidance
+    # )
+    #
+    # roll_initial = 0.0
+    # pitch_initial = 0.0
+    # yaw_initial = 0.0
+    #
+    # # ----------------------- (end) A.FLIP3 policy -----------------------
+    #
+    # # ----------------------- (start) A.FLIP4 policy -----------------------
+    # elapsed = 0.0
+    # # P0: Mode_t = FLIP
+    # if previous_flight_mode == "FLIP":
+    #     P[0] = 1
+    #
+    #     elapsed = timeit.default_timer() - flip_start_time
+    #
+    #     # P1: Mode_t != FLIP (within 2.5 seconds)
+    #     if elapsed <= 2.5:
+    #         P[1] = -1
+    #     else:
+    #         P[1] = 1
+    #
+    # else:
+    #     P[0] = -1
+    #     P[1] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] flip_start_time:%f, flip_end_time:%f, elapsed:%f"
+    #         % (flip_start_time, timeit.default_timer(), elapsed)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=2, policy="A.FLIP4", guid=guidance
+    # )
+    #
+    # flip_start_time = 0.0
+    #
+    # # ----------------------- (end) A.FLIP4 policy -----------------------
+    #
+    # # ----------------------- (start) A.ALT_HOLD1 policy -----------------------
+    # # P0: ALT_src = Baro
+    # ## EK2_ALT_SOURCE - 0: Baro, 1: Range finder, 2: GPS, 3: Range Beacon
+    #
+    # # Request parameter
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"EK2_ALT_SOURCE", -1
+    # )
+    #
+    # target_param = "EK2_ALT_SOURCE"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # Convert centimeters to meters
+    # alt_source = int(target_param_value)
+    #
+    # if alt_source == 0:
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: ALT_t = ALT_baro
+    # # P2: ALT_t != ALT_GPS
+    # if round(alt_avg, 1) != round(alt_GPS_avg, 1):
+    #     P[1] = -1
+    #     P[2] = -1
+    # else:
+    #     P[1] = 1
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] alt_source:%d, ALT_t:%f, ALT_GPS:%f"
+    #         % (alt_source, round(alt_avg, 1), round(alt_GPS_avg, 1))
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD1", guid=guidance
+    # )
+    # # ----------------------- (end) A.ALT_HOLD1 policy -----------------------
+    #
+    # # ----------------------- (start) A.ALT_HOLD2 policy -----------------------
+    # # P0: Mode_t = ALT_HOLD
+    # if current_flight_mode == "ALT_HOLD":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: Throttle_t = 1,500
+    # if actual_throttle == 34:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    #
+    # # P2: ALT_t = ALT_(t-1)
+    # if round(current_altitude, 0) == round(previous_altitude, 0):
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] actual_throttle:%d, ALT_t:%f, ALT_(t-1):%f"
+    #         % (
+    #             actual_throttle,
+    #             round(current_altitude, 0),
+    #             round(previous_altitude, 0),
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.ALT_HOLD2", guid=guidance
+    # )
+    # # ----------------------- (end) A.ALT_HOLD2 policy -----------------------
+    #
+    # # ----------------------- (start) A.CIRCLE1 policy -----------------------
+    # # P0: Mode_t = CIRCLE
+    # if current_flight_mode == "CIRCLE":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_pitch < 1,500
+    # ## (1,500 - RC_pitch) / 1,500
+    # ## current_rc_2: RC_pitch
+    #
+    # if current_rc_2 == 1500:
+    #     P[1] = 0
+    # else:
+    #     P[1] = (1500 - current_rc_2) / 1500
+    #
+    # # P2: Circle_radius_t > 0
+    # if circle_radius_current > 0:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P3: Circle_radius_t < Circle_radius_(t-1)
+    # ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
+    #
+    # if (
+    #     circle_radius_previous == 0
+    #     or (circle_radius_previous - circle_radius_current) == 0
+    # ):
+    #     P[3] = 0
+    # else:
+    #     P[3] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
+    #         % (current_rc_2, circle_radius_current, circle_radius_previous)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE1", guid=guidance
+    # )
+    # # ----------------------- (end) A.CIRCLE1 policy -----------------------
+    #
+    # # ----------------------- (start) A.CIRCLE2 policy -----------------------
+    # # P0: Mode_t = CIRCLE
+    # if current_flight_mode == "CIRCLE":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_pitch > 1,500
+    # ## (RC_pitch - 1,500) / RC_pitch
+    # ## current_rc_2: RC_pitch
+    #
+    # if current_rc_2 == 0 or current_rc_2 == 1500:
+    #     P[1] = 0
+    # else:
+    #     P[1] = (current_rc_2 - 1500) / current_rc_2
+    #
+    # # P2: Circle_radius_t > Circle_radius_(t-1)
+    # ## ( Circle_radius_(t-1) - Circle_radius_t ) / Circle_radius_(t-1)
+    #
+    # if (
+    #     circle_radius_previous == 0
+    #     or (circle_radius_previous - circle_radius_current) == 0
+    # ):
+    #     P[2] = 0
+    # else:
+    #     P[2] = (circle_radius_previous - circle_radius_current) / circle_radius_previous
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] RC_pitch:%d, circle_radius_t:%f, circle_radius_(t-1):%f"
+    #         % (current_rc_2, circle_radius_current, circle_radius_previous)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.CIRCLE2", guid=guidance
+    # )
+    # # ----------------------- (end) A.CIRCLE2 policy -----------------------
+    #
+    # # ----------------------- (start) A.CIRCLE3 policy -----------------------
+    # # P0: Mode_t = CIRCLE
+    # if current_flight_mode == "CIRCLE":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_roll > 1,500
+    # ## (RC_roll - 1,500) / RC_proll
+    # ## current_rc_1: RC_roll
+    #
+    # if current_rc_1 == 0 or current_rc_1 == 1500:
+    #     P[1] = 0
+    # else:
+    #     P[1] = (current_rc_1 - 1500) / current_rc_1
+    #
+    # # P2: circle_detection_t = clockwise
+    # ## circle_radius_current > 0: clockwise, circle_radius_current < 0: counter-clockwise
+    # if circle_radius_current > 0:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P3: Circle_speed_t > Circle_speed_(t-1)
+    # ## There is no direct way to measure the circle speed; thus, let's assume that it's aways hold.
+    # P[3] = -1
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE3", guid=guidance
+    # )
+    # # ----------------------- (end) A.CIRCLE3 policy -----------------------
+    #
+    # # ----------------------- (start) A.CIRCLE4-6 policy -----------------------
+    # # P0: Mode_t = CIRCLE
+    # if current_flight_mode == "CIRCLE":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_roll < 1,500
+    # ## (1,500 - RC_roll) / 1,500
+    # ## current_rc_1: RC_roll
+    #
+    # if (1500 - current_rc_1) == 0:
+    #     P[1] = 0
+    # else:
+    #     P[1] = (1500 - current_rc_1) / 1500
+    #
+    # # P2: circle_detection_t = counter-clockwise
+    # ## circle_radius_current > 0: clockwise, circle_radius_current < 0: counter-clockwise
+    # if circle_radius_current < 0:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    #
+    # # P3: Circle_speed_t < Circle_speed_(t-1)
+    # ## There is no direct way to measure the circle speed; thus, let's assume that it's aways hold.
+    # P[3] = -1
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2], P[3]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE4-6", guid=guidance
+    # )
+    # # ----------------------- (end) A.CIRCLE4-6 policy -----------------------
+    #
+    # rollspeed_current_raw = rollspeed_current
+    # rollspeed_previous_raw = rollspeed_previous
+    # pitchspeed_current_raw = pitchspeed_current
+    # pitchspeed_previous_raw = pitchspeed_previous
+    # yawspeed_current_raw = yawspeed_current
+    # yawspeed_previous_raw = yawspeed_previous
+    #
+    # rollspeed_current = round(rollspeed_current, 0)
+    # rollspeed_previous = round(rollspeed_previous, 0)
+    # pitchspeed_current = round(pitchspeed_current, 0)
+    # pitchspeed_previous = round(pitchspeed_previous, 0)
+    # yawspeed_current = round(yawspeed_current, 0)
+    # yawspeed_previous = round(yawspeed_previous, 0)
+    # # ----------------------- (start) A.CIRCLE7 policy -----------------------
+    # # P0: Mode_t = CIRCLE
+    # if current_flight_mode == "CIRCLE":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_roll_speed_t = RC_roll_speed_t-1
+    # ## RC_roll_speed_t: rollspeed_current, RC_roll_speed_t-1: rollspeed_previous
+    #
+    # if rollspeed_current == rollspeed_previous:
+    #     P[1] = -1
+    # else:
+    #     P[1] = 1
+    #
+    # # P2: RC_pitch_speed_t = RC_pitch_speed_t-1
+    # ## RC_pitch_speed_t: pitchspeed_current, RC_pitch_speed_t-1: pitchspeed_previous
+    #
+    # if pitchspeed_current == pitchspeed_previous:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # # P3: RC_yaw_speed_t = RC_yaw_speed_t-1
+    # ## RC_yaw_speed_t: yawspeed_current, RC_yaw_speed_t-1: yawspeed_previous
+    #
+    # if yawspeed_current == yawspeed_previous:
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] Roll_speed_t:%f, Roll_speed_t-1:%f"
+    #         % (rollspeed_current, rollspeed_previous)
+    #     )
+    # )
+    # logger.info(
+    #     (
+    #         "[Debug] Pitch_speed_t:%f, Pitch_speed_t-1:%f"
+    #         % (pitchspeed_current, pitchspeed_previous)
+    #     )
+    # )
+    # logger.info(
+    #     (
+    #         "[Debug] Yaw_speed_t:%f, Yaw_speed_t-1:%f"
+    #         % (yawspeed_current, yawspeed_previous)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.CIRCLE7", guid=guidance
+    # )
+    # # ----------------------- (end) A.CIRCLE7 policy -----------------------
+    #
+    # # ----------------------- (start) A.LAND1 policy -----------------------
+    # # P0: Mode_t = LAND
+    # if current_flight_mode == "LAND":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: ALT_t >= 10
+    # ## (ALT_t - 10) / ALT_t
+    # ## Use 'relative_alt': relative altitude from the ground
+    # if relative_alt == 0:
+    #     P[1] = -1  # Preventing false alarms when the drone lands on the ground
+    # else:
+    #     P[1] = (relative_alt - 10) / relative_alt
+    #
+    # # P2: Speed_vertical_t = LAND_SPEED_HIGH
+    # expected_landing_speed = 0
+    # ## Request parameter
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"LAND_SPEED_HIGH", -1
+    # )
+    #
+    # target_param = "LAND_SPEED_HIGH"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # If 'LAND_SPEED_HIGH' configuration parameter is zero then WPNAV_SPEED_DN is used.
+    # if target_param_value == 0:
+    #     ## Request parameter
+    #     target_param_ready = 0
+    #
+    #     mav_conn.mav.param_request_read_send(
+    #         mav_conn.target_system, mav_conn.target_component, b"WPNAV_SPEED_DN", -1
+    #     )
+    #
+    #     target_param = "WPNAV_SPEED_DN"
+    #     count = 0
+    #     while target_param_ready == 0 and count < 5:
+    #         time.sleep(1)
+    #         count += 1
+    #
+    # expected_landing_speed = target_param_value
+    #
+    # # The drone's actual landing speed cannot be exactly matched with the parameter value; thus, we leverage the following predicate.
+    # if abs(vertical_speed - expected_landing_speed) <= 10:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
+    #         % (relative_alt, vertical_speed, expected_landing_speed)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND1", guid=guidance
+    # )
+    # # ----------------------- (end) A.LAND1 policy -----------------------
+    #
+    # # ----------------------- (start) A.LAND2 policy -----------------------
+    # # P0: Mode_t = LAND
+    # if current_flight_mode == "LAND":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: ALT_t < 10
+    # ## (10 - ALT_t) / 10
+    # ## Use 'relative_alt': relative altitude from the ground
+    # if relative_alt == 10:
+    #     P[1] = 0
+    # elif relative_alt == 0:
+    #     P[1] = -1  # Preventing false alarms when the drone lands on the ground
+    # else:
+    #     P[1] = (10 - relative_alt) / 10
+    #
+    # # P2: Speed_vertical_t = LAND_SPEED
+    # expected_landing_speed = 0
+    # ## Request parameter
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"LAND_SPEED", -1
+    # )
+    #
+    # target_param = "LAND_SPEED"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # expected_landing_speed = target_param_value
+    #
+    # # The drone's actual landing speed cannot be exactly matched with the parameter value; thus, we leverage the following predicate.
+    # if abs(vertical_speed - expected_landing_speed) <= 10:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] ALT_t:%f, vertical_speed:%d, expected_vertical_speed:%d"
+    #         % (relative_alt, vertical_speed, expected_landing_speed)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.LAND2", guid=guidance
+    # )
+    # # ----------------------- (end) A.LAND2 policy -----------------------
+    #
+    # # ----------------------- (start) A.AUTO1 policy -----------------------
+    # # P0: Mode_t = AUTO
+    # if current_flight_mode == "AUTO":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: RC_yaw_t != 1500
+    # if current_rc_4 != 1500:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    #
+    # # P2: Yaw_t != Yaw_(t-1)
+    # if round(yawspeed_current_raw, 2) != round(yawspeed_previous_raw, 2):
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] RC_yaw_t:%f, Yaw_t:%f, Yaw_(t-1):%f"
+    #         % (
+    #             current_rc_4,
+    #             round(yawspeed_current_raw, 2),
+    #             round(yawspeed_previous_raw, 2),
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.AUTO1", guid=guidance
+    # )
+    # # ----------------------- (end) A.AUTO1 policy -----------------------
+    #
+    # global gps_failsafe_cnt
+    # global brake_cnt
+    # # ----------------------- (start) A.GPS.FS1 policy -----------------------
+    # # P0: Mode_t = AUTO, AUTOTUNE, BRAKE, CIRCLE, DRIFT, FOLLOW, GUIDED, LOITER, POSHOLD, RTL, Simple, SMART_RTL, THROW, ZIGZAG
+    # ## When the drone's flight mode leverages a GPS receiver
+    # if (
+    #     (current_flight_mode == "AUTO")
+    #     or (current_flight_mode == "AUTOTUNE")
+    #     or (current_flight_mode == "BRAKE")
+    #     or (current_flight_mode == "CIRCLE")
+    #     or (current_flight_mode == "DRIFT")
+    #     or (current_flight_mode == "FOLLOW")
+    #     or (current_flight_mode == "GUIDED")
+    #     or (current_flight_mode == "LOITER")
+    #     or (current_flight_mode == "POSHOLD")
+    #     or (current_flight_mode == "RTL")
+    #     or (current_flight_mode == "SIMPLE")
+    #     or (current_flight_mode == "SMART_RTL")
+    #     or (current_flight_mode == "THROW")
+    #     or (current_flight_mode == "ZIGZAG")
+    # ):
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: GPS_count < 4
+    # ## (4 - GPS_count) / 4
+    # if (num_GPS - 4) == 0:
+    #     P[1] = 0
+    # else:
+    #     P[1] = float((4 - num_GPS) / 4.0)
+    #
+    # # P2: GPS_failsafe = on
+    # if failsafe_error == 1:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(("[Debug] GPS_count:%d, GPS_failsafe:%d" % (num_GPS, failsafe_error)))
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # # Triggering failsafe requires specific time;
+    # # thus, we give two more chance before the control software trigger the failsafe
+    # if (Global_distance < 0) and (gps_failsafe_cnt < 2):
+    #     gps_failsafe_cnt = gps_failsafe_cnt + 1
+    #     Global_distance = -1 * Global_distance
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS1", guid=guidance
+    # )
+    # # ----------------------- (end) A.GPS.FS1 policy -----------------------
+    #
+    # # ----------------------- (start) A.GPS.FS2 policy -----------------------
+    # # P0: GPS_failsafe = on
+    # if failsafe_error == 1:
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: Baro = on
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"SIM_BARO_DISABLE", -1
+    # )
+    #
+    # target_param = "SIM_BARO_DISABLE"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # # If 'SIM_BARO_DISABLE' configuration parameter is zero then a barometer sensor is activated and used.
+    # if target_param_value == 0:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    #
+    # # P2: ALT_src = Baro
+    # if round(alt_avg, 1) != round(alt_GPS_avg, 1):
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] GPS_failsafe:%d, SIM_BARO_DISABLE:%d, ALT_baro:%f, ALT_GPS:%f"
+    #         % (
+    #             failsafe_error,
+    #             target_param_value,
+    #             round(alt_avg, 1),
+    #             round(alt_GPS_avg, 1),
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=3, policy="A.GPS.FS2", guid=guidance
+    # )
+    # # ----------------------- (end) A.GPS.FS2 policy -----------------------
+    #
+    # # ----------------------- (start) A.RC.FS1 policy -----------------------
+    # # P0: Takeoff != on
+    # if takeoff != 1:
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"FS_THR_VALUE", -1
+    # )
+    #
+    # target_param = "FS_THR_VALUE"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # fs_thr_val = target_param_value
+    # # P1: Throttle_t < FS_THR_VALUE
+    # ## (FS_THR_VALUE - Throttle_t) / FS_THR_VALUE
+    # if (fs_thr_val == 0) or (fs_thr_val - current_rc_3) == 0:
+    #     P[1] = 0
+    # else:
+    #     P[1] = float((fs_thr_val - current_rc_3) / fs_thr_val)
+    #
+    # # P2: Disarm = on
+    # if Armed == 0:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # logger.info(("[Debug] Takeoff:%d, Armed:%d" % (takeoff, Armed)))
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS1", guid=guidance
+    # )
+    # # ----------------------- (end) A.RC.FS1 policy -----------------------
+    #
+    # # ----------------------- (start) A.RC.FS2 policy -----------------------
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"FS_THR_VALUE", -1
+    # )
+    #
+    # target_param = "FS_THR_VALUE"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # fs_thr_val = target_param_value
+    # # P0: Throttle_t < FS_THR_VALUE
+    # ## (FS_THR_VALUE - Throttle_t) / FS_THR_VALUE
+    # if (fs_thr_val == 0) or (fs_thr_val - current_rc_3) == 0:
+    #     P[0] = 0
+    # else:
+    #     P[0] = float((fs_thr_val - current_rc_3) / fs_thr_val)
+    #
+    # # P1: RC_fail = on
+    # if RC_failsafe_error == 1:
+    #     P[1] = -1
+    # else:
+    #     P[1] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] Throttle_t:%d, FS_THR_VALUE:%d, RC_failsafe:%d"
+    #         % (current_rc_3, fs_thr_val, RC_failsafe_error)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], P[2]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=2, policy="A.RC.FS2", guid=guidance
+    # )
+    # # ----------------------- (end) A.RC.FS2 policy -----------------------
+    #
+    # # ----------------------- (start) A.SPORT1 policy -----------------------
+    # # P0: Mode_t = SPORT
+    # if current_flight_mode == "SPORT":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # target_param_ready = 0
+    # target_param_value = 0
+    #
+    # mav_conn.mav.param_request_read_send(
+    #     mav_conn.target_system, mav_conn.target_component, b"PILOT_SPEED_UP", -1
+    # )
+    #
+    # target_param = "PILOT_SPEED_UP"
+    # count = 0
+    # while target_param_ready == 0 and count < 5:
+    #     time.sleep(1)
+    #     count += 1
+    #
+    # pilot_speed_vertical = target_param_value
+    #
+    # # P1: Vertical_speed_t = PILOT_SPEED_UP
+    # if abs(vertical_speed - pilot_speed_vertical) <= 10:
+    #     P[1] = -1
+    # else:
+    #     P[1] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] Mode_t:%s, vertical_speed:%f, PILOT_SPEED_UP:%d"
+    #         % (current_flight_mode, vertical_speed, pilot_speed_vertical)
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1]))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=2, policy="A.SPORT1", guid=guidance
+    # )
+    # # ----------------------- (end) A.SPORT1 policy -----------------------
+    #
+    # # ----------------------- (start) A.GUIDED1 policy -----------------------
+    # # P0: Mode_t = GUIDED
+    # if current_flight_mode == "GUIDED":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: waypoint_count = 0
+    # if mission_cnt == 0:
+    #     P[1] = 1
+    # else:
+    #     P[1] = -1
+    #
+    # # P3: Yaw_t = Yaw_(t-1)
+    # if round(yawspeed_current, 1) == round(yawspeed_previous, 1):
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # # P3: POS_t = POS_(t-1)
+    # if round(ground_speed, 0) == 0:
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # # P4: ALT_t = ALT_(t-1)
+    # if round(current_altitude, 0) == round(previous_altitude, 0):
+    #     P[4] = -1
+    # else:
+    #     P[4] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] Mode_t:%s, waypoint_count:%f, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
+    #         % (
+    #             current_flight_mode,
+    #             mission_cnt,
+    #             round(yawspeed_current, 1),
+    #             round(yawspeed_previous, 1),
+    #             round(ground_speed, 0),
+    #             round(current_altitude, 0),
+    #             round(previous_altitude, 0),
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], P[1], max(P[2], P[3], P[4])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=5, policy="A.GUIDED1", guid=guidance
+    # )
+    # # ----------------------- (end) A.GUIDED1 policy -----------------------
+    #
+    # # ----------------------- (start) A.LOITER1 policy -----------------------
+    # # P0: Mode_t = LOITER
+    # # logger.info("Yaw (C):{0} (P):{1}".format(yawspeed_current, yawspeed_previous))
+    # # logger.info("Attitude (C):{0} (P):{1}".format(current_altitude, previous_altitude))
+    # if current_flight_mode == "LOITER":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    #
+    # # P1: Yaw_t = Yaw_(t-1)
+    # if round(yawspeed_current, 1) == round(yawspeed_previous, 1):
+    #     P[1] = -1
+    # else:
+    #     P[1] = 1
+    #
+    # # P2: POS_t = POS_(t-1)
+    # # XXX: 2024-05-29T18:49:45+0000: silipwn: Is this a good assumption?
+    # # Would have to def change this based on what Hyungsub mentioned in slack
+    # if round(ground_speed, 0) == 0:
+    #     P[2] = -1
+    # else:
+    #     P[2] = 1
+    #
+    # # P3: ALT_t = ALT_(t-1)
+    # if round(current_altitude, 0) == round(previous_altitude, 0):
+    #     P[3] = -1
+    # else:
+    #     P[3] = 1
+    #
+    # logger.info(
+    #     (
+    #         "[Debug] Mode_t:%s, Yaw_t:%f, Yaw_(t-1):%f, ground speed:%f, ALT_t:%f, ALT_(t-1):%f"
+    #         % (
+    #             current_flight_mode,
+    #             yawspeed_current,
+    #             yawspeed_previous,
+    #             ground_speed,
+    #             current_altitude,
+    #             previous_altitude,
+    #         )
+    #     )
+    # )
+    #
+    # Global_distance = -1 * (min(P[0], max(P[1], P[2], P[3])))
+    #
+    # print_distance(
+    #     G_dist=Global_distance, P_dist=P, length=4, policy="A.LOITER1", guid=guidance
+    # )
     # ----------------------- (end) A.LOITER1 policy -----------------------
     #
     # ----------------------- (start) A.RANGEFINDER policy -----------------------
@@ -2941,82 +2955,82 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # if current_pitch < pitch_min:
     #     pitch_min = current_pitch
     #
-    # if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
-    #     P[0] = 1
-    # else:
-    #     P[0] = -1
-    # # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    # logger.info(
-    #     "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
-    #         roll_max, roll_min, roll_max - roll_min
-    #     )
-    # )
-    # # if (roll_max - roll_min) > 10:
-    # #     P[1] = 1
-    # # else:
-    # #     P[1] = -1
-    # # if (yaw_max - yaw_min) > 2:
-    # #     P[2] = 1
-    # # else:
-    # #     P[2] = -1
-    # logger.info(
-    #     "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
-    #         pitch_max, pitch_min, pitch_max - pitch_min
-    #     )
-    # )
-    # # if (pitch_max - pitch_min) > 10:
-    # #     P[2] = 1
-    # # else:
-    # #     P[2] = -1
-    # # SMA policy
-    # pitch_sma = sma(prev_pitch)
-    # roll_sma = sma(prev_roll)
-    # prev_pitch_sma.append(pitch_sma)
-    # prev_roll_sma.append(roll_sma)
-    # # logger.info("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
-    # # logger.info("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
-    # #
-    #
-    # pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
-    # roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
-    # logger.info("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
-    # if guidance == "true":
-    #     sma_log("{0},{1}".format(pitch_sma, roll_sma))
-    # logger.info("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
-    # if len(pitch_dips) >= 1:
+    if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
+        P[0] = 1
+    else:
+        P[0] = -1
+    # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
+    logger.info(
+        "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
+            roll_max, roll_min, roll_max - roll_min
+        )
+    )
+    # if (roll_max - roll_min) > 10:
     #     P[1] = 1
     # else:
     #     P[1] = -1
-    # if len(roll_dips) >= 1:
+    # if (yaw_max - yaw_min) > 2:
     #     P[2] = 1
     # else:
     #     P[2] = -1
+    logger.info(
+        "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
+            pitch_max, pitch_min, pitch_max - pitch_min
+        )
+    )
+    # if (pitch_max - pitch_min) > 10:
+    #     P[2] = 1
+    # else:
+    #     P[2] = -1
+    # SMA policy
+    pitch_sma = sma(prev_pitch)
+    roll_sma = sma(prev_roll)
+    prev_pitch_sma.append(pitch_sma)
+    prev_roll_sma.append(roll_sma)
+    # logger.info("Prev roll_sma {0} {1}".format(prev_roll_sma, len(prev_roll_sma)))
+    # logger.info("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
-    # Global_distance = -1 * min(P[0], max(P[1], P[2]))
-    #
-    # logger.info("P values %s" % P)
-    # print_distance(
-    #     G_dist=Global_distance,
-    #     P_dist=P,
-    #     length=3,
-    #     policy="A.RANGEFINDER",
-    #     guid=guidance,
-    # )
-    #
-    # logger.info(
-    #     (
-    #         "[RANGEFINDER] Mode_t:%s, yaw_max:%f, yaw_min:%f, roll_max: %f, roll_min:%f, pitch_max:%f, pitch_min: %f"
-    #         % (
-    #             current_flight_mode,
-    #             yaw_max,
-    #             yaw_min,
-    #             roll_max,
-    #             roll_min,
-    #             pitch_max,
-    #             pitch_min,
-    #         )
-    #     )
-    # )
+
+    pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
+    roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
+    logger.info("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
+    if guidance == "true":
+        sma_log("{0},{1}".format(pitch_sma, roll_sma))
+    logger.info("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
+    if len(pitch_dips) >= 1:
+        P[1] = 1
+    else:
+        P[1] = -1
+    if len(roll_dips) >= 1:
+        P[2] = 1
+    else:
+        P[2] = -1
+
+    Global_distance = -1 * min(P[0], max(P[1], P[2]))
+
+    logger.info("P values %s" % P)
+    print_distance(
+        G_dist=Global_distance,
+        P_dist=P,
+        length=3,
+        policy="A.RANGEFINDER",
+        guid=guidance,
+    )
+
+    logger.info(
+        (
+            "[RANGEFINDER] Mode_t:%s, yaw_max:%f, yaw_min:%f, roll_max: %f, roll_min:%f, pitch_max:%f, pitch_min: %f"
+            % (
+                current_flight_mode,
+                yaw_max,
+                yaw_min,
+                roll_max,
+                roll_min,
+                pitch_max,
+                pitch_min,
+            )
+        )
+    )
     # ----------------------- (end) A.RANGEFINDER policy -----------------------
     #
     # ----------------------- (start) A.GIMBAL policy -----------------------
@@ -3207,6 +3221,7 @@ def throttle_th():
     while True:
         # if not reboot_pause_event.is_set():
         set_rc_channel_pwm(3, 1500)  # Default should be mid
+        logger.debug("Throttle set to 1500")
         time.sleep(0.5)
         # else:
         #     logger.info("Throttle disabled")
@@ -3581,6 +3596,8 @@ def takeoff_copter(mav_conn):
         ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
         if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
             logger.error("Arming failed")
+            logger.warning(ack_msg)
+            exit(0)
         ack_msg = ack_msg.to_dict()
 
         logger.info(
@@ -3754,7 +3771,7 @@ def takeoff_copter(mav_conn):
             )
             break
         # Set default throttle
-        set_rc_channel_pwm(3, 1500)
+        set_rc_channel_pwm(3, 1000)
 
         # Maintain mid-position of stick on RC controller
         logger.info("Non mission mode, enabling a thread to keep drone in the air")
@@ -3880,7 +3897,9 @@ def main():
     # Check if in demo mode
     if DEMO_MODE:
         logger.info("Demo mode is enabled")
-        logger.info("Exits when a violation is found or is run for {DEMO_ROUNDS}")
+        logger.info(
+            "Exits when a violation is found or is run for {0}".format(DEMO_ROUNDS)
+        )
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -3982,11 +4001,7 @@ def main():
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
 
-    while True:
-        msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
-        if "is using GPS" in msg.text:
-            logger.info("Got GPS usage message")
-            break
+    pgfuzz_wait_for_gps(mav_conn)
 
     # Upload the mission
     if mission_enabled:
@@ -4168,13 +4183,16 @@ def main():
             reboot_pause_event.set()
             time.sleep(10)
             reboot_pause_event.clear()
+        elif drone_status == mavutil.mavlink.MAV_STATE_CRITICAL:
+            logger.warning("In critical mode zzzzzz........")
+            time.sleep(10)
         else:
             logger.info("Unhandled MAV_STATE, check what is wrong")
             send_telegram_message("Unhandled MAV_STATE, check what is wrong")
             raise Exception("Unhandled MAV_STATE please check what's wrong")
 
 
-def init():
+def init(config_path: str | None):
     global Current_policy_P_length
     global Current_policy
     global ardupilot_dir
@@ -4185,7 +4203,8 @@ def init():
     global mavlink_xml_file
     global msg_list
     global mission_enabled
-    config = read_config()
+    global DEMO_MODE
+    config = read_config(config_path)
     # Required
     try:
         ardupilot_dir = config["Required"]["ArdupilotHome"]
@@ -4205,6 +4224,7 @@ def init():
     try:
         telegram_token = config["Optional"]["TelegramToken"]
         telegram_chat_id = config["Optional"]["TelegramChatID"]
+        DEMO_MODE = config["Optional"]["DemoMode"] == "True"
     except Exception as ex:
         logger.info(f"Failed to load optional config with exception {ex}")
 
@@ -4255,5 +4275,9 @@ def init():
 
 
 if __name__ == "__main__":
-    init()
+    if len(sys.argv) == 2:
+        logger.debug("Config path provided")
+        init(config_path=sys.argv[1])
+    else:
+        init(config_path=None)
     main()

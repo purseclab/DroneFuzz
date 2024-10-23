@@ -5,6 +5,7 @@ import psutil
 
 import time
 import os
+import sys
 import signal
 import logging
 
@@ -36,7 +37,7 @@ def terminate_process_tree(pid, timeout=5):
         pass
 
 
-config = read_config()
+config = read_config(sys.argv[1])
 ardupilot_home = config["Required"]["ArdupilotHome"]
 sim = config["Required"]["Simulator"]
 handle = None
