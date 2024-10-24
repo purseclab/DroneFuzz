@@ -4025,11 +4025,6 @@ def main():
     # This is for testing A.RTL1
     # time.sleep(3)
 
-    # t1 = threading.Thread(name="Throttle", target=throttle_th, args=())
-    # t1.daemon = True
-    # t1.start()
-    #
-
     t2 = threading.Thread(name="Monitor", target=read_loop, args=())
     t2.daemon = True
     t2.start()
