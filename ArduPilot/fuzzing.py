@@ -183,6 +183,9 @@ reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
 sensor_triggered = False
 gimbal_ctr = 0
+frequencies = None
+selected_msg = {}
+default_msg = []
 
 # Distance
 P = []
@@ -328,7 +331,7 @@ def check_liveness():
             if liveness_pause > 50:
                 send_telegram_message("Liveness thread paused for too long")
                 logger.error("Liveness thread paused for too long")
-                sys.exit(-1)
+                sys.exit(1)
         time.sleep(5)
 
 
@@ -507,12 +510,14 @@ def re_launch():
     logger.info("Setting event")
     # reboot_vehicle()
 
-    start_rangefinder()
+    sensor_manager()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
     pgfuzz_wait_for_gps(mav_conn)
 
     logger.info("Clearing event")
     mavlink_pause_event.clear()
+    # Reset the start_time
+    start_time = int(round(time.time() * 1000))
     time.sleep(5)
 
     takeoff_copter(mav_conn)
@@ -538,19 +543,17 @@ def verify_real_number(item):
         return False
 
 
-def current_milli_time(start_time):
+def current_milli_time(start_time) -> int:
     return int(round(time.time() * 1000) - start_time)
 
 
 # Sensor manager
-def start_rangefinder(process=None):
+def sensor_manager(process=None):
     if process and process.is_alive():
         logger.info("Terminating the existing process...")
         process.terminate()
         process.join()  # Ensure the process has completely terminated
-    new_process = multiprocessing.Process(
-        name="RangeFinder", target=send_msg_rangefinder
-    )
+    new_process = multiprocessing.Process(name="Sensor_Manager", target=send_sensor_msg)
     new_process.daemon = True
     new_process.start()
     return new_process
@@ -635,15 +638,6 @@ def mavlink_send_msg_list(msg_name: str | None, msg_id: int | None, msg: list):
 
 
 def generate_sensor_msg() -> list:
-    # Check the selected sensor to mutate
-    logger.info(
-        "The selected sensor is {}, have {} messages to mutate".format(
-            SUT, len(msg_list)
-        )
-    )
-    # Select a random value from the list
-    selected_msg = random.choice(msg_list)
-    logger.info("Selected message: {}".format(selected_msg))
     msg = []
     msg_id = int(selected_msg["msg_id"])
     msg_name = selected_msg["msg_name"]
@@ -652,11 +646,12 @@ def generate_sensor_msg() -> list:
     # msg.append(msg_id)  # Add the message ID
     # msg.append(0)  # Add the confirmation
     fields = selected_msg["fields"]
+    current_time = 0
     # Generate a random value for each field
     for field in fields:
-        # Ignore field if contains usec OR ....
         field_name = field["name"]
         field_type = field["type"]
+        # Ignore field if contains usec OR ....
         if "usec" in field_name:
             logger.info("Ignoring field {} as it based on boot time".format(field_name))
             current_time = current_milli_time(start_time)
@@ -688,7 +683,7 @@ def generate_sensor_msg() -> list:
             msg.append(field_value)
     logger.info(msg)
     mavlink_send_msg_list(msg_name, msg_id, msg)
-    msg_str = "[S]" + str(msg) + "\n"
+    msg_str = str(current_time) + "[S]" + str(msg) + "\n"
     write_log(msg_str)
     return msg
 
@@ -726,36 +721,23 @@ def do_command_ctrl():
     return var_sensor_value
 
 
-def send_msg_rangefinder():
-    # TODO: Make this generic?
-    hz = 25
+def send_sensor_msg():
+    if frequencies is None:
+        logger.debug("Frequencies not set, not doing anything")
+        time.sleep(5)
+        return
+    hz = frequencies
     conn_rangefinder = mavutil.mavlink_connection("127.0.0.1:1337")
     conn_rangefinder.recv_match(type="HEARTBEAT", blocking=True)
+    msg_name = selected_msg["msg_name"].lower()
+    message_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name}_message")
     while True:
-        try:
-            mutated_msg = mavlink_msg_queue.get(block=False)
-            depth_range_x = mutated_msg[0]
-            depth_range_y = mutated_msg[1]
-            depth_range_z = mutated_msg[2]
-        except queue.Empty:
-            # depth_range_x = numpy.random.uniform(11, 12, 9)
-            # depth_range_y = numpy.random.uniform(11, 12, 9)
-            # depth_range_z = numpy.random.uniform(11, 12, 9)
-            depth_range_x = depth_range_y = depth_range_z = [12] * 9
-        cur_ms_time = current_milli_time(start_time)
-        for i in range(9):
-            msg = mavlink2.MAVLink_obstacle_distance_3d_message(
-                cur_ms_time,  # us Timestamp (UNIX time or time since system boot)
-                0,  # not implemented in ArduPilot
-                12,  # Set the frame to MAV_FRAME_BODY_FRD
-                65535,  # unknown ID of the object. We are not really detecting the type of obstacle
-                float(depth_range_x[i]),  # X in NEU body frame
-                float(depth_range_y[i]),  # Y in NEU body frame
-                float(depth_range_z[i]),  # Z in NEU body frame
-                float(DEPTH_RANGE[0]),  # min range of sensor
-                float(DEPTH_RANGE[1]),  # max range of sensor
-            )
-            conn_rangefinder.mav.send(msg)
+        msg = []
+        current_time = current_milli_time(start_time)
+        msg.append(current_time)
+        msg.extend(default_msg)
+        packed_msg = message_class(*msg)
+        conn_rangefinder.mav.send(packed_msg)
         time.sleep(1 / hz)
 
 
@@ -1366,7 +1348,7 @@ def read_loop():
             msg = monitor_conn.recv_match(blocking=True, type=types_msg)
         except Exception as e:
             print("An exception occurred:", str(e))
-            exit(0)
+            exit(1)
 
         # handle the message based on its type
         msg_type = msg.get_type()
@@ -3348,7 +3330,7 @@ def execute_cmd(num):
             msg, mav_conn = reconn_heartbeat(timeout=10)
             if msg is None:
                 logger.info("Damn this is bad, msg is None")
-                exit(-1)
+                exit(1)
             mav_conn.mav.command_long_send(
                 mav_conn.target_system,
                 mav_conn.target_component,
@@ -3597,7 +3579,7 @@ def takeoff_copter(mav_conn):
         if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
             logger.error("Arming failed")
             logger.warning(ack_msg)
-            exit(0)
+            exit(1)
         ack_msg = ack_msg.to_dict()
 
         logger.info(
@@ -3650,7 +3632,7 @@ def takeoff_copter(mav_conn):
             if hb_msg["custom_mode"] != mode_id:
                 logger.error("Failed set to guided mode")
                 logger.error("Exiting")
-                exit(0)
+                exit(1)
         else:
             ack_msg = ack_msg.to_dict()
             if (
@@ -3688,7 +3670,7 @@ def takeoff_copter(mav_conn):
             ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
             if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
                 logger.info("Mission start failed, exiting")
-                exit(0)
+                exit(1)
             ack_msg = ack_msg.to_dict()
 
             logger.info(
@@ -3732,7 +3714,7 @@ def takeoff_copter(mav_conn):
             ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
             if ack_msg is None:
                 logger.info("Takeoff failed, exiting")
-                exit(0)
+                exit(1)
             ack_msg = ack_msg.to_dict()
 
             logger.info(
@@ -3870,7 +3852,7 @@ def load_xml_messages(file_path: str, filter: list) -> list:
 
     if xml_msg == []:
         logger.info("No messages found in the XML file.")
-        exit(-1)
+        exit(1)
     return xml_msg
 
 
@@ -3997,7 +3979,7 @@ def main():
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
     # t4.start()
-    start_rangefinder()
+    sensor_manager()
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
 
@@ -4008,7 +3990,8 @@ def main():
         logger.info("Mission is enabled")
         upload_mission(mav_conn, mission_file_path)
 
-    t4 = multiprocessing.Process(target=send_msg_rangefinder)
+    # Start a thread for sending sensor
+    t4 = multiprocessing.Process(target=send_sensor_msg)
     t4.daemon = True
     t4.start()
 
@@ -4199,6 +4182,9 @@ def init(config_path: str | None):
     global msg_list
     global mission_enabled
     global DEMO_MODE
+    global frequencies
+    global selected_msg
+    global default_msg
     config = read_config(config_path)
     # Required
     try:
@@ -4214,7 +4200,7 @@ def init(config_path: str | None):
     except Exception as ex:
         print("Failed to load config file with following exception")
         print(ex)
-        exit(0)
+        exit(1)
     # Optional
     try:
         telegram_token = config["Optional"]["TelegramToken"]
@@ -4238,7 +4224,7 @@ def init(config_path: str | None):
         sensor_matching_flag = True
     if not sensor_matching_flag:
         logger.critical("Sensor not found in sensor mapping")
-        exit(-1)
+        exit(1)
 
     # Find the required msg in the sensor mapping
     SUT_map = {}
@@ -4253,7 +4239,26 @@ def init(config_path: str | None):
     # Load messages for the XML
     msg_list = load_xml_messages(mavlink_xml_file, msg_filter)
     # Also get if there's a frequency with the message
-    frequencies = SUT_map.get("frequency", None)
+    frequency_list = SUT_map.get("frequency", None)
+    if len(msg_list) != len(frequency_list):
+        logger.critical(
+            "Potential configuration error, length of msgs don't match frequencies"
+        )
+        exit(1)
+    # TODO: Need to handle diff scenarios
+    # Select the message with the frequency
+    frequencies = random.choice(frequency_list)
+    # Get index of frequencies from frequency_list
+    msg_idx = frequency_list.index(frequencies)
+    # Select a random value from the list
+    selected_msg = random.choice(msg_list)
+    default_msg = SUT_map.get("default_msg", None)
+    logger.info("Selected message: {}".format(selected_msg))
+    logger.debug(
+        "Selected frequency is {0} and sensor is {1}".format(
+            frequencies, msg_list[msg_idx]
+        )
+    )
     # Get git commit in ardupilot_dir
     # Very bad programming practice, but it is a quick solution
     current_commit = (

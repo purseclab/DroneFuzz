@@ -3384,7 +3384,6 @@
         "interesting": false,
         "peripheral_related": true
     },
-    2024-10-24T08:03:23-0400: silipwn:HERE
     {
         "files": [
             {
@@ -3566,7 +3565,7 @@
         "title": "AP_ADSB: send absolute height in GPS packet to MXS device",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25984",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true 
     },
     {
         "files": [
@@ -3597,7 +3596,7 @@
         "title": "CRSF device info checks",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25976",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3613,7 +3612,7 @@
         "title": "AR_Motors: fix prearm for omni outputs",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25939",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3654,8 +3653,8 @@
         },
         "title": "AP_Proximity: get_status() returns first good sensor status",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25913",
-        "interesting": false,
-        "peripheral_related": false
+        "interesting": true,
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3691,8 +3690,8 @@
         },
         "title": "AP_Camera:fix OPTIONS bitmask",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25883",
-        "interesting": false,
-        "peripheral_related": false
+        "interesting": true,
+        "peripheral_related": true 
     },
     {
         "files": [
@@ -3872,8 +3871,8 @@
         },
         "title": "Copter Fence Fixes",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25875",
-        "interesting": false,
-        "peripheral_related": false
+        "interesting": true,
+        "peripheral_related": true 
     },
     {
         "files": [
@@ -3898,8 +3897,8 @@
         },
         "title": "GPS: fixed 2 NMEA bugs",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25872",
-        "interesting": false,
-        "peripheral_related": false
+        "interesting": true,
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3915,7 +3914,7 @@
         "title": "AR_Motors: fix support for omni vehicles",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25856",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3931,7 +3930,7 @@
         "title": "AP_Scripting: fixed use after free bug",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25842",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true
     },
     {
         "files": [
@@ -3947,7 +3946,7 @@
         "title": "AP_ExternalAHRS: fixed InertialLabs gyro/accel data",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25837",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true 
     },
     {
         "files": [
@@ -3973,7 +3972,7 @@
         "title": "AP_ExternalAHRS: fixed issues with uart ownership",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25831",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true 
     },
     {
         "files": [
@@ -4085,7 +4084,7 @@
         "title": "AP_Periph: added CAN deadline handling",
         "url": "https://github.com/ArduPilot/ardupilot/pull/25780",
         "interesting": false,
-        "peripheral_related": false
+        "peripheral_related": true
     },
     {
         "files": [
