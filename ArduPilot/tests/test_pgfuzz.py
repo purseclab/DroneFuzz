@@ -23,13 +23,15 @@ class TestPGFuzz(unittest.TestCase):
             if retcode is not None:
                 # Process finished - check exit code
                 self.assertEqual(retcode, 0, f"Expected exit code 0, got {retcode}")
+                print(f"Test completed successfully for {config_file}")
                 break
 
             # Check timeout
             if time.time() - start_time >= self.timeout:
-                process.kill()
+                # Send SIGINT to process
+                process.send_signal(subprocess.signal.SIGINT)
+                time.sleep(10)  # Give time for the process to clean up
                 self.fail(f"Test timed out after {self.timeout} seconds")
-                break
 
             time.sleep(1)
 
