@@ -16,6 +16,7 @@ import string
 import time
 import json
 import datetime
+import shutil
 import logging
 import random
 import numpy
@@ -34,10 +35,12 @@ from pymavlink import mavutil, mavwp  # noqa: F401
 from pymavlink import mavextra  # noqa: F401
 from pymavlink import mavexpression  # noqa: F401
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
+
 # NOTE: pymavlink needs to be an old version 2.4.37 (Cause it doesn't support Py2 :|)
 # pip2 install --force-reinstall -v "pymavlink==2.4.37"
 
 import read_inputs
+
 # import shared_variables
 
 import timeit
@@ -256,7 +259,8 @@ def reconn_heartbeat(timeout=10, max_attempts=3, host="localhost", port=14551):
                 )
             )
             return msg, connection
-        time.sleep(0.1)
+        #
+        time.sleep(max_attempts)  # Try to see if we can sleep for a bit longer
         # If no heartbeat is received, close the connection and retry
         logger.debug("No heartbeat received, retrying...")
 
@@ -446,7 +450,7 @@ def re_launch():
     LAST_LOG = os.path.join(logs_dir, "LASTLOG.TXT")
     # Read the LAST_LOG contents
     last_log_fd = open(LAST_LOG, "r")
-    last_log_number = last_log_fd.readline()
+    last_log_number = last_log_fd.readline().strip()
     logger.info("The current log file is {0}".format(last_log_number))
     logger.info(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
@@ -495,6 +499,11 @@ def re_launch():
     f.write("reboot")
     f.close()
 
+    # Also copy the mav.tlog with the last_log_number
+    mav_tlog_fpath = "{0}/ArduPilot/mav.tlog".format(pgfuzz_dir)
+    mav_tlog_save_fpath = "{0}/ArduPilot/mav-{1}.tlog".format(pgfuzz_dir, int(last_log_number))
+    # Copy the tlog file
+    shutil.copy(mav_tlog_fpath, mav_tlog_save_fpath)
     time.sleep(48)
     # Restablish the connection since it would be rebooted now
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
@@ -512,6 +521,17 @@ def re_launch():
 
     sensor_manager()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
+    message = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
+    home_lat = message.lat
+    home_lat = home_lat / 1000
+    home_lat = home_lat * 1000
+    home_lon = message.lon
+    home_lon = home_lon / 1000
+    home_lon = home_lon * 1000
+    time_since_boot = message.time_boot_ms / 1000
+    logger.info(
+        ("time: %f home_lat: %f, home_lon: %f" % (time_since_boot, home_lat, home_lon))
+    )
     pgfuzz_wait_for_gps(mav_conn)
 
     logger.info("Clearing event")
@@ -1382,6 +1402,15 @@ def read_loop():
             handle_circle_status(msg)
 
 
+def send_status_text(severity, text):
+    mav_conn = mavutil.mavlink_connection("udp:localhost:14551")
+    mav_conn.wait_heartbeat()
+    mav_conn.mav.statustext_send(
+        severity,
+        text.encode("utf-8"),  # Convert the text to bytes
+    )
+
+
 # --------------------- (End) READ Robotic Vehicle's states ------------------------
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
@@ -1391,6 +1420,7 @@ def store_mutated_inputs():
     Policy_violation_cnt += 1
 
     logger.info("***************Policy violation!***************")
+    send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Policy violation!")
 
     # Print attitude_ctr
     logger.info("[Attitude counter] %d" % attitude_ctr)
