@@ -606,10 +606,12 @@ def generate_field_value(field_type):
 
     py_type = c_type_to_py.get(field_type)
 
+    float_range = 1e2  # Reducing to avoid FPE on the SITL binary
+
     if is_array:
         return [generate_field_value(field_type) for _ in range(length)]
     if py_type == "float":
-        return np.random.rand()
+        return np.random.uniform(-float_range, float_range)
     elif py_type == "int":
         if field_type.startswith("uint"):
             return np.random.randint(0, 2 ** (int(field_type[4:-2])), dtype=np.uint64)
@@ -1729,7 +1731,7 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     if relative_alt > 0:
         takeoff = 1
 
-    _, mav_conn = reconn_heartbeat(timeout=5, max_attempts=3)
+    # _, mav_conn = reconn_heartbeat(timeout=5, max_attempts=3)
     # ----------------------- (start) A.CHUTE1 policy -----------------------
     # Propositional distances
     # 0: turn off, 1: turn on
