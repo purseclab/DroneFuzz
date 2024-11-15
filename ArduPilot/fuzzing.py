@@ -501,7 +501,9 @@ def re_launch():
 
     # Also copy the mav.tlog with the last_log_number
     mav_tlog_fpath = "{0}/ArduPilot/mav.tlog".format(pgfuzz_dir)
-    mav_tlog_save_fpath = "{0}/ArduPilot/mav-{1}.tlog".format(pgfuzz_dir, int(last_log_number))
+    mav_tlog_save_fpath = "{0}/ArduPilot/mav-{1}.tlog".format(
+        pgfuzz_dir, int(last_log_number)
+    )
     # Copy the tlog file
     shutil.copy(mav_tlog_fpath, mav_tlog_save_fpath)
     time.sleep(48)
@@ -3991,7 +3993,10 @@ def main():
     home_lon = message.lon
     home_lon = home_lon / 1000
     home_lon = home_lon * 1000
-    logger.info(("home_lat: %f, home_lon: %f" % (home_lat, home_lon)))
+    time_since_boot = message.time_boot_ms / 1000
+    logger.info(
+        ("time: %f home_lat: %f, home_lon: %f" % (time_since_boot, home_lat, home_lon))
+    )
 
     # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
     # for every scenario To ensure that we have full setup finished wait till
