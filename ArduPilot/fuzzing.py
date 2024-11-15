@@ -571,6 +571,7 @@ def current_milli_time(start_time) -> int:
 
 # Sensor manager
 def sensor_manager(process=None):
+    logger.debug("Sensor Manager init")
     if process and process.is_alive():
         logger.info("Terminating the existing process...")
         process.terminate()
@@ -578,6 +579,7 @@ def sensor_manager(process=None):
     new_process = multiprocessing.Process(name="Sensor_Manager", target=send_sensor_msg)
     new_process.daemon = True
     new_process.start()
+    logger.debug("Sensor Manager New Process ready")
     return new_process
 
 
@@ -3556,7 +3558,7 @@ def find_dips(data, threshold=0.01):
         return dips
 
 
-def upload_mission(mav_conn, filename):
+def upload_mission(filename):
     if not os.path.exists(filename):
         logger.info(f"Mission file {filename} not found!")
         return
@@ -3564,15 +3566,23 @@ def upload_mission(mav_conn, filename):
     with open(filename, "r") as f:
         mission_list = json.load(f)
 
+    mav_conn = mavutil.mavlink_connection("localhost:14555")
+    mav_conn.wait_heartbeat()
+
     mission_count = len(mission_list)
+    logger.info(
+        "Connection details {0} {1}".format(
+            mav_conn.target_system, mav_conn.target_component
+        )
+    )
     mav_conn.mav.mission_count_send(
         mav_conn.target_system, mav_conn.target_component, mission_count
     )
 
     # Check for mission_request_int
-    message = mav_conn.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
+    # message = mav_conn.recv_match(type="MISSION_REQUEST_INT", timeout=1.5)
     # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
-    logger.info(message)
+    # logger.info(message)
 
     for i, item in enumerate(mission_list):
         item["target_system"] = mav_conn.target_system
@@ -3582,14 +3592,17 @@ def upload_mission(mav_conn, filename):
         # mavpackettype
         item.pop("mavpackettype", None)
         mav_conn.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
+        message = mav_conn.recv_match(type="MISSION_REQUEST_INT", timeout=0.25)
 
     # Wait for mission_ack
     message = mav_conn.recv_match(type="MISSION_ACK", blocking=True)
     if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
         logger.info("Mission upload complete.")
     else:
-        logger.info("Mission upload failed.")
         logger.info(message)
+        raise Exception("Mission upload failed.")
+
+    mav_conn.close()
 
 
 def takeoff_copter(mav_conn):
@@ -4025,7 +4038,7 @@ def main():
     # Upload the mission
     if mission_enabled:
         logger.info("Mission is enabled")
-        upload_mission(mav_conn, mission_file_path)
+        upload_mission(mission_file_path)
 
     # Start a thread for sending sensor
     t4 = multiprocessing.Process(target=send_sensor_msg)

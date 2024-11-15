@@ -47,7 +47,7 @@ def download_mission(master, filename):
     print(f"Mission saved to {filename}")
 
 
-def upload_mission(master, filename):
+def upload_mission(master, filename, skip_timeout):
     if not os.path.exists(filename):
         print(f"Mission file {filename} not found!")
         return
@@ -56,14 +56,19 @@ def upload_mission(master, filename):
         mission_list = json.load(f)
 
     mission_count = len(mission_list)
+    print(
+        "Connection details {0} {1}".format(
+            master.target_system, master.target_component
+        )
+    )
     master.mav.mission_count_send(
         master.target_system, master.target_component, mission_count
     )
-
     # Check for mission_request_int
-    message = master.recv_match(type="MISSION_REQUEST_INT", blocking=True, timeout=5)
-    # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
-    print(message)
+    if not skip_timeout:
+        # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
+        message = master.recv_match(type="MISSION_REQUEST_INT", blocking=True)
+        print(message)
 
     for i, item in enumerate(mission_list):
         item["target_system"] = master.target_system
@@ -95,7 +100,7 @@ def main():
     )
     parser.add_argument("--download", type=str, help="Download mission to file")
     parser.add_argument("--upload", type=str, help="Upload mission from file")
-
+    parser.add_argument("--skip_timeout", action="store_true", help="Skip timeout")
     args = parser.parse_args()
 
     master = connect_vehicle(args.connection_string)
@@ -104,7 +109,7 @@ def main():
         download_mission(master, args.download)
 
     if args.upload:
-        upload_mission(master, args.upload)
+        upload_mission(master, args.upload, args.skip_timeout)
 
 
 if __name__ == "__main__":
