@@ -220,18 +220,23 @@ Precondition_path = ""
 
 
 # Send a curl request to telegram
-def send_telegram_message(message):
-    # Get hostname
-    hostname = os.uname()[1]
-    if telegram_chat_id is None or telegram_token is None:
-        print("TOKEN and CHAT_ID environment variables not set")
-        return
-    final_msg = "pgfuzz++ raised an exception on " + hostname + ": " + message
-    # Send a message to the telegram using requests
-    requests.post(
-        "https://api.telegram.org/bot{}/sendMessage".format(telegram_token),
-        data={"chat_id": telegram_chat_id, "text": final_msg},
-    )
+def send_offline_message(message, provider="Telegram"):
+    if provider == "Telegram":
+        # Get hostname
+        hostname = os.uname()[1]
+        if telegram_chat_id is None or telegram_token is None:
+            print("TOKEN and CHAT_ID environment variables not set")
+            return
+        final_msg = "pgfuzz++ raised an exception on " + hostname + ": " + message
+        # Send a message to the telegram using requests
+        requests.post(
+            "https://api.telegram.org/bot{}/sendMessage".format(telegram_token),
+            data={"chat_id": telegram_chat_id, "text": final_msg},
+        )
+    else:
+        # TODO
+        logger.warning("Not implemented")
+        pass
 
 
 # Check for heartbeat and restablish connection and try to get hb
@@ -266,7 +271,7 @@ def reconn_heartbeat(timeout=10, max_attempts=3, host="localhost", port=14551):
 
     logger.warning("No heartbeat received after maximum attempts.")
     logger.critical("Exiting as cannot talk to the vehicle")
-    send_telegram_message("No heartbeat received after maximum attempts.")
+    send_offline_message("No heartbeat received after maximum attempts.")
     # TODO: Fix this, this leads other threads to just run in the background
     # os._exit(-1)  # Weird way to exit, but else need to come up with a fancier messaging
 
@@ -333,7 +338,7 @@ def check_liveness():
             logger.info("Liveness thread paused")
             liveness_pause += 1
             if liveness_pause > 50:
-                send_telegram_message("Liveness thread paused for too long")
+                send_offline_message("Liveness thread paused for too long")
                 logger.error("Liveness thread paused for too long")
                 sys.exit(1)
         time.sleep(5)
@@ -415,7 +420,8 @@ def re_launch():
     global RV_alive
 
     RV_alive = 0
-    count_main_loop = 0
+    # NOTE: This variable is use to determine fuzzed inputs, as we switch to complete mission mode
+    # count_main_loop = 0
     Parachute_on = 0
     GPS_status = 1
     Accel_status = 1
@@ -521,7 +527,7 @@ def re_launch():
     logger.info("Setting event")
     # reboot_vehicle()
 
-    sensor_manager()
+    peripheral_manager()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
     message = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
     home_lat = message.lat
@@ -569,17 +575,19 @@ def current_milli_time(start_time) -> int:
     return int(round(time.time() * 1000) - start_time)
 
 
-# Sensor manager
-def sensor_manager(process=None):
-    logger.debug("Sensor Manager init")
+# Peripheral manager
+def peripheral_manager(process=None):
+    logger.debug("Peripheral Manager init")
     if process and process.is_alive():
         logger.info("Terminating the existing process...")
         process.terminate()
         process.join()  # Ensure the process has completely terminated
-    new_process = multiprocessing.Process(name="Sensor_Manager", target=send_sensor_msg)
+    new_process = multiprocessing.Process(
+        name="peripheral_manager", target=send_peripheral_msg
+    )
     new_process.daemon = True
     new_process.start()
-    logger.debug("Sensor Manager New Process ready")
+    logger.debug("Peripheral Manager New Process ready")
     return new_process
 
 
@@ -747,7 +755,7 @@ def do_command_ctrl():
     return var_sensor_value
 
 
-def send_sensor_msg():
+def send_peripheral_msg():
     if frequencies is None:
         logger.debug("Frequencies not set, not doing anything")
         time.sleep(5)
@@ -1458,6 +1466,7 @@ def store_mutated_inputs():
     if DEMO_MODE:
         if Policy_violation_cnt > 2:
             logger.info("Exiting as demo")
+            send_offline_message("Exiting as demo, violation found")
             sys.exit(0)
     logger.info("Restarting the vehicle : Policy violation logged")
     re_launch()
@@ -2957,7 +2966,7 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # ----------------------- (end) A.LOITER1 policy -----------------------
     #
     # ----------------------- (start) A.RANGEFINDER policy -----------------------
-    # # Adjust Yaw
+    # Adjust Yaw
     # if current_yaw > yaw_max:
     #     yaw_max = current_yaw
     # if current_yaw < yaw_min:
@@ -2973,34 +2982,34 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # if current_pitch < pitch_min:
     #     pitch_min = current_pitch
     #
-    if current_flight_mode == "LOITER":  # Cause the bug is found in this mode
+    if current_flight_mode == "AUTO":  # Cause the bug is found in this mode
         P[0] = 1
     else:
         P[0] = -1
-    # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
-    logger.info(
-        "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
-            roll_max, roll_min, roll_max - roll_min
-        )
-    )
-    # if (roll_max - roll_min) > 10:
-    #     P[1] = 1
-    # else:
-    #     P[1] = -1
-    # if (yaw_max - yaw_min) > 2:
-    #     P[2] = 1
-    # else:
-    #     P[2] = -1
-    logger.info(
-        "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
-            pitch_max, pitch_min, pitch_max - pitch_min
-        )
-    )
-    # if (pitch_max - pitch_min) > 10:
-    #     P[2] = 1
-    # else:
-    #     P[2] = -1
-    # SMA policy
+    # # $Max(Roll)-Min(Roll) > 1  \lor Max(Yaw)-Min(Yaw) > 1 \lor Max(Pitch)-Min(Pitch) > 1$
+    # logger.info(
+    #     "[RANGEFINDER] roll_max:{0} roll_min:{1} diff:{2}".format(
+    #         roll_max, roll_min, roll_max - roll_min
+    #     )
+    # )
+    # # if (roll_max - roll_min) > 10:
+    # #     P[1] = 1
+    # # else:
+    # #     P[1] = -1
+    # # if (yaw_max - yaw_min) > 2:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # logger.info(
+    #     "[RANGEFINDER] pitch_max:{0} pitch_min:{1} diff:{2}".format(
+    #         pitch_max, pitch_min, pitch_max - pitch_min
+    #     )
+    # )
+    # # if (pitch_max - pitch_min) > 10:
+    # #     P[2] = 1
+    # # else:
+    # #     P[2] = -1
+    # # SMA policy
     pitch_sma = sma(prev_pitch)
     roll_sma = sma(prev_roll)
     prev_pitch_sma.append(pitch_sma)
@@ -3009,22 +3018,22 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # logger.info("Prev pitch_sma {0} {1}".format(prev_pitch_sma, len(prev_pitch_sma)))
     #
 
-    pitch_dips = find_dips(prev_pitch_sma, threshold=0.0005)
-    roll_dips = find_dips(prev_roll_sma, threshold=0.0005)
+    pitch_dips = find_dips(prev_pitch_sma, threshold=0.025)
+    roll_dips = find_dips(prev_roll_sma, threshold=0.025)
     logger.info("SMA pitch:{0} roll:{1}".format(pitch_sma, roll_sma))
     if guidance == "true":
         sma_log("{0},{1}".format(pitch_sma, roll_sma))
-    logger.info("Check dips pitch:{0} roll:{1}".format(pitch_dips, roll_dips))
-    if len(pitch_dips) >= 1:
+    logger.info("Check dips pitch:{0} roll:{1}".format(len(pitch_dips), len(roll_dips)))
+    if len(pitch_dips) > 1:
         P[1] = 1
     else:
         P[1] = -1
-    if len(roll_dips) >= 1:
+    if len(roll_dips) > 1:
         P[2] = 1
     else:
         P[2] = -1
 
-    Global_distance = -1 * min(P[0], max(P[1], P[2]))
+    Global_distance = -1 * min(P[0], min(P[1], P[2]))
 
     logger.info("P values %s" % P)
     print_distance(
@@ -3054,43 +3063,43 @@ def calculate_distance(guidance, mutated_val: list | None = None):
     # ----------------------- (start) A.GIMBAL policy -----------------------
     # Cause the we do it like that
     # XXX: Eventually replace
-    if current_flight_mode == "AUTO":
-        P[0] = 1
-    else:
-        P[0] = -1
-    logger.info(
-        "[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_val)
-    )
-    # Make sure we follow the new list structure
-    mutated_yaw = mutated_val[2] if mutated_val is not None else current_yaw
-    # If current_yaw is not equal to mutated_val in a threshold, set distance to 1
-    # and mutated_val is not None
-    if guidance and mutated_val is not None:
-        if abs(current_yaw - mutated_yaw) > 10:
-            logger.info(
-                "[GIMBAL] diff {0} ctr {1}".format(
-                    abs(current_yaw - mutated_yaw), gimbal_ctr
-                )
-            )
-            # defaults
-            gimbal_ctr = gimbal_ctr + 1
-            if gimbal_ctr > 3:
-                P[1] = 1
-        else:
-            logger.info("Reset the ctr")
-            gimbal_ctr = 0
-            P[1] = -1
-
-    Global_distance = -1 * min(P[0], P[1])
-
-    logger.info("[GIMBAL] P values %s" % P)
-    print_distance(
-        G_dist=Global_distance,
-        P_dist=P,
-        length=2,
-        policy="A.GIMBAL",
-        guid=guidance,
-    )
+    # if current_flight_mode == "AUTO":
+    #     P[0] = 1
+    # else:
+    #     P[0] = -1
+    # # Make sure we follow the new list structure
+    # mutated_yaw = mutated_val[2] if mutated_val is not None else current_yaw
+    # logger.info(
+    #     "[GIMBAL] current yaw {0} mutated yaw {1} ".format(current_yaw, mutated_yaw)
+    # )
+    # # If current_yaw is not equal to mutated_val in a threshold, set distance to 1
+    # # and mutated_val is not None
+    # if guidance and mutated_val is not None:
+    #     if abs(current_yaw - mutated_yaw) > 10:
+    #         logger.info(
+    #             "[GIMBAL] diff {0} ctr {1}".format(
+    #                 abs(current_yaw - mutated_yaw), gimbal_ctr
+    #             )
+    #         )
+    #         # defaults
+    #         gimbal_ctr = gimbal_ctr + 1
+    #         if gimbal_ctr > 1:
+    #             P[1] = 1
+    #     else:
+    #         logger.info("Reset the ctr")
+    #         gimbal_ctr = 0
+    #         P[1] = -1
+    #
+    # Global_distance = -1 * min(P[0], P[1])
+    #
+    # logger.info("[GIMBAL] P values %s" % P)
+    # print_distance(
+    #     G_dist=Global_distance,
+    #     P_dist=P,
+    #     length=2,
+    #     policy="A.GIMBAL",
+    #     guid=guidance,
+    # )
     # )
     # ----------------------- (end) A.GIMBAL policy -----------------------
     #
@@ -3518,7 +3527,8 @@ def pick_up_cmd():
 
     # 1) User commands
     if input_type == 1:
-        execute_cmd(num=random.randint(0, len(read_inputs.cmd_name) - 1))
+        # execute_cmd(num=random.randint(0, len(read_inputs.cmd_name) - 1))
+        logger.debug("Execute_cmd: Do nothing")
 
     # 2) Parameters
     elif input_type == 2:
@@ -4029,7 +4039,7 @@ def main():
     # t4 = multiprocessing.Process(target=send_msg_rangefinder)
     # t4.daemon = True
     # t4.start()
-    sensor_manager()
+    peripheral_manager()
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
 
@@ -4041,7 +4051,7 @@ def main():
         upload_mission(mission_file_path)
 
     # Start a thread for sending sensor
-    t4 = multiprocessing.Process(target=send_sensor_msg)
+    t4 = multiprocessing.Process(target=send_peripheral_msg)
     t4.daemon = True
     t4.start()
 
@@ -4104,7 +4114,7 @@ def main():
                         drone_status
                     )
                 )
-                send_telegram_message(
+                send_offline_message(
                     "Got stuck for a long time, check logs for more info"
                 )
                 raise Exception("Got stuck for a long time, check logs for more info")
@@ -4216,7 +4226,7 @@ def main():
             time.sleep(10)
         else:
             logger.info("Unhandled MAV_STATE, check what is wrong")
-            send_telegram_message("Unhandled MAV_STATE, check what is wrong")
+            send_offline_message("Unhandled MAV_STATE, check what is wrong")
             raise Exception("Unhandled MAV_STATE please check what's wrong")
 
 
