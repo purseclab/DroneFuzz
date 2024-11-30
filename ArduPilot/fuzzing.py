@@ -671,7 +671,7 @@ def mavlink_send_msg_list(msg_name: str | None, msg_id: int | None, msg: list):
     conn_sensor.close()
 
 
-def generate_sensor_msg() -> list:
+def generate_peripheral_msg() -> list:
     msg = []
     msg_id = int(selected_msg["msg_id"])
     msg_name = selected_msg["msg_name"]
@@ -3542,7 +3542,7 @@ def pick_up_cmd():
 
     # 4) Add Sensor mutations
     elif input_type == 4:
-        return generate_sensor_msg()
+        return generate_peripheral_msg()
 
 
 def sma(data, window_size=10):
