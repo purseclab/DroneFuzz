@@ -3479,11 +3479,10 @@ def execute_env(num):
                 % (Current_input, Current_input_val)
             )
         )
-
     mav_conn.mav.param_set_send(
         mav_conn.target_system,
         mav_conn.target_component,
-        Current_input,
+        bytes(Current_input, "utf-8"),
         float(Current_input_val),
         mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
     )
