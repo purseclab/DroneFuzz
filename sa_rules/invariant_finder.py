@@ -9,14 +9,23 @@
 # Currently runs by diffing 2 consecutive messages 
 # Usage: python invariant_finder.py --tlog <TLog file>
 # Date: 2024-11-25T06:42:59-0500
-# Last-Modified: 2024-11-25T11:27:42-0500
+# Last-Modified: 2024-12-03T16:35:02-0500
 ###
 from pymavlink import mavutil
 import argparse
 import os
 import numpy as np
 import json
+import logging
 
+logger = logging.getLogger('invariant_finder')
+logger.setLevel(logging.INFO)
+# Create a custom formatter
+format="%(asctime)s | %(levelname)s | %(filename)s:%(lineno)d  | %(message)s"
+formatter = logging.Formatter(format)
+ch = logging.StreamHandler() 
+ch.setFormatter(formatter)
+logger.addHandler(ch)
 
 def find_consec_invariants(msg_dict: dict,threshold: float):
     """
@@ -33,7 +42,7 @@ def find_consec_invariants(msg_dict: dict,threshold: float):
                     data[i][key] = float(data[i][key])
                     data[i-1][key] = float(data[i-1][key])
                 except: 
-                    print(f"Warning: {key} is not a float/int in {msg}")
+                    logger.warning(f": {key} is not a float/int in {msg}")
                     invariant = False
                     break
                 if abs(data[i][key] - data[i-1][key]) > threshold:
