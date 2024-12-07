@@ -1,3 +1,5 @@
+# Modification of the official ardupilot dockerfile to create a docker image
+# Requires having the ardopilot repository in the same directory as the Dockerfile
 ARG BASE_IMAGE="ubuntu"
 ARG TAG="22.04"
 FROM ${BASE_IMAGE}:${TAG}
