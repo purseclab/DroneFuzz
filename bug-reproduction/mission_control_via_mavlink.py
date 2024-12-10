@@ -3,7 +3,7 @@ from pymavlink import mavutil
 import pymavlink.dialects.v20.all as dialect
 
 # Connect to the vehicle
-master = mavutil.mavlink_connection("udp:127.0.0.1:1337")
+master = mavutil.mavlink_connection("udp:127.0.0.1:14551")
 master.wait_heartbeat()
 
 TAKEOFF_ALTITUDE = 100
