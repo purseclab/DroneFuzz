@@ -9,7 +9,7 @@ import os
 sys.path.append("/usr/local/lib/")
 
 # Connect to the UAV's MAVLink interface over UDP
-conn = mavutil.mavlink_connection("localhost:1337",autoreconnect=True)
+conn = mavutil.mavlink_connection("localhost:1337", autoreconnect=True)
 
 print("Connected to Mavlink interface")
 
@@ -123,13 +123,12 @@ while True:
         print("Copter is ready....")
         normal_exec()
         time.sleep(0.15)
-        if not obstacle_bring:
-            print("Moving obstcale")
-            f.write("Obstacle\n")
-            obstacle_exec()
-            obstacle_bring = True
-        else:
-            f.write("Done\n")
-            print("Already done")
+        # if not obstacle_bring:
+        print("Moving obstcale")
+        f.write("Obstacle\n")
+        obstacle_exec()
+        # obstacle_bring = True
+        # else:
+        f.write("Done\n")
 
     time.sleep(0.25)
