@@ -73,3 +73,10 @@ OBSTACLE_DISTANCE_3D on a 360-degree Plane
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⠉⠁
 
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀180°
+
+# Run the docker container
+Inside it 
+./Tools/autotest/sim_vehicle.py -v ArduCopter --no-mavproxy --add-param-file=sensor.parm
+Outside it
+mavproxy.py --master=tcp:localhost:5760 --out=udp:127.0.0.1:1337 --out=udp:127.0.0.1:1339 --out=udp:127.0.0.1:14551 --out=udp:127.0.0.1:14555 --out=udpout:127.0.0.1:1338
+

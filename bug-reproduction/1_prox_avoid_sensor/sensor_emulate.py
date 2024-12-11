@@ -112,8 +112,11 @@ def obstacle_exec():
 def is_copter_ready():
     msg = conn.recv_match(type="HEARTBEAT", blocking=True)
     is_armed = bool(msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
-    is_loiter_mode = msg.custom_mode == mavutil.mavlink.COPTER_MODE_LOITER
-    return is_armed and is_loiter_mode
+    is_auto_mode = (
+        msg.custom_mode == mavutil.mavlink.COPTER_MODE_LOITER
+    )  # To check if we can detect in mission mode
+    # Check if the copter is actually in the air and on a waypoint
+    return is_armed and is_auto_mode
 
 
 # Main loop
