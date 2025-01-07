@@ -301,7 +301,7 @@ if __name__ == "__main__":
     spawn_tmux_window(window_name=prg_name, command=cmd)
 
     time.sleep(20)  # NOTE: Time reduced for testing
-    cmd = "python3 " + fuzzing_py + "; exit"  # NOTE: Added exit to close the window
+    cmd = "python3 " + fuzzing_py # + "; exit"  # NOTE: Added exit to close the window
     prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 

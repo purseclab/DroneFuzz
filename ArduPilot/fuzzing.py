@@ -757,8 +757,8 @@ def do_command_ctrl():
 
 
 def send_peripheral_msg():
-    if frequencies is None:
-        logger.debug("Frequencies not set, not doing anything")
+    if frequencies == -1:
+        logger.debug("Frequencies is set to -1, so not doing anything")
         time.sleep(5)
         return
     hz = frequencies
@@ -3585,9 +3585,6 @@ def pick_up_cmd():
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
     input_type = random.choice([1, 4])
 
-    # Hyungsub - to test user commands! I need to remove the below code after finishing to implement all user commands
-    # input_type = 4
-
     # True: input mutated from guidance, False: randomly mutate an input
     Guidance_decision = random.choice([True, False])
 
@@ -3595,8 +3592,8 @@ def pick_up_cmd():
 
     # 1) User commands
     if input_type == 1:
-        # execute_cmd(num=random.randint(0, len(read_inputs.cmd_name) - 1))
-        logger.debug("Execute_cmd: Do nothing")
+        execute_cmd(num=random.randint(0, len(read_inputs.cmd_name) - 1))
+        # logger.debug("Execute_cmd: Do nothing")
 
     # 2) Parameters
     elif input_type == 2:
@@ -4201,13 +4198,10 @@ def main():
             count_main_loop += 1
 
             # Calculate propositional and global distances
-            calculate_distance(guidance="false")
+            # calculate_distance(guidance="false")
 
-            value = pick_up_cmd()
+            _ = pick_up_cmd()
 
-            # Calculate distances to evaluate effect of the executed input
-            time.sleep(4)
-            calculate_distance(guidance="true", mutated_val=value)
             goal_throttle = 1500
 
             # XXX: 2024-07-11T11:37:53-0400: silipwn: See if this is absolutely necessary
