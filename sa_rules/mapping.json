@@ -4,6 +4,11 @@
     "parameters": {
       "FLOW_TYPE": 5
     },
+    "frequency": [
+      -1,
+      -1,
+      -1
+    ],
     "msg_type": [
       "OPTICAL_FLOW",
       "OPTICAL_FLOW_RAD",
