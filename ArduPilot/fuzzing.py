@@ -21,6 +21,7 @@ import logging
 import random
 import numpy
 import threading
+import pandas as pd
 import queue
 import subprocess
 import requests
@@ -1433,8 +1434,8 @@ def store_mutated_inputs():
     global count_main_loop
     Policy_violation_cnt += 1
 
-    logger.info("***************Policy violation!***************")
-    send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Policy violation!")
+    logger.info("***************Potential bug!***************")
+    send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Potential bug!")
 
     # Print attitude_ctr
     logger.info("[Attitude counter] %d" % attitude_ctr)
@@ -1579,6 +1580,74 @@ def print_distance(G_dist, P_dist, length, policy, guid):
                     write_guidance_log(guide_line, action="write")
 
 
+def extract_servo(logfile: str) -> pd.DataFrame:
+    mlog = mavutil.mavlink_connection(logfile)
+    servo = []
+    in_air_flag = False
+    while True:
+        msg = mlog.recv_match()
+        if msg is None:
+            break
+        msg = msg.to_dict()
+        if msg["mavpackettype"] == "STATUSTEXT":
+            if "Arming" in msg["text"]:
+                print("Motors are armed")
+                in_air_flag = True
+            if "Disarming" in msg["text"]:
+                print("Motors are disarmed")
+                in_air_flag = False
+        if msg["mavpackettype"] == "SERVO_OUTPUT_RAW":
+            servo.append(msg) if in_air_flag else None
+    columns = [
+        "mavpackettype",
+        "time_usec",
+        "servo1_raw",
+        "servo2_raw",
+        "servo3_raw",
+        "servo4_raw",
+    ]
+    return pd.DataFrame(servo, columns=columns)  # Ignore this warning for now
+
+
+
+def analyze_logs(current_tlog: str) -> float:
+    '''
+    Intakes the current telemetry log and then outputs the distance
+    based on the deviations from existing values
+    4 servos -> 3 metrics, each deviation increases the deviation metric by 1/12 ~ 0.833
+    Each deviation increases 
+    '''
+    global baseline_pdarray
+    pd_array = extract_servo(current_tlog)
+    deviation_metric = 0.000
+    MET_INC = 0.0833
+    # Check if the pd_array min is different than baseline_pdarray
+    baseline1 = baseline_pdarray.describe()['servo1_raw']
+    baseline2 = baseline_pdarray.describe()['servo2_raw']
+    baseline3 = baseline_pdarray.describe()['servo3_raw']
+    baseline4 = baseline_pdarray.describe()['servo4_raw']
+    current1 = pd_array.describe()['servo1_raw']
+    current2 = pd_array.describe()['servo2_raw']
+    current3 = pd_array.describe()['servo3_raw']
+    current4 = pd_array.describe()['servo4_raw']
+
+    if current1['std'] > baseline1['std']:
+        logger.debug("More deviation than the baseline for Servo1")
+        deviation_metric += MET_INC
+
+    if current2['std'] > baseline2['std']:
+        logger.debug("More deviation than the baseline for Servo2")
+        deviation_metric += MET_INC
+
+    if current3['std'] > baseline3['std']:
+        logger.debug("More deviation than the baseline for Servo3")
+        deviation_metric += MET_INC
+
+    if current4['std'] > baseline4['std']:
+        logger.debug("More deviation than the baseline for Servo4")
+        deviation_metric += MET_INC
+
+    return deviation_metric
 # ------------------------------------------------------------------------------------
 # ---------------(Start) Calculate propositional and global distances-----------------
 def calculate_distance(guidance, mutated_val: list | None = None):
@@ -4169,6 +4238,13 @@ def main():
                     % (home_altitude, current_altitude)
                 )
             )
+            logger.info("Now analyzing previous run")
+            # Get the current tlog file from mav.tlog in the directory
+            current_tlog = os.path.join(os.getcwd(), "mav.tlog")
+            deviation_metric = analyze_logs(current_tlog)
+            if deviation_metric > 0.5:
+                logger.info("High chance that the mission was problematic")
+                store_mutated_inputs()
             Armed = 0
             hit_ground = 0
             re_launch()
@@ -4237,6 +4313,7 @@ def init(config_path: str | None):
     global SUT
     global telegram_token
     global telegram_chat_id
+    global baseline_pdarray
     global mavlink_xml_file
     global msg_list
     global mission_enabled
@@ -4331,6 +4408,10 @@ def init(config_path: str | None):
         logger.info("The commit being tested is: %s" % current_commit)
 
     logger.info("Pymavlink version %s" % pymavlink.__version__)
+
+    default_tlog = config["Required"]["DefaultTLog"]
+    baseline_pdarray = extract_servo(default_tlog)
+
 
 
 if __name__ == "__main__":
