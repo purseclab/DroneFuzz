@@ -24,6 +24,7 @@ import threading
 import pandas as pd
 import queue
 import subprocess
+from pandas.core import base
 import requests
 import multiprocessing
 from lxml import etree
@@ -462,6 +463,9 @@ def re_launch():
     logger.info(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
+    # Clear the msg queue
+    while not mavlink_msg_queue.empty():
+        mavlink_msg_queue.get_nowait()
 
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
     _ = mav_conn.recv_match(type="HEARTBEAT", blocking=True)
@@ -1240,6 +1244,8 @@ def handle_position(msg):
     vertical_speed = msg.vz
     relative_alt = msg.relative_alt / 1000  # convert it from mm to meters
 
+    mavlink_msg_queue.put(msg)
+
 
 # ------------------------------------------------------------------------------------
 def handle_status(msg):
@@ -1609,45 +1615,48 @@ def extract_servo(logfile: str) -> pd.DataFrame:
     return pd.DataFrame(servo, columns=columns)  # Ignore this warning for now
 
 
-
 def analyze_logs(current_tlog: str) -> float:
-    '''
+    """
     Intakes the current telemetry log and then outputs the distance
     based on the deviations from existing values
     4 servos -> 3 metrics, each deviation increases the deviation metric by 1/12 ~ 0.833
-    Each deviation increases 
-    '''
+    Each deviation increases
+    """
     global baseline_pdarray
     pd_array = extract_servo(current_tlog)
     deviation_metric = 0.000
     MET_INC = 0.0833
     # Check if the pd_array min is different than baseline_pdarray
-    baseline1 = baseline_pdarray.describe()['servo1_raw']
-    baseline2 = baseline_pdarray.describe()['servo2_raw']
-    baseline3 = baseline_pdarray.describe()['servo3_raw']
-    baseline4 = baseline_pdarray.describe()['servo4_raw']
-    current1 = pd_array.describe()['servo1_raw']
-    current2 = pd_array.describe()['servo2_raw']
-    current3 = pd_array.describe()['servo3_raw']
-    current4 = pd_array.describe()['servo4_raw']
+    baseline1 = baseline_pdarray.describe()["servo1_raw"]
+    baseline2 = baseline_pdarray.describe()["servo2_raw"]
+    baseline3 = baseline_pdarray.describe()["servo3_raw"]
+    baseline4 = baseline_pdarray.describe()["servo4_raw"]
+    current1 = pd_array.describe()["servo1_raw"]
+    current2 = pd_array.describe()["servo2_raw"]
+    current3 = pd_array.describe()["servo3_raw"]
+    current4 = pd_array.describe()["servo4_raw"]
+    logger.info(baseline_pdarray.describe())
+    logger.info(pd_array.describe())
 
-    if current1['std'] > baseline1['std']:
+    if current1["std"] > baseline1["std"]:
         logger.debug("More deviation than the baseline for Servo1")
         deviation_metric += MET_INC
 
-    if current2['std'] > baseline2['std']:
+    if current2["std"] > baseline2["std"]:
         logger.debug("More deviation than the baseline for Servo2")
         deviation_metric += MET_INC
 
-    if current3['std'] > baseline3['std']:
+    if current3["std"] > baseline3["std"]:
         logger.debug("More deviation than the baseline for Servo3")
         deviation_metric += MET_INC
 
-    if current4['std'] > baseline4['std']:
+    if current4["std"] > baseline4["std"]:
         logger.debug("More deviation than the baseline for Servo4")
         deviation_metric += MET_INC
 
     return deviation_metric
+
+
 # ------------------------------------------------------------------------------------
 # ---------------(Start) Calculate propositional and global distances-----------------
 def calculate_distance(guidance, mutated_val: list | None = None):
@@ -3311,17 +3320,172 @@ def set_rc_channel_pwm(id, pwm=1500):
         )  # RC channel list, in microseconds.
 
 
-# ------------------------------------------------------------------------------------
-def throttle_th():
-    # TODO: Check if global_throttle is correctly set
+def set_mode(vehicle, mode):
+    """Set vehicle mode."""
+    vehicle.mav.command_long_send(
+        vehicle.target_system,
+        vehicle.target_component,
+        mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+        0,
+        1,  # Base mode: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+        mode,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    # TODO: Change this?
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    logger.info(f"Mode set to {mode}, ACK: {ack.result}")
+
+
+def arm_vehicle(vehicle):
+    """Arm the vehicle."""
+    logger.info("Arming vehicle...")
+    vehicle.mav.command_long_send(
+        vehicle.target_system,
+        vehicle.target_component,
+        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+        0,
+        1,  # 1 to arm
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    # TODO: Change this?
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    if ack.result != 0:
+        logger.info("Arming failed with ACK: %s" % ack.result)
+        exit(1)
+    logger.info("ARM command ACK: %s" % ack.result)
+
+
+def takeoff_vehicle(vehicle, altitude):
+    """Command the vehicle to take off."""
+    logger.info(f"Taking off to {altitude} meters...")
+    vehicle.mav.command_long_send(
+        vehicle.target_system,
+        vehicle.target_component,
+        mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        altitude,
+    )
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    if ack.result != 0:
+        logger.info("Arming failed with ACK: %s" % ack.result)
+        logger.info(ack)
+        exit(1)
+    logger.info("ARM command ACK: %s" % ack.result)
     while True:
-        # if not reboot_pause_event.is_set():
-        set_rc_channel_pwm(3, 1500)  # Default should be mid
-        logger.debug("Throttle set to 1500")
-        time.sleep(0.5)
-        # else:
-        #     logger.info("Throttle disabled")
-        #     time.sleep(10)
+        msg = mavlink_msg_queue.get()
+        if msg.get_type() == "GLOBAL_POSITION_INT":
+            msg = msg.to_dict()
+            alt = msg["relative_alt"] / 1e3
+            if alt >= altitude * 0.95:
+                logger.info(f"Value of altitude: {alt}")
+                logger.info("Reached target altitude")
+                break
+
+def approx_equal(a, b, tolerance):
+    return abs(a - b) < tolerance
+
+
+def go_to_waypoint(vehicle, lat, lon, alt):
+    """Navigate to a specified waypoint."""
+    print(f"Navigating to waypoint: lat={lat}, lon={lon}, alt={alt}")
+    vehicle.mav.set_position_target_global_int_send(
+        0,
+        vehicle.target_system,
+        vehicle.target_component,
+        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
+        0b110111111000,  # Bitmask: enable x, y, z
+        int(lat * 1e7),  # Latitude in 1e7 degrees
+        int(lon * 1e7),  # Longitude in 1e7 degrees
+        alt,  # Altitude in meters
+        0,
+        0,
+        0,  # x, y, z velocity
+        0,
+        0,
+        0,  # x, y, z acceleration
+        0,
+        0,  # yaw, yaw rate
+    )
+    while True:
+        msg = mavlink_msg_queue.get()
+        msg = msg.to_dict()
+        current_lat = round(msg["lat"] / 1e7, ndigits=5)
+        current_lon = round(msg["lon"] / 1e7, ndigits=5)
+        requred_lat = round(lat, ndigits=5)
+        required_lon = round(lon, ndigits=5)
+        tolerance = 0.00005
+        if approx_equal(current_lat, requred_lat, tolerance) and approx_equal(
+            current_lon, required_lon, tolerance
+        ):
+            logger.info("Reached target waypoint")
+            logger.debug(f"{current_lat}, {requred_lat}, {current_lon}, {required_lon}")
+            break
+
+def land(vehicle):
+    """Land the vehicle."""
+    print("Initiating landing...")
+    vehicle.mav.command_long_send(
+        vehicle.target_system,
+        vehicle.target_component,
+        mavutil.mavlink.MAV_CMD_NAV_LAND,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    print("Land command ACK: %s" % ack.result)
+# ------------------------------------------------------------------------------------
+def guided_mission():
+    # # Set GUIDED mode (3 is usually GUIDED, but check your vehicle's documentation)
+    vehicle = mavutil.mavlink_connection("localhost:14550")
+    vehicle.wait_heartbeat()
+    logger.info("Got the wait_heartbeat")
+    GUIDED_MODE = vehicle.mode_mapping()["GUIDED"]  # Adjust if needed
+    LOITER_MODE = vehicle.mode_mapping()["LOITER"]
+    logger.info("Hello world")
+    mavlink_pause_event.set()
+    set_mode(vehicle,GUIDED_MODE)
+    arm_vehicle(vehicle)
+    takeoff_vehicle(vehicle, 50)
+    mavlink_pause_event.clear()
+    go_to_waypoint(vehicle,-35.3632621, 149.1652374, 50)
+    #
+    # # Go to Point B -35.3626941, 149.166221
+    go_to_waypoint(vehicle,-35.3626941, 149.166221, 50)
+    #
+    # # Loiter for a while
+    set_mode(vehicle,LOITER_MODE)
+    time.sleep(10)
+    set_mode(vehicle,GUIDED_MODE)
+    #
+    # # -35.362839699999995, 149.1646279,
+    go_to_waypoint(vehicle,-35.362839699999995, 149.1646279, 50)
+    #
+    # # Go to point X -35.3632621, 149.1652374,
+    go_to_waypoint(vehicle,-35.3632621, 149.1652374, 50)
+    #
+    # # Land
+    land(vehicle)
 
 
 # ------------------------------------------------------------------------------------
@@ -3583,7 +3747,8 @@ def pick_up_cmd():
     Guidance_decision = None
 
     # a) Randomly select a type of inputs ( 1)user command, 2)parameter, 3)environmental factor)
-    input_type = random.choice([1, 4])
+    # input_type = random.choice([1, 4])
+    input_type = 4
 
     # True: input mutated from guidance, False: randomly mutate an input
     Guidance_decision = random.choice([True, False])
@@ -3593,7 +3758,6 @@ def pick_up_cmd():
     # 1) User commands
     if input_type == 1:
         execute_cmd(num=random.randint(0, len(read_inputs.cmd_name) - 1))
-        # logger.debug("Execute_cmd: Do nothing")
 
     # 2) Parameters
     elif input_type == 2:
@@ -3681,37 +3845,33 @@ def upload_mission(filename):
 
 
 def takeoff_copter(mav_conn):
-    mav_conn.mav.command_long_send(
-        mav_conn.target_system,
-        mav_conn.target_component,
-        mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
-        0,
-        1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-    )
-
-    while True:
-        # Wait for ACK command
-        ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
-            logger.error("Arming failed")
-            logger.warning(ack_msg)
-            exit(1)
-        ack_msg = ack_msg.to_dict()
-
-        logger.info(
-            (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
-        )
-        break
-
-    time.sleep(1)
-
     if mission_enabled:
+        mav_conn.mav.command_long_send(
+            mav_conn.target_system,
+            mav_conn.target_component,
+            mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+
+        while True:
+            # Wait for ACK command
+            ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
+            if ack_msg is None or ack_msg.result != mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                logger.error("Arming failed")
+                logger.warning(ack_msg)
+                exit(1)
+            ack_msg = ack_msg.to_dict()
+            logger.info(
+                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
+            )
+            break
         # Choose a mode
         mode = "AUTO"
 
@@ -3799,87 +3959,13 @@ def takeoff_copter(mav_conn):
                 (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
             )
             break
-
     else:
-        mode_id = mav_conn.mode_mapping()["GUIDED"]
-        mav_conn.set_mode(mode_id)
-
-        while True:
-            # Wait for ACK command
-            ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-            ack_msg = ack_msg.to_dict()
-
-            # Check if command in the same in `set_mode`
-            if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-                continue
-            logger.info(
-                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
-            )
-            break
-
-        mav_conn.mav.command_long_send(
-            mav_conn.target_system,  # target_system
-            mav_conn.target_component,  # target_component
-            mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,  # command
-            0,  # confirmation
-            0,  # param1
-            0,  # param2
-            0,  # param3
-            0,  # param4
-            0,  # param5
-            0,  # param6
-            MISSION_ATTITUDE,
-        )  # param7- altitude
-        ack = False
-        while not ack:
-            # Wait for ACK command
-            ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-            if ack_msg is None:
-                logger.info("Takeoff failed, exiting")
-                exit(1)
-            ack_msg = ack_msg.to_dict()
-
-            logger.info(
-                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
-            )
-            break
-
-        # This is for testing A.RTL1
-        # NOTE: Check if this actually matters 2024-10-03
-        # time.sleep(15)
-
-        # Wait till we reach that height
-        while True:
-            msg = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-            if msg is not None:
-                altitude = msg.relative_alt / 1000.0  # Altitude in meters
-                if (
-                    altitude >= MISSION_ATTITUDE
-                ):  # Half the height is good enough for now (Mission based)
-                    logger.info("Reached approximate height")
-                    break
-
-        mode_id = mav_conn.mode_mapping()["ALT_HOLD"]
-        mav_conn.set_mode(mode_id)
-
-        while True:
-            # Wait for ACK command
-            ack_msg = mav_conn.recv_match(type="COMMAND_ACK", blocking=True)
-            ack_msg = ack_msg.to_dict()
-
-            # Check if command in the same in `set_mode`
-            if ack_msg["command"] != mavutil.mavlink.MAV_CMD_DO_SET_MODE:
-                continue
-            logger.info(
-                (mavutil.mavlink.enums["MAV_RESULT"][ack_msg["result"]].description)
-            )
-            break
-        # Set default throttle
-        set_rc_channel_pwm(3, 1000)
-
-        # Maintain mid-position of stick on RC controller
-        logger.info("Non mission mode, enabling a thread to keep drone in the air")
-        new_process = multiprocessing.Process(name="Throttle", target=throttle_th)
+        logger.info(
+            "Non mission mode, enabling a thread to keep drone in the air via guided missions"
+        )
+        new_process = multiprocessing.Process(
+            name="GuidedMission", target=guided_mission
+        )
         new_process.daemon = True
         new_process.start()
 
@@ -4405,7 +4491,6 @@ def init(config_path: str | None):
 
     default_tlog = config["Required"]["DefaultTLog"]
     baseline_pdarray = extract_servo(default_tlog)
-
 
 
 if __name__ == "__main__":
