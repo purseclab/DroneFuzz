@@ -1623,9 +1623,18 @@ def analyze_logs(current_tlog: str) -> float:
     Each deviation increases
     """
     global baseline_pdarray
+
     pd_array = extract_servo(current_tlog)
     deviation_metric = 0.000
     MET_INC = 0.0833
+    STD_DEV = 2.0
+    MEAN_DEV = 2.0
+
+    logger.debug("baseline")
+    logger.debug(baseline_pdarray.describe())
+    logger.debug("current_tlog")
+    logger.debug(pd_array.describe())
+
     # Check if the pd_array min is different than baseline_pdarray
     baseline1 = baseline_pdarray.describe()["servo1_raw"]
     baseline2 = baseline_pdarray.describe()["servo2_raw"]
@@ -1635,24 +1644,43 @@ def analyze_logs(current_tlog: str) -> float:
     current2 = pd_array.describe()["servo2_raw"]
     current3 = pd_array.describe()["servo3_raw"]
     current4 = pd_array.describe()["servo4_raw"]
-    logger.info(baseline_pdarray.describe())
-    logger.info(pd_array.describe())
 
-    if current1["std"] > baseline1["std"]:
+    # STD
+    if abs(current1["std"] - baseline1["std"]) > STD_DEV:
         logger.debug("More deviation than the baseline for Servo1")
         deviation_metric += MET_INC
 
-    if current2["std"] > baseline2["std"]:
+    if abs(current2["std"] - baseline2["std"]) > STD_DEV:
         logger.debug("More deviation than the baseline for Servo2")
         deviation_metric += MET_INC
 
-    if current3["std"] > baseline3["std"]:
+    if abs(current3["std"] - baseline3["std"]) > STD_DEV:
         logger.debug("More deviation than the baseline for Servo3")
         deviation_metric += MET_INC
 
-    if current4["std"] > baseline4["std"]:
+    if abs(current4["std"] - baseline4["std"]) > STD_DEV:
         logger.debug("More deviation than the baseline for Servo4")
         deviation_metric += MET_INC
+
+    # MEAN
+    if abs(current1["mean"] - baseline1["mean"]) > MEAN_DEV:
+        logger.debug("More deviation than the baseline for Servo1")
+        deviation_metric += MET_INC
+
+    if abs(current2["mean"] - baseline2["mean"]) > MEAN_DEV:
+        logger.debug("More deviation than the baseline for Servo2")
+        deviation_metric += MET_INC
+
+    if abs(current3["mean"] - baseline3["mean"]) > MEAN_DEV:
+        logger.debug("More deviation than the baseline for Servo3")
+        deviation_metric += MET_INC
+
+    if abs(current4["mean"] - baseline4["mean"]) > MEAN_DEV:
+        logger.debug("More deviation than the baseline for Servo4")
+        deviation_metric += MET_INC
+
+    if current1["count"] != baseline1["count"]:
+        logger.critical(f'The count values are different the diff is {abs(current1["count"] - baseline1["count"])}')
 
     return deviation_metric
 
@@ -3396,6 +3424,7 @@ def takeoff_vehicle(vehicle, altitude):
                 logger.info("Reached target altitude")
                 break
 
+
 def approx_equal(a, b, tolerance):
     return abs(a - b) < tolerance
 
@@ -3436,6 +3465,7 @@ def go_to_waypoint(vehicle, lat, lon, alt):
             logger.debug(f"{current_lat}, {requred_lat}, {current_lon}, {required_lon}")
             break
 
+
 def land(vehicle):
     """Land the vehicle."""
     print("Initiating landing...")
@@ -3454,6 +3484,8 @@ def land(vehicle):
     )
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
     print("Land command ACK: %s" % ack.result)
+
+
 # ------------------------------------------------------------------------------------
 def guided_mission():
     # # Set GUIDED mode (3 is usually GUIDED, but check your vehicle's documentation)
@@ -3464,25 +3496,25 @@ def guided_mission():
     LOITER_MODE = vehicle.mode_mapping()["LOITER"]
     logger.info("Hello world")
     mavlink_pause_event.set()
-    set_mode(vehicle,GUIDED_MODE)
+    set_mode(vehicle, GUIDED_MODE)
     arm_vehicle(vehicle)
     takeoff_vehicle(vehicle, 50)
     mavlink_pause_event.clear()
-    go_to_waypoint(vehicle,-35.3632621, 149.1652374, 50)
+    go_to_waypoint(vehicle, -35.3632621, 149.1652374, 50)
     #
     # # Go to Point B -35.3626941, 149.166221
-    go_to_waypoint(vehicle,-35.3626941, 149.166221, 50)
+    go_to_waypoint(vehicle, -35.3626941, 149.166221, 50)
     #
     # # Loiter for a while
-    set_mode(vehicle,LOITER_MODE)
+    set_mode(vehicle, LOITER_MODE)
     time.sleep(10)
-    set_mode(vehicle,GUIDED_MODE)
+    set_mode(vehicle, GUIDED_MODE)
     #
     # # -35.362839699999995, 149.1646279,
-    go_to_waypoint(vehicle,-35.362839699999995, 149.1646279, 50)
+    go_to_waypoint(vehicle, -35.362839699999995, 149.1646279, 50)
     #
     # # Go to point X -35.3632621, 149.1652374,
-    go_to_waypoint(vehicle,-35.3632621, 149.1652374, 50)
+    go_to_waypoint(vehicle, -35.3632621, 149.1652374, 50)
     #
     # # Land
     land(vehicle)
