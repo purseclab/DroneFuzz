@@ -51,8 +51,7 @@ import math
 import numpy as np
 
 
-from pgfuzz import pgfuzz_wait_for_gps, read_config
-
+from pgfuzz import read_config
 
 # ------------------------------------------------------------------------------------
 # Global variables
@@ -545,7 +544,8 @@ def re_launch():
     logger.info(
         ("time: %f home_lat: %f, home_lon: %f" % (time_since_boot, home_lat, home_lon))
     )
-    pgfuzz_wait_for_gps(mav_conn)
+    mav_conn.wait_gps_fix()
+    time.sleep(2)
 
     logger.info("Clearing event")
     mavlink_pause_event.clear()
@@ -1597,10 +1597,10 @@ def extract_servo(logfile: str) -> pd.DataFrame:
         msg = msg.to_dict()
         if msg["mavpackettype"] == "STATUSTEXT":
             if "Arming" in msg["text"]:
-                print("Motors are armed")
+                logger.debug("Motors are armed")
                 in_air_flag = True
             if "Disarming" in msg["text"]:
-                print("Motors are disarmed")
+                logger.debug("Motors are disarmed")
                 in_air_flag = False
         if msg["mavpackettype"] == "SERVO_OUTPUT_RAW":
             servo.append(msg) if in_air_flag else None
@@ -4226,7 +4226,8 @@ def main():
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
 
-    pgfuzz_wait_for_gps(mav_conn)
+    mav_conn.wait_gps_fix()
+    time.sleep(2)
 
     # Upload the mission
     if mission_enabled:
@@ -4234,10 +4235,10 @@ def main():
         upload_mission(mission_file_path)
 
     # Start a thread for sending sensor
-    t4 = multiprocessing.Process(target=send_peripheral_msg)
-    t4.daemon = True
-    t4.start()
-
+    # t4 = multiprocessing.Process(target=send_peripheral_msg)
+    # t4.daemon = True
+    # t4.start()
+    #
     time.sleep(10)  # TODO: Figure out the ideal time to wait
     # This is because we need to get the second IMU also working
 
