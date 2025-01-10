@@ -80,7 +80,6 @@ PARAM_MIN = 1
 PARAM_MAX = 10000
 MISSION_ATTITUDE = 50
 DEMO_MODE = False
-DEMO_ROUNDS = 1000
 required_min_thr = 975
 
 current_roll = 0.0
@@ -1629,6 +1628,7 @@ def analyze_logs(current_tlog: str) -> float:
     MET_INC = 0.0833
     STD_DEV = 2.0
     MEAN_DEV = 2.0
+    COUNT_THRESHOLD = 10.0
 
     logger.debug("baseline")
     logger.debug(baseline_pdarray.describe())
@@ -1679,8 +1679,13 @@ def analyze_logs(current_tlog: str) -> float:
         logger.debug("More deviation than the baseline for Servo4")
         deviation_metric += MET_INC
 
-    if current1["count"] != baseline1["count"]:
-        logger.critical(f'The count values are different the diff is {abs(current1["count"] - baseline1["count"])}')
+    if abs(current1["count"] - baseline1["count"]) >= COUNT_THRESHOLD:
+        logger.critical(
+            f'The count values are different the diff is {abs(current1["count"] - baseline1["count"])}'
+        )
+        # Need to reset the values then
+        logger.debug("Resetting the values")
+        deviation_metric = 0.00
 
     return deviation_metric
 
@@ -4120,7 +4125,7 @@ def main():
     if DEMO_MODE:
         logger.info("Demo mode is enabled")
         logger.info(
-            "Exits when a violation is found or is run for {0}".format(DEMO_ROUNDS)
+            "Exits when a potential mismatch is found"
         )
 
     # ------------------------------------------------------------------------------------
@@ -4281,10 +4286,6 @@ def main():
         while reboot_pause_event.is_set():
             logger.info("Pausing main thread for 10 seconds because an event is set")
             time.sleep(10)
-        if DEMO_MODE:
-            if count_main_loop >= DEMO_ROUNDS:
-                logger.info("[Demo mode] exiting now")
-                exit(0)
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
@@ -4533,3 +4534,4 @@ if __name__ == "__main__":
     else:
         init(config_path=None)
     main()
+

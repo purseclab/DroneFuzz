@@ -79,17 +79,7 @@ logger.addHandler(file_handler)
 #
 
 
-# Some utitlity functions
-def pgfuzz_wait_for_gps(mav_conn):
-    """
-    Wait for the GPS to be used by the system, slightly modified from original wait as we wait till IMU starts using it
-    """
-    while True:
-        msg = mav_conn.recv_match(type="STATUSTEXT", blocking=True)
-        if "is using GPS" in msg.text:
-            logger.info("Got GPS usage message")
-            break
-
+# Some utility functions
 
 def good_path(path: str) -> bool:
     if os.path.exists(path):
