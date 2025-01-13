@@ -25,6 +25,7 @@ import pandas as pd
 import queue
 import subprocess
 from pandas.core import base
+from scipy.stats import mannwhitneyu
 import requests
 import multiprocessing
 from lxml import etree
@@ -1625,67 +1626,24 @@ def analyze_logs(current_tlog: str) -> float:
 
     pd_array = extract_servo(current_tlog)
     deviation_metric = 0.000
-    MET_INC = 0.0833
-    STD_DEV = 2.0
-    MEAN_DEV = 2.0
-    COUNT_THRESHOLD = 10.0
-
-    logger.debug("baseline")
-    logger.debug(baseline_pdarray.describe())
-    logger.debug("current_tlog")
-    logger.debug(pd_array.describe())
-
-    # Check if the pd_array min is different than baseline_pdarray
-    baseline1 = baseline_pdarray.describe()["servo1_raw"]
-    baseline2 = baseline_pdarray.describe()["servo2_raw"]
-    baseline3 = baseline_pdarray.describe()["servo3_raw"]
-    baseline4 = baseline_pdarray.describe()["servo4_raw"]
-    current1 = pd_array.describe()["servo1_raw"]
-    current2 = pd_array.describe()["servo2_raw"]
-    current3 = pd_array.describe()["servo3_raw"]
-    current4 = pd_array.describe()["servo4_raw"]
-
-    # STD
-    if abs(current1["std"] - baseline1["std"]) > STD_DEV:
-        logger.debug("More deviation than the baseline for Servo1")
-        deviation_metric += MET_INC
-
-    if abs(current2["std"] - baseline2["std"]) > STD_DEV:
-        logger.debug("More deviation than the baseline for Servo2")
-        deviation_metric += MET_INC
-
-    if abs(current3["std"] - baseline3["std"]) > STD_DEV:
-        logger.debug("More deviation than the baseline for Servo3")
-        deviation_metric += MET_INC
-
-    if abs(current4["std"] - baseline4["std"]) > STD_DEV:
-        logger.debug("More deviation than the baseline for Servo4")
-        deviation_metric += MET_INC
-
-    # MEAN
-    if abs(current1["mean"] - baseline1["mean"]) > MEAN_DEV:
-        logger.debug("More deviation than the baseline for Servo1")
-        deviation_metric += MET_INC
-
-    if abs(current2["mean"] - baseline2["mean"]) > MEAN_DEV:
-        logger.debug("More deviation than the baseline for Servo2")
-        deviation_metric += MET_INC
-
-    if abs(current3["mean"] - baseline3["mean"]) > MEAN_DEV:
-        logger.debug("More deviation than the baseline for Servo3")
-        deviation_metric += MET_INC
-
-    if abs(current4["mean"] - baseline4["mean"]) > MEAN_DEV:
-        logger.debug("More deviation than the baseline for Servo4")
-        deviation_metric += MET_INC
-
-    if abs(current1["count"] - baseline1["count"]) >= COUNT_THRESHOLD:
-        logger.critical(
-            f'The count values are different the diff is {abs(current1["count"] - baseline1["count"])}'
+    # Perform Mann-Whitney U test for each servo column
+    results = {}
+    servo_columns = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
+    for column in servo_columns:
+        stat, p = mannwhitneyu(
+            pd_array[column], baseline_pdarray[column], alternative="two-sided"
         )
-        # Need to reset the values then
-        logger.debug("Resetting the values")
-        deviation_metric = 0.00
+        results[column] = {"statistic": stat, "p-value": p}
+
+    for column, result in results.items():
+        logger.debug(f"Column: {column}")
+        logger.debug(f"Mann-Whitney U statistic: {result['statistic']}")
+        logger.debug(f"P-value: {result['p-value']}")
+        if result["p-value"] < 0.05:
+            logger.debug("Result: Statistically significant difference")
+        else:
+            logger.debug("Result: No statistically significant difference")
+        deviation_metric += result["p-value"]
 
     return deviation_metric
 
@@ -4356,7 +4314,7 @@ def main():
             # Get the current tlog file from mav.tlog in the directory
             current_tlog = os.path.join(os.getcwd(), "mav.tlog")
             deviation_metric = analyze_logs(current_tlog)
-            if deviation_metric > 0.5:
+            if deviation_metric <= 0.2:
                 logger.info("High chance that the mission was problematic")
                 store_mutated_inputs()
             Armed = 0
