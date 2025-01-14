@@ -182,6 +182,7 @@ DEPTH_RANGE = [0.3, 12]  # depth range, to be changed as per requirements
 depth_range_x = depth_range_y = depth_range_z = [0.00] * 9
 mavlink_lock = threading.Lock()
 mavlink_msg_queue = multiprocessing.Queue()
+exception_queue = multiprocessing.Queue()
 mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
@@ -3361,11 +3362,10 @@ def arm_vehicle(vehicle):
         0,
         0,
     )
-    # TODO: Change this?
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
     if ack.result != 0:
-        logger.info("Arming failed with ACK: %s" % ack.result)
-        exit(1)
+        logger.debug("Arming failed")
+        exception_queue.put("Arming failed with ACK: %s" % ack.result)
     logger.info("ARM command ACK: %s" % ack.result)
 
 
@@ -3387,10 +3387,8 @@ def takeoff_vehicle(vehicle, altitude):
     )
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
     if ack.result != 0:
-        logger.info("Arming failed with ACK: %s" % ack.result)
-        logger.info(ack)
-        exit(1)
-    logger.info("ARM command ACK: %s" % ack.result)
+        exception_queue.put("Arming failed with ACK: %s" % ack.result)
+    logger.info("Takeoff command ACK: %s" % ack.result)
     while True:
         msg = mavlink_msg_queue.get()
         if msg.get_type() == "GLOBAL_POSITION_INT":
@@ -3430,7 +3428,6 @@ def go_to_waypoint(vehicle, lat, lon, alt):
     while True:
         msg = mavlink_msg_queue.get()
         msg = msg.to_dict()
-        logger.info("Got an msg from the queue")
         current_lat = round(msg["lat"] / 1e7, ndigits=5)
         current_lon = round(msg["lon"] / 1e7, ndigits=5)
         requred_lat = round(lat, ndigits=5)
@@ -4197,9 +4194,6 @@ def main():
     # reboot_vehicle()
     mission_file_path = "./triangle.json"
 
-    # t4 = multiprocessing.Process(target=send_msg_rangefinder)
-    # t4.daemon = True
-    # t4.start()
     peripheral_manager()
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
@@ -4256,6 +4250,11 @@ def main():
             "[Debug] drone_status:%d prev_status_ctr %d"
             % (drone_status, prev_status_ctr)
         )
+        if not exception_queue.empty():
+            logger.critical("Child process returned an error")
+            err_msg = exception_queue.get()
+            logger.info(err_msg)
+            exit(-1)
         while reboot_pause_event.is_set():
             logger.info("Pausing main thread for 10 seconds because an event is set")
             time.sleep(10)
