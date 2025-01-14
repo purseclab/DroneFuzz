@@ -435,11 +435,6 @@ def re_launch():
     logger.info("Enabled reboot_pause_event")
 
     # Reset the prx_values
-    for i in range(9):
-        depth_range_x[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
-        depth_range_y[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
-        depth_range_z[i] = random.uniform(-DEPTH_RANGE[1], DEPTH_RANGE[1])
-
     current_roll = 0.0
     current_pitch = 0.0
     current_yaw = 0.0
@@ -517,6 +512,8 @@ def re_launch():
     )
     # Copy the tlog file
     shutil.copy(mav_tlog_fpath, mav_tlog_save_fpath)
+
+    peripheral_manager()
     time.sleep(48)
     # Restablish the connection since it would be rebooted now
     mav_conn = mavutil.mavlink_connection("127.0.0.1:14551")
@@ -526,33 +523,21 @@ def re_launch():
     mutated_log.close()
 
     # Step 3. reset preconditions to fuzz the target policy
-    global Precondition_path
+    # global Precondition_path
     # set_preconditions(Precondition_path)
     mavlink_pause_event.set()
     logger.info("Setting event")
     # reboot_vehicle()
 
-    peripheral_manager()
     # Try to read the STATUSTEXT msgs till we get the GPS usage
-    message = mav_conn.recv_match(type="GLOBAL_POSITION_INT", blocking=True)
-    home_lat = message.lat
-    home_lat = home_lat / 1000
-    home_lat = home_lat * 1000
-    home_lon = message.lon
-    home_lon = home_lon / 1000
-    home_lon = home_lon * 1000
-    time_since_boot = message.time_boot_ms / 1000
-    logger.info(
-        ("time: %f home_lat: %f, home_lon: %f" % (time_since_boot, home_lat, home_lon))
-    )
     mav_conn.wait_gps_fix()
-    time.sleep(2)
+    time.sleep(12)
 
     logger.info("Clearing event")
     mavlink_pause_event.clear()
     # Reset the start_time
-    start_time = int(round(time.time() * 1000))
-    time.sleep(5)
+    # start_time = int(round(time.time() * 1000))
+    # time.sleep(5)
 
     takeoff_copter(mav_conn)
 
@@ -3387,7 +3372,7 @@ def takeoff_vehicle(vehicle, altitude):
     )
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
     if ack.result != 0:
-        exception_queue.put("Arming failed with ACK: %s" % ack.result)
+        exception_queue.put("Takeoff failed with ACK: %s" % ack.result)
     logger.info("Takeoff command ACK: %s" % ack.result)
     while True:
         msg = mavlink_msg_queue.get()
@@ -3443,7 +3428,7 @@ def go_to_waypoint(vehicle, lat, lon, alt):
 
 def land(vehicle):
     """Land the vehicle."""
-    print("Initiating landing...")
+    logger.info("Initiating landing...")
     vehicle.mav.command_long_send(
         vehicle.target_system,
         vehicle.target_component,
@@ -3476,23 +3461,20 @@ def guided_mission():
     takeoff_vehicle(vehicle, 50)
     mavlink_pause_event.clear()
     go_to_waypoint(vehicle, -35.3632621, 149.1652374, 50)
-    #
     # # Go to Point B -35.3626941, 149.166221
     go_to_waypoint(vehicle, -35.3626941, 149.166221, 50)
-    #
     # # Loiter for a while
     set_mode(vehicle, LOITER_MODE)
     time.sleep(10)
     set_mode(vehicle, GUIDED_MODE)
-    #
     # # -35.362839699999995, 149.1646279,
     go_to_waypoint(vehicle, -35.362839699999995, 149.1646279, 50)
-    #
     # # Go to point X -35.3632621, 149.1652374,
     go_to_waypoint(vehicle, -35.3632621, 149.1652374, 50)
-    #
     # # Land
     land(vehicle)
+    logger.debug("Exiting process")
+    exit(0)
 
 
 # ------------------------------------------------------------------------------------
