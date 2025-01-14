@@ -582,7 +582,7 @@ def current_milli_time(start_time) -> int:
 
 # Peripheral manager
 def peripheral_manager(process=None):
-    logger.debug("Peripheral Manager init")
+    logger.info("Peripheral Manager init")
     if process and process.is_alive():
         logger.info("Terminating the existing process...")
         process.terminate()
@@ -592,7 +592,7 @@ def peripheral_manager(process=None):
     )
     new_process.daemon = True
     new_process.start()
-    logger.debug("Peripheral Manager New Process ready")
+    logger.info("Peripheral Manager New Process ready")
     return new_process
 
 
@@ -692,23 +692,37 @@ def generate_peripheral_msg() -> list:
         field_type = field["type"]
         # Ignore field if contains usec OR ....
         if "usec" in field_name:
-            logger.info("Ignoring field {} as it based on boot time".format(field_name))
+            logger.debug("Ignoring field {} as it based on boot time".format(field_name))
             current_time = current_milli_time(start_time)
             msg.append(current_time)
+        #-------- Hardcoded crap for testing ---------------#
+        elif "sensor_type" in field_name:
+            logger.debug("Ignoring field {} as it based on sensor_id".format(field_name))
+            sensor_id = 0
+            msg.append(sensor_id)
+        elif "frame" in field_name:
+            logger.debug("Ignoring field {} as it based on frame".format(field_name))
+            frame = 12
+            msg.append(frame)
+        # elif "obstacle_id" in field_name:
+        #     logger.debug("Ignoring field {} as it based on obstacle_id".format(field_name))
+        #     obstacle_id = 65535
+        #     msg.append(obstacle_id)
+        # Check wow
         elif type(field_type) is list:
             # This is a special condition where we have a custom designed values because the message is param
             min, max, inc = field_type
             field_value = None
             if (min == "float") & (max == "float") & (inc is None):
                 field_value = generate_field_value("float")
-                logger.info(
+                logger.debug(
                     "param_value: Added field {} with value {}".format(
                         field_name, field_value
                     )
                 )
             elif type(min) is int:
                 field_value = numpy.random.randint(min, max)
-                logger.info(
+                logger.debug(
                     "param_value: Added field {} with value {}".format(
                         field_name, field_value
                     )
@@ -718,7 +732,7 @@ def generate_peripheral_msg() -> list:
             msg.append(field_value)
         else:
             field_value = generate_field_value(field_type)
-            logger.info("Added field {} with value {}".format(field_name, field_value))
+            logger.debug("Added field {} with value {}".format(field_name, field_value))
             msg.append(field_value)
     logger.info(msg)
     mavlink_send_msg_list(msg_name, msg_id, msg)
@@ -1636,9 +1650,9 @@ def analyze_logs(current_tlog: str) -> float:
         results[column] = {"statistic": stat, "p-value": p}
 
     for column, result in results.items():
-        logger.debug(f"Column: {column}")
+        logger.info(f"Column: {column}")
         logger.debug(f"Mann-Whitney U statistic: {result['statistic']}")
-        logger.debug(f"P-value: {result['p-value']}")
+        logger.info(f"P-value: {result['p-value']}")
         if result["p-value"] < 0.05:
             logger.debug("Result: Statistically significant difference")
         else:
@@ -3327,7 +3341,7 @@ def set_mode(vehicle, mode):
         0,
     )
     # TODO: Change this?
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=7)
     logger.info(f"Mode set to {mode}, ACK: {ack.result}")
 
 
@@ -3416,6 +3430,7 @@ def go_to_waypoint(vehicle, lat, lon, alt):
     while True:
         msg = mavlink_msg_queue.get()
         msg = msg.to_dict()
+        logger.info("Got an msg from the queue")
         current_lat = round(msg["lat"] / 1e7, ndigits=5)
         current_lon = round(msg["lon"] / 1e7, ndigits=5)
         requred_lat = round(lat, ndigits=5)
@@ -3445,8 +3460,8 @@ def land(vehicle):
         0,
         0,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
-    print("Land command ACK: %s" % ack.result)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=7)
+    logger.info("Land command ACK: %s" % ack.result)
 
 
 # ------------------------------------------------------------------------------------
@@ -3959,7 +3974,7 @@ def takeoff_copter(mav_conn):
             "Non mission mode, enabling a thread to keep drone in the air via guided missions"
         )
         new_process = multiprocessing.Process(
-            name="GuidedMission", target=guided_mission
+            name="GuidedMission", target=guided_mission,
         )
         new_process.daemon = True
         new_process.start()
@@ -4247,7 +4262,7 @@ def main():
         # Store previous status_ctr
         if prev_status_ctr == drone_status:
             status_ctr += 1
-            logger.info("Incrementing the status_ctr")
+            logger.debug("Incrementing the status_ctr")
             if status_ctr >= 100 and (
                 drone_status != mavutil.mavlink.MAV_STATE_ACTIVE
                 and prev_status_ctr != mavutil.mavlink.MAV_STATE_ACTIVE
