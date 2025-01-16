@@ -780,99 +780,6 @@ def send_peripheral_msg():
         time.sleep(1 / hz)
 
 
-def randomize_msg_rangefinder():
-    """
-    Should ideally randomize the Rangefinder depth values
-    """
-    # 2024-05-29T09:45:14-0400: silipwn: Split up the randomization in order to ensure the values are
-    # not repeated
-    # XXX: Why does the randomization fail in a loop?
-    # depth_range_x = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    # depth_range_y = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    # depth_range_z = numpy.random.uniform(-(DEPTH_RANGE[1] / 2), (DEPTH_RANGE[1] / 2), 9)
-    depth_range_1 = [12, 12, 12, 12, 12, 12, 12, 12, 12]
-    depth_range_2 = [
-        -7.171149112500025,
-        3.468601209163399,
-        5.695193805774039,
-        -9.266968362509475,
-        11.667519738575635,
-        5.1041530139455205,
-        0.45212570746143044,
-        -7.864746056681961,
-        -2.337234663244491,
-    ]
-    depth_range_3 = [
-        9.170353381650724,
-        8.632255888031327,
-        3.9505021451729547,
-        -6.620548981848094,
-        -0.6074463507713102,
-        2.6709162689533255,
-        3.3385703109376905,
-        3.4818020706529715,
-        9.12005049574292,
-    ]
-    # val = random.choice([depth_range_1, depth_range_2, depth_range_3])
-    # print("Selected value: ", val)
-    # Push all values
-    # depth_range_x = depth_range_y = depth_range_z = depth_range_1
-    # combined_msg = [depth_range_x, depth_range_y, depth_range_z]
-    # mavlink_msg_queue.put(combined_msg)
-    #
-    # depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
-    # depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
-    # depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
-    #
-    # print_param = ""
-    # print_param += "R "
-    # print_param += numpy.array2string(depth_range_x_str, separator=",")
-    # print_param += "|"
-    # print_param += numpy.array2string(depth_range_y_str, separator=",")
-    # print_param += "|"
-    # print_param += numpy.array2string(depth_range_z_str, separator=",")
-    # print_param += "\n"
-    #
-    # write_log(print_param)
-    depth_range_x = depth_range_y = depth_range_z = depth_range_2
-    combined_msg = [depth_range_x, depth_range_y, depth_range_z]
-    mavlink_msg_queue.put(combined_msg)
-
-    depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
-    depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
-    depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
-
-    print_param = ""
-    print_param += "R "
-    print_param += numpy.array2string(depth_range_x_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_y_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_z_str, separator=",")
-    print_param += "\n"
-
-    write_log(print_param)
-    depth_range_x = depth_range_y = depth_range_z = depth_range_3
-    combined_msg = [depth_range_x, depth_range_y, depth_range_z]
-    mavlink_msg_queue.put(combined_msg)
-
-    depth_range_x_str = numpy.reshape(depth_range_x, (1, len(depth_range_x)))
-    depth_range_y_str = numpy.reshape(depth_range_y, (1, len(depth_range_y)))
-    depth_range_z_str = numpy.reshape(depth_range_z, (1, len(depth_range_z)))
-
-    print_param = ""
-    print_param += "R "
-    print_param += numpy.array2string(depth_range_x_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_y_str, separator=",")
-    print_param += "|"
-    print_param += numpy.array2string(depth_range_z_str, separator=",")
-    print_param += "\n"
-
-    write_log(print_param)
-    logger.info("Generated random msgs for rangefinder")
-
-
 # ------------------------------------------------------------------------------------
 def change_parameter(selected_param):
     global Guidance_decision
@@ -3328,7 +3235,9 @@ def set_mode(vehicle, mode):
     )
     # TODO: Change this?
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=7)
-    logger.info(f"Mode set to {mode}, ACK: {ack.result}")
+    # if not none don't print
+    if ack is not None:
+        logger.info(f"Mode set to {mode}, ACK: {ack.result}")
 
 
 def arm_vehicle(vehicle):
@@ -3351,7 +3260,8 @@ def arm_vehicle(vehicle):
     if ack.result != 0:
         logger.debug("Arming failed")
         exception_queue.put("Arming failed with ACK: %s" % ack.result)
-    logger.info("ARM command ACK: %s" % ack.result)
+    if ack is not None:
+        logger.info("ARM command ACK: %s" % ack.result)
 
 
 def takeoff_vehicle(vehicle, altitude):
@@ -3373,7 +3283,8 @@ def takeoff_vehicle(vehicle, altitude):
     ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
     if ack.result != 0:
         exception_queue.put("Takeoff failed with ACK: %s" % ack.result)
-    logger.info("Takeoff command ACK: %s" % ack.result)
+    if ack is not None:
+        logger.info("Takeoff command ACK: %s" % ack.result)
     while True:
         msg = mavlink_msg_queue.get()
         if msg.get_type() == "GLOBAL_POSITION_INT":
@@ -3391,7 +3302,7 @@ def approx_equal(a, b, tolerance):
 
 def go_to_waypoint(vehicle, lat, lon, alt):
     """Navigate to a specified waypoint."""
-    print(f"Navigating to waypoint: lat={lat}, lon={lon}, alt={alt}")
+    logger.debug(f"Navigating to waypoint: lat={lat}, lon={lon}, alt={alt}")
     vehicle.mav.set_position_target_global_int_send(
         0,
         vehicle.target_system,
@@ -4161,12 +4072,6 @@ def main():
         ("time: %f home_lat: %f, home_lon: %f" % (time_since_boot, home_lat, home_lon))
     )
 
-    # TODO: 2024-05-30T12:15:41-0400: silipwn: See if the approach is scalable
-    # for every scenario To ensure that we have full setup finished wait till
-    # we get a LOCAL_POSITION_NED
-    # _ = mav_conn.recv_match(type="LOCAL_POSITION_NED", blocking=True)
-    # logger.info("Got the local position ned")
-
     # Set some preconditions to test a policy
     # When I switch to another target policy, I need to update the 'Precondition_path'.
     Precondition_path += "./policies/"
@@ -4188,17 +4093,12 @@ def main():
         logger.info("Mission is enabled")
         upload_mission(mission_file_path)
 
-    # Start a thread for sending sensor
-    # t4 = multiprocessing.Process(target=send_peripheral_msg)
-    # t4.daemon = True
-    # t4.start()
-    #
     time.sleep(10)  # TODO: Figure out the ideal time to wait
     # This is because we need to get the second IMU also working
 
     # Testing
     # ------------------------------------------------------------------------
-    for i in range(30):
+    for _ in range(30):
         P.append(0)
         Previous_distance.append(0)
 
