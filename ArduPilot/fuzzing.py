@@ -186,6 +186,7 @@ exception_queue = multiprocessing.Queue()
 mavlink_pause_event = threading.Event()
 reboot_pause_event = threading.Event()
 global_pause_event = threading.Event()
+fuzz_event = multiprocessing.Event()
 sensor_triggered = False
 gimbal_ctr = 0
 frequencies = None
@@ -431,6 +432,8 @@ def re_launch():
     Baro_status = 1
     PreArm_error = 0
 
+    fuzz_event.clear()
+    logger.debug("Fuzz_event is now cleared")
     reboot_pause_event.set()
     logger.info("Enabled reboot_pause_event")
 
@@ -681,20 +684,6 @@ def generate_peripheral_msg() -> list:
             logger.debug("Ignoring field {} as it based on boot time".format(field_name))
             current_time = current_milli_time(start_time)
             msg.append(current_time)
-        #-------- Hardcoded crap for testing ---------------#
-        elif "sensor_type" in field_name:
-            logger.debug("Ignoring field {} as it based on sensor_id".format(field_name))
-            sensor_id = 0
-            msg.append(sensor_id)
-        elif "frame" in field_name:
-            logger.debug("Ignoring field {} as it based on frame".format(field_name))
-            frame = 12
-            msg.append(frame)
-        # elif "obstacle_id" in field_name:
-        #     logger.debug("Ignoring field {} as it based on obstacle_id".format(field_name))
-        #     obstacle_id = 65535
-        #     msg.append(obstacle_id)
-        # Check wow
         elif type(field_type) is list:
             # This is a special condition where we have a custom designed values because the message is param
             min, max, inc = field_type
@@ -771,6 +760,9 @@ def send_peripheral_msg():
     msg_name = selected_msg["msg_name"].lower()
     message_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name}_message")
     while True:
+        if fuzz_event.is_set():
+            logger.info("Fuzz event is set, so stopping the peripheral manager")
+            break
         msg = []
         current_time = current_milli_time(start_time)
         msg.append(current_time)
@@ -4166,13 +4158,13 @@ def main():
             prev_status_ctr = drone_status
             Armed = 1
             executing_commands = 1
+            if not fuzz_event.is_set():
+                fuzz_event.set()
+                logger.info("Fuzz_event is now set")
             logger.info(
                 ("### Next round (%d) for fuzzing commands. ###" % count_main_loop)
             )
             count_main_loop += 1
-
-            # Calculate propositional and global distances
-            # calculate_distance(guidance="false")
 
             _ = pick_up_cmd()
 
