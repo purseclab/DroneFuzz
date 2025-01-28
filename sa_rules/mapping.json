@@ -73,7 +73,19 @@
       "MAV_CMD_DO_MOUNT_CONTROL"
     ],
     "frequency": [
-      null
+      -1
+    ]
+  },
+  {
+    "sensor_type": "AP_Gimbal_Long",
+    "parameters": {
+      "MNT_TYPE": 4
+    },
+    "msg_type": [
+      "COMMAND_LONG"
+    ],
+    "frequency": [
+      -1
     ]
   }
 ]

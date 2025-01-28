@@ -211,7 +211,7 @@ REBOOT_START = 0
 Current_input = ""
 Current_input_val = ""
 Guidance_decision = None
-Policy_violation_cnt = 0
+potential_bug_cnt = 0
 count_main_loop = 0
 
 # Heartbeat
@@ -612,12 +612,12 @@ def generate_field_value(field_type):
 
     py_type = c_type_to_py.get(field_type)
 
-    float_range = 1e2  # Reducing to avoid FPE on the SITL binary
+    float_range = 2e2  # Reducing to avoid FPE on the SITL binary
 
     if is_array:
         return [generate_field_value(field_type) for _ in range(length)]
     if py_type == "float":
-        return np.random.uniform(-float_range, float_range)
+        return np.random.uniform(0, float_range)
     elif py_type == "int":
         if field_type.startswith("uint"):
             return np.random.randint(0, 2 ** (int(field_type[4:-2])), dtype=np.uint64)
@@ -684,6 +684,48 @@ def generate_peripheral_msg() -> list:
             logger.debug("Ignoring field {} as it based on boot time".format(field_name))
             current_time = current_milli_time(start_time)
             msg.append(current_time)
+        #-------- Hardcoded for testing ---------------#
+        elif "sensor_type" in field_name:
+            logger.debug("Ignoring field {} as it based on sensor_id".format(field_name))
+            sensor_id = 0
+            msg.append(sensor_id)
+        elif "frame" in field_name:
+            logger.debug("Ignoring field {} as it based on frame".format(field_name))
+            frame = 12
+            msg.append(frame)
+        elif "obstacle_id" in field_name:
+            logger.debug("Ignoring field {} as it based on obstacle_id".format(field_name))
+            obstacle_id = 65535
+            msg.append(obstacle_id)
+        elif "min_distance" in field_name:
+            logger.debug("Ignoring field {} as it based on min_distance".format(field_name))
+            msg.append(-1e1)
+        elif "max_distance" in field_name:
+            logger.debug("Ignoring field {} as it based on max_distance".format(field_name))
+            msg.append(1e1)
+        # elif "Mode" in field_name:
+        #     logger.debug("Ignoring field {} as it based on mode".format(field_name))
+        #     msg.append(2) # https://mavlink.io/en/messages/common.html#MAV_MOUNT_MODE_MAVLINK_TARGETING
+        elif "target_system" in field_name:
+            logger.debug("Ignoring field {} as it based on target_system".format(field_name))
+            msg.append(0)
+        elif "target_component" in field_name:
+            logger.debug("Ignoring field {} as it based on target_component".format(field_name))
+            msg.append(154)
+        elif "command" in field_name:
+            logger.debug("Ignoring field {} as it based on the command".format(field_name))
+            msg.append(205)
+        elif "confirmation" in field_name:
+            logger.debug("Ignoring field {} as it based on the command".format(field_name))
+            msg.append(0)
+        elif "param3" in field_name:
+            logger.debug("Setting the yaw field to value")
+            angle = random.randint(0,90)
+            msg.append(angle)
+        elif "param" in field_name:
+            logger.debug("Setting the other params to 0")
+            msg.append(0)
+        #-------- Hardcoded for testing ---------------#
         elif type(field_type) is list:
             # This is a special condition where we have a custom designed values because the message is param
             min, max, inc = field_type
@@ -711,7 +753,7 @@ def generate_peripheral_msg() -> list:
             msg.append(field_value)
     logger.info(msg)
     mavlink_send_msg_list(msg_name, msg_id, msg)
-    msg_str = str(current_time) + "[S]" + str(msg) + "\n"
+    msg_str = "[S]" + str(msg) + "\n"
     write_log(msg_str)
     return msg
 
@@ -1335,9 +1377,9 @@ def send_status_text(severity, text):
 # ------------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------------
 def store_mutated_inputs():
-    global Policy_violation_cnt
+    global potential_bug_cnt
     global count_main_loop
-    Policy_violation_cnt += 1
+    potential_bug_cnt += 1
 
     logger.info("***************Potential bug!***************")
     send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Potential bug!")
@@ -1352,7 +1394,7 @@ def store_mutated_inputs():
     # './policies/chute/*.txt'
     file_name = ""
     file_name += "./policy_violations/"
-    file_name += str(Policy_violation_cnt)
+    file_name += str(potential_bug_cnt)
     file_name += ".txt"
 
     try:
@@ -1370,7 +1412,7 @@ def store_mutated_inputs():
     mutated_log.close()
 
     if DEMO_MODE:
-        if Policy_violation_cnt > 2:
+        if potential_bug_cnt > 2:
             logger.info("Exiting as demo")
             send_offline_message("Exiting as demo, violation found")
             sys.exit(0)
@@ -4202,7 +4244,7 @@ def main():
             # Get the current tlog file from mav.tlog in the directory
             current_tlog = os.path.join(os.getcwd(), "mav.tlog")
             deviation_metric = analyze_logs(current_tlog)
-            if deviation_metric <= 0.2:
+            if deviation_metric <= 0.1:
                 logger.info("High chance that the mission was problematic")
                 store_mutated_inputs()
             Armed = 0
