@@ -41,14 +41,11 @@ def log_parser(file_path: str):
     return (sim_state, servo_output)
 
 
-def generate_csv(values, output=None):
+def generate_csv(values, output, input_dir):
     """
     Convert the values into a CSV format"
     """
-    if output is None:
-        data_file = os.path.join(os.path.dirname(__file__), "data.csv")
-    else:
-        data_file = os.path.join(os.path.dirname(__file__), output)
+    data_file = os.path.join(input_dir, output)
     data_file = open(data_file, "w")
     csv_writer = csv.writer(data_file)
     init = True
@@ -75,5 +72,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         print("File not found")
     sim_state, servo_output = log_parser(args.log)
-    generate_csv(sim_state, "sim_state.csv")
-    generate_csv(servo_output, "servo_output.csv")
+    # Get the tlog directory
+    tlog_directory = os.path.dirname(args.log)
+    generate_csv(sim_state, "sim_state.csv", tlog_directory)
+    generate_csv(servo_output, "servo_output.csv", tlog_directory)
