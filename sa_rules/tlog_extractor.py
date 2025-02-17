@@ -58,6 +58,7 @@ def generate_csv(values, output, input_dir):
         # Writing data of CSV file
         csv_writer.writerow(msg.values())
     data_file.close()
+    print(f"Saved {data_file}")
 
 
 if __name__ == "__main__":
