@@ -19,6 +19,7 @@ def log_parser(file_path: str):
     tlog_parsed = mavutil.mavlink_connection(file_path)
     sim_state = []
     servo_output = []
+    local_position = []
     in_air_flag = False
     while True:
         msg = tlog_parsed.recv_match()
@@ -38,15 +39,18 @@ def log_parser(file_path: str):
         elif msg["mavpackettype"] == "SERVO_OUTPUT_RAW":
             msg.pop("mavpackettype")
             servo_output.append(msg) if in_air_flag else None
-    return (sim_state, servo_output)
+        elif msg["mavpackettype"] == "LOCAL_POSITION_NED":
+            msg.pop("mavpackettype")
+            local_position.append(msg) if in_air_flag else None
+    return (sim_state, servo_output, local_position)
 
 
 def generate_csv(values, output, input_dir):
     """
     Convert the values into a CSV format"
     """
-    data_file = os.path.join(input_dir, output)
-    data_file = open(data_file, "w")
+    data_file_path = os.path.join(input_dir, output)
+    data_file = open(data_file_path, "w")
     csv_writer = csv.writer(data_file)
     init = True
     for msg in values:
@@ -58,7 +62,7 @@ def generate_csv(values, output, input_dir):
         # Writing data of CSV file
         csv_writer.writerow(msg.values())
     data_file.close()
-    print(f"Saved {data_file}")
+    print(f"Saving in {data_file_path}")
 
 
 if __name__ == "__main__":
@@ -72,8 +76,9 @@ if __name__ == "__main__":
         pathlib.Path(args.log).resolve(strict=True)
     except FileNotFoundError:
         print("File not found")
-    sim_state, servo_output = log_parser(args.log)
+    sim_state, servo_output, local_pos = log_parser(args.log)
     # Get the tlog directory
     tlog_directory = os.path.dirname(args.log)
     generate_csv(sim_state, "sim_state.csv", tlog_directory)
     generate_csv(servo_output, "servo_output.csv", tlog_directory)
+    generate_csv(local_pos, "local_position.csv", tlog_directory)

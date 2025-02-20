@@ -681,12 +681,16 @@ def generate_peripheral_msg() -> list:
         field_type = field["type"]
         # Ignore field if contains usec OR ....
         if "usec" in field_name:
-            logger.debug("Ignoring field {} as it based on boot time".format(field_name))
+            logger.debug(
+                "Ignoring field {} as it based on boot time".format(field_name)
+            )
             current_time = current_milli_time(start_time)
             msg.append(current_time)
-        #-------- Hardcoded for testing ---------------#
+        # -------- Hardcoded for testing ---------------#
         elif "sensor_type" in field_name:
-            logger.debug("Ignoring field {} as it based on sensor_id".format(field_name))
+            logger.debug(
+                "Ignoring field {} as it based on sensor_id".format(field_name)
+            )
             sensor_id = 0
             msg.append(sensor_id)
         elif "frame" in field_name:
@@ -694,38 +698,31 @@ def generate_peripheral_msg() -> list:
             frame = 12
             msg.append(frame)
         elif "obstacle_id" in field_name:
-            logger.debug("Ignoring field {} as it based on obstacle_id".format(field_name))
+            logger.debug(
+                "Ignoring field {} as it based on obstacle_id".format(field_name)
+            )
             obstacle_id = 65535
             msg.append(obstacle_id)
         elif "min_distance" in field_name:
-            logger.debug("Ignoring field {} as it based on min_distance".format(field_name))
+            logger.debug(
+                "Ignoring field {} as it based on min_distance".format(field_name)
+            )
             msg.append(-1e1)
         elif "max_distance" in field_name:
-            logger.debug("Ignoring field {} as it based on max_distance".format(field_name))
+            logger.debug(
+                "Ignoring field {} as it based on max_distance".format(field_name)
+            )
             msg.append(1e1)
-        # elif "Mode" in field_name:
-        #     logger.debug("Ignoring field {} as it based on mode".format(field_name))
-        #     msg.append(2) # https://mavlink.io/en/messages/common.html#MAV_MOUNT_MODE_MAVLINK_TARGETING
-        elif "target_system" in field_name:
-            logger.debug("Ignoring field {} as it based on target_system".format(field_name))
-            msg.append(0)
-        elif "target_component" in field_name:
-            logger.debug("Ignoring field {} as it based on target_component".format(field_name))
-            msg.append(154)
-        elif "command" in field_name:
-            logger.debug("Ignoring field {} as it based on the command".format(field_name))
-            msg.append(205)
-        elif "confirmation" in field_name:
-            logger.debug("Ignoring field {} as it based on the command".format(field_name))
-            msg.append(0)
-        elif "param3" in field_name:
+        elif "Mode" in field_name:
+            logger.debug("Ignoring field {} as it based on mode".format(field_name))
+            msg.append(
+                2
+            )  # https://mavlink.io/en/messages/common.html#MAV_MOUNT_MODE_MAVLINK_TARGETING
+        elif "Yaw" in field_name:
             logger.debug("Setting the yaw field to value")
-            angle = random.randint(0,90)
+            angle = random.randint(0, 180)
             msg.append(angle)
-        elif "param" in field_name:
-            logger.debug("Setting the other params to 0")
-            msg.append(0)
-        #-------- Hardcoded for testing ---------------#
+        # -------- Hardcoded for testing ---------------#
         elif type(field_type) is list:
             # This is a special condition where we have a custom designed values because the message is param
             min, max, inc = field_type
@@ -3898,7 +3895,8 @@ def takeoff_copter(mav_conn):
             "Non mission mode, enabling a thread to keep drone in the air via guided missions"
         )
         new_process = multiprocessing.Process(
-            name="GuidedMission", target=guided_mission,
+            name="GuidedMission",
+            target=guided_mission,
         )
         new_process.daemon = True
         new_process.start()
@@ -4021,9 +4019,7 @@ def main():
     # Check if in demo mode
     if DEMO_MODE:
         logger.info("Demo mode is enabled")
-        logger.info(
-            "Exits when a potential mismatch is found"
-        )
+        logger.info("Exits when a potential mismatch is found")
 
     # ------------------------------------------------------------------------------------
     # ------------------------------------------------------------------------------------
@@ -4422,4 +4418,3 @@ if __name__ == "__main__":
     else:
         init(config_path=None)
     main()
-
