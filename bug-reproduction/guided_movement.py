@@ -2,7 +2,7 @@ from pymavlink import mavutil
 import time
 
 # Connect to the MAVLink vehicle
-connection_string = "udp:127.0.0.1:14550"  # Adjust as needed for your setup
+connection_string = "udp:127.0.0.1:14551"  # Adjust as needed for your setup
 vehicle = mavutil.mavlink_connection(connection_string)
 
 
@@ -31,8 +31,9 @@ def set_mode(mode):
         0,
         0,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
-    print(f"Mode set to {mode}, ACK: {ack.result}")
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True,timeout=3)
+    if ack != None:
+        print(f"Mode set to {mode}, ACK: {ack.result}")
 
 
 def arm_vehicle():

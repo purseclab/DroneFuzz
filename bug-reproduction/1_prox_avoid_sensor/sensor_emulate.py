@@ -2,6 +2,7 @@ from typing import final
 from pymavlink.dialects.v20 import ardupilotmega as mavlink2
 import sys
 import time
+import datetime
 import random
 from pymavlink import mavutil
 import os
@@ -37,9 +38,9 @@ def random_normal_value():
     # Uniformly send values
     x = y = z = [0.00] * 9
     for i in range(9):
-        x[i] = random.uniform(-full_range, full_range)
-        y[i] = random.uniform(-full_range, full_range)
-        z[i] = random.uniform(-full_range, full_range)
+        x[i] = random.uniform(0, full_range)
+        y[i] = random.uniform(0, full_range)
+        z[i] = random.uniform(0, full_range)
     return x, y, z
 
 
@@ -71,6 +72,7 @@ def send_sensor_input(value):
             float(DEPTH_RANGE[0]),  # min range of sensor
             float(DEPTH_RANGE[1]),  # max range of sensor
         )
+        # print(msg)
         conn.mav.send(msg)
 
 
@@ -127,7 +129,7 @@ while True:
         normal_exec()
         time.sleep(0.15)
         # if not obstacle_bring:
-        print("Moving obstcale")
+        print(f"{datetime.datetime.now()} Moving obstacle")
         f.write("Obstacle\n")
         obstacle_exec()
         # obstacle_bring = True

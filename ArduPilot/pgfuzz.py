@@ -17,7 +17,7 @@ child_processes = []
 
 # Setup the file for logging
 logger = logging.getLogger("pgfuzz")
-logger.setLevel(logging.INFO) # 2025-01-13T15:46:58-0500: silipwn: To reduce amount of logging
+logger.setLevel(logging.DEBUG) # 2025-01-13T15:46:58-0500: silipwn: To reduce amount of logging
 # Create a custom formatter
 formatter = logging.Formatter(
     "%(asctime)s | Thread: %(threadName)s | PID: %(process)d | %(levelname)s | %(filename)s:%(lineno)d  | %(message)s"
