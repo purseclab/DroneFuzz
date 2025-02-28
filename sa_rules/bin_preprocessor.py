@@ -5,9 +5,9 @@
 # File: bin_preprocessor.py
 # SPDX-License-Identifier: BSD-3-Clause or GPL-3.0-or-later
 # Author: silipwn (contact@as-hw.in)
-# Description: For {insert  task}
+# Description: For preprocessing binary log files for analysis.
 # Date: 2025-02-27T15:37:13-0500
-# Last-Modified: 2025-02-28T13:37:13-0500
+# Last-Modified: 2025-02-28T13:37:58-0500
 ###
 import os, csv, sys
 import argparse
@@ -34,24 +34,8 @@ def main(args):
             rc_msgs.append(msg.to_dict())
         elif msg.get_type() == "BARO":
             baro_msgs.append(msg.to_dict())
-    in_air_time = None
-    down_in_time = None
-    for msg in baro_msgs:
-        if msg["Alt"] > 45 and in_air_time is None:
-            in_air_time = msg['TimeUS']
-            print("Found in-air message at time:", in_air_time)
-        if msg["Alt"] < 45 and in_air_time is not None:
-            down_in_time = msg['TimeUS']
-            print("Found down message at time:", down_in_time)
-            break
-    if in_air_time is None or down_in_time is None:
-        print("Error: Could not find arming or disarming messages.")
-        sys.exit(1)
     # Now we can filter the messages
-    filtered_msgs = []
-    for msg in rc_msgs:
-        if in_air_time <= msg['TimeUS'] <= down_in_time:
-            filtered_msgs.append(msg)
+    filtered_msgs = rc_msgs
     # Dump the filtered messages to a CSV file
     if args.output_file is None:
         args.output_file = args.input_file.replace(".BIN", ".csv")
