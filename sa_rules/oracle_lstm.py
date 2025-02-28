@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+# -*- coding:utf-8 -*-
+###
+# Finis coronat opus; Run this at your own peril ~ silipwn
+# File: oracle_lstm.py
+# SPDX-License-Identifier: BSD-3-Clause or GPL-3.0-or-later
+# Author: silipwn (contact@as-hw.in)
+# Description: For training and testing an LSTM autoencoder for anomaly detection.
+# Date: 2025-02-23T07:51:33-0500
+# Last-Modified: 2025-02-28T16:35:06-0500
+###
 import os
 import glob
 import pandas as pd
@@ -11,7 +22,9 @@ import matplotlib.pyplot as plt
 
 # --- Step 1: Load CSV files from a folder and select desired columns ---
 # input_folder = '/mnt/oldhd/Data/PGFUZZ-data/ml_data/rfbug_stable' # Replace with your folder path
-input_folder = '/mnt/oldhd/Data/PGFUZZ-data/ml_data/gimbalyaw_stable' # Replace with your folder path
+# input_folder = '/mnt/oldhd/Data/PGFUZZ-data/ml_data/gimbalyaw_stable' # Replace with your folder path
+# input_folder = 'mount_csvs/' # Mount Bug
+input_folder = 'csvs/'
 rc_csv_files = glob.glob(os.path.join(input_folder, '*_RCOU.csv'))
 # sim_csv_files = glob.glob(os.path.join(input_folder, '*_SIM.csv'))
 
@@ -24,8 +37,12 @@ rc_fixed_files = glob.glob(os.path.join(fixed_csv, '*_RCOU.csv'))
 # sim_fixed_files = glob.glob(os.path.join(fixed_csv, '*_SIM.csv'))
 
 # List of columns to extract (for example, two features and one target)
-selected_cols_rc = ['C1', 'C2', 'C3','C4']
+selected_cols_rc = ['chan1_raw', 'chan2_raw', 'chan3_raw','chan4_raw']
 # selected_cols_sim = ['Q1','Q2','Q3','Q4']
+
+# Ignore the first 50 samples and last 200 samples (for takeoff and landing)
+INITIAL_CUTOFF = 50
+FINAL_CUTOFF = 200 
 
 combined_mapping_dict = {
     0: 'C1',
@@ -155,10 +172,12 @@ else:
     X_test_pred = autoencoder.predict(X_test)
     # Calculate MSE for each sequence (averaging over timesteps and features)
     reconstruction_errors = np.mean(np.power(X_test - X_test_pred, 2), axis=(1,2))
+    # Ignore the first 50 samples and last 200 samples
     print(f"Mean of reconstruction errors: {np.mean(reconstruction_errors)}")
     # Threshold for anomaly detection (e.g., 95th percentile)
     threshold = np.percentile(reconstruction_errors, 95)
     print(f"Reconstruction error threshold for anomaly detection: {threshold}")
+
 
 
     
@@ -201,8 +220,13 @@ reconstruction_errors = np.mean(np.power(test_data_scaled - X_test_pred, 2), axi
 anomalies = np.zeros((test_data_scaled.shape[0], num_features), dtype=bool)
 for index in range(num_features):
     feature_reconstruction_errors = np.mean(np.power(test_data_scaled[:, :, index] - X_test_pred[:, :, index], 2), axis=1)
-    threshold = np.percentile(feature_reconstruction_errors, 95)  # 95th percentile as threshold
+    # threshold = np.percentile(feature_reconstruction_errors, 95)  # 95th percentile as threshold
     anomalies[:, index] = feature_reconstruction_errors > threshold
+
+# Remove anomalies from the first 50 samples and last 200 samples -> change them to False
+anomalies[:INITIAL_CUTOFF] = False
+anomalies[-FINAL_CUTOFF:] = False
+for index in range(num_features):
     print(f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {threshold}")
 
 # anomalies = reconstruction_errors > threshold
@@ -233,6 +257,7 @@ plt.show()
 # Now test with fixed data
 X_test_pred = autoencoder.predict(fixed_data_scaled)
 reconstruction_errors = np.mean(np.power(fixed_data_scaled - X_test_pred, 2), axis=(1))
+reconstruction_errors = reconstruction_errors[50:-200]
 print(f"Mean of reconstruction errors: {np.mean(reconstruction_errors)}")
 
 # --- Optional: Flag Anomalies ---
@@ -240,10 +265,13 @@ print(f"Mean of reconstruction errors: {np.mean(reconstruction_errors)}")
 anomalies = np.zeros(fixed_data_scaled.shape[0], dtype=bool)
 for index in range(num_features):
     feature_reconstruction_errors = np.mean(np.power(fixed_data_scaled[:, :, index] - X_test_pred[:, :, index], 2), axis=1)
-    threshold = np.percentile(feature_reconstruction_errors, 95)  # 95th percentile as threshold
     anomalies = feature_reconstruction_errors > threshold
-    print(f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies)} out of {len(reconstruction_errors)}, The current threshold is {threshold}")
     
+anomalies[:INITIAL_CUTOFF] = False
+anomalies[-FINAL_CUTOFF:] = False
+for index in range(num_features):
+    print(f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies)} out of {len(reconstruction_errors)}, The current threshold is {threshold}")
+
 # Plot the original and reconstructed sequence only per feature
 # Create a subplot for each feature
 fig, ax = plt.subplots(num_features, 1)

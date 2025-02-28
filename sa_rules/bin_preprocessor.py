@@ -7,7 +7,7 @@
 # Author: silipwn (contact@as-hw.in)
 # Description: For preprocessing binary log files for analysis.
 # Date: 2025-02-27T15:37:13-0500
-# Last-Modified: 2025-02-28T13:37:58-0500
+# Last-Modified: 2025-02-28T17:38:15-0500
 ###
 import os, csv, sys
 import argparse
@@ -18,10 +18,13 @@ def main(args):
     status_msgs = []
     rc_msgs = []
     baro_msgs = []
+    filtered_msgs = []
     if not os.path.exists(args.input_file):
         print("Error: Input file does not exist.")
         sys.exit(1)
     logfile = mavutil.mavlink_connection(args.input_file)
+    start_time = None
+    end_time = None
     while True:
         msg = logfile.recv_match()
         if msg is None:
@@ -34,8 +37,23 @@ def main(args):
             rc_msgs.append(msg.to_dict())
         elif msg.get_type() == "BARO":
             baro_msgs.append(msg.to_dict())
+        elif msg.get_type() == "EV":
+            msg = msg.to_dict()
+            if msg['Id'] == 15: # Auto armed
+                start_time = msg['TimeUS']
+                print("Auto armed at:", start_time)
+            elif msg['Id'] == 11: # Disarmed 
+                end_time = msg['TimeUS'] 
+                print("Disarmed at:", end_time) 
+    if start_time is None or end_time is None:
+        print("Warning : Could not find start and end times for the flight.")
+        print(f"Skipping this file {args.input_file}")
+        return 
     # Now we can filter the messages
-    filtered_msgs = rc_msgs
+    # filtered_msgs = rc_msgs
+    for msg in rc_msgs:
+        if start_time <= msg['TimeUS'] <= end_time:
+            filtered_msgs.append(msg)
     # Dump the filtered messages to a CSV file
     if args.output_file is None:
         args.output_file = args.input_file.replace(".BIN", ".csv")
