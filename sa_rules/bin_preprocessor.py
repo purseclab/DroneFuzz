@@ -7,7 +7,7 @@
 # Author: silipwn (contact@as-hw.in)
 # Description: For preprocessing binary log files for analysis.
 # Date: 2025-02-27T15:37:13-0500
-# Last-Modified: 2025-02-28T17:38:15-0500
+# Last-Modified: 2025-03-03T10:57:41-0500
 ###
 import os, csv, sys
 import argparse
@@ -15,9 +15,7 @@ from pymavlink import mavutil
 
 def main(args):
     sim_msgs = []
-    status_msgs = []
     rc_msgs = []
-    baro_msgs = []
     filtered_msgs = []
     if not os.path.exists(args.input_file):
         print("Error: Input file does not exist.")
@@ -31,12 +29,8 @@ def main(args):
             break
         if msg.get_type() == "SIM":
             sim_msgs.append(msg.to_dict())
-        elif msg.get_type() == "MSG":
-            status_msgs.append(msg.to_dict())
         elif msg.get_type() == "RCOU":
             rc_msgs.append(msg.to_dict())
-        elif msg.get_type() == "BARO":
-            baro_msgs.append(msg.to_dict())
         elif msg.get_type() == "EV":
             msg = msg.to_dict()
             if msg['Id'] == 15: # Auto armed
