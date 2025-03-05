@@ -29,6 +29,7 @@ from sklearn.preprocessing import StandardScaler
 import requests
 import multiprocessing
 from lxml import etree
+import matplotlib.pyplot as plt
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -1581,12 +1582,13 @@ def extract_servo_bin(input_file: str) -> pd.DataFrame:
             if msg["Id"] == 15:  # Auto armed
                 start_time = msg["TimeUS"]
                 logger.debug("Auto armed at:", start_time)
-            elif msg["Id"] == 11:  # Disarmed
+            if msg["Id"] == 11:  # Disarmed
                 end_time = msg["TimeUS"]
                 logger.debug("Disarmed at:", end_time)
     if start_time is None or end_time is None:
-        logger.warning("Could not find start and end times for the flight.")
-        logger.warning(f"Skipping this file {input_file}")
+        logger.error(
+            f"Could not find start or end times for the flight.{start_time} {end_time}"
+        )
         return pd.DataFrame()
     # Now we can filter the messages
     # filtered_msgs = rc_msgs
@@ -1621,6 +1623,9 @@ def analyze_logs(current_tlog: str) -> float:
     data = data.reshape(seq_data.shape)
 
     deviation_metric = 0.000
+    # Remove the initial regions to avoid the detections
+    INITIAL_CUTOFF = 50
+    FINAL_CUTOFF = 200
 
     # Predict with the anomaly_model and calculate the anomalies with the threshold as target
     predicted_data = autoencoder.predict(data)
@@ -1632,9 +1637,35 @@ def analyze_logs(current_tlog: str) -> float:
             axis=1,
         )
         anomalies[:, index] = feature_reconstruction_errors > anomaly_threshold
+        anomalies[:, index][:INITIAL_CUTOFF] = False
+        anomalies[:, index][-FINAL_CUTOFF:] = False
         logger.info(
             f"Number of anomalies detected in feature {index}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {anomaly_threshold}"
         )
+
+    # TODO: Save a figure of plots of each of the features compared
+    fig, ax = plt.subplots(num_features, 1)
+    for index in range(num_features):
+        original_feature = data[:, :, index]
+        reconstructed_feature = predicted_data[:, :, index]
+        ax[index].plot(
+            original_feature.mean(axis=1), label="Original (avg over timesteps)"
+        )
+        ax[index].plot(
+            reconstructed_feature.mean(axis=1),
+            label="Reconstructed (avg over timesteps)",
+        )
+        ax[index].scatter(
+            np.where(anomalies[:, index])[0],
+            original_feature.mean(axis=1)[anomalies[:, index]],
+            c="red",
+            s=10,
+        )
+        ax[index].set_xlabel("Sample")
+        ax[index].set_ylabel("Average Feature Value")
+        ax[index].legend()
+    # Create the figure name with current_iteration
+    plt.savefig("/tmp/pgfuzz-figure-{}.png".format(count_main_loop))
     deviation_metric += np.sum(anomalies) / (data.shape[0] * num_features)
     logger.info(f"Current value of deviation_metric {deviation_metric}")
 
