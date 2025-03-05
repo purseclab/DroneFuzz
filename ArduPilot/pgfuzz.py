@@ -17,7 +17,9 @@ child_processes = []
 
 # Setup the file for logging
 logger = logging.getLogger("pgfuzz")
-logger.setLevel(logging.DEBUG) # 2025-01-13T15:46:58-0500: silipwn: To reduce amount of logging
+logger.setLevel(
+    logging.INFO
+)  # 2025-01-13T15:46:58-0500: silipwn: To reduce amount of logging
 # Create a custom formatter
 formatter = logging.Formatter(
     "%(asctime)s | Thread: %(threadName)s | PID: %(process)d | %(levelname)s | %(filename)s:%(lineno)d  | %(message)s"
@@ -81,11 +83,24 @@ logger.addHandler(file_handler)
 
 # Some utility functions
 
+
 def good_path(path: str) -> bool:
     if os.path.exists(path):
         return True
     else:
         return False
+
+
+def get_last_modified_file(directory):
+    try:
+        files = [os.path.join(directory, f) for f in os.listdir(directory)]
+        files = [f for f in files if os.path.isfile(f)]
+        if not files:
+            return None
+        return max(files, key=os.path.getmtime)
+    except FileNotFoundError:
+        print(f"Directory '{directory}' not found.")
+        return None
 
 
 def goodbye():
@@ -286,12 +301,12 @@ if __name__ == "__main__":
     # Register the SIGINT handler
     signal.signal(signal.SIGINT, sigint_handler)
 
-    cmd = "python3 " + open_simulator + "; exit"
+    cmd = "python3 " + open_simulator  # + "; exit"
     prg_name = "pgfuzz-sitl-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 
     time.sleep(20)  # NOTE: Time reduced for testing
-    cmd = "python3 " + fuzzing_py # + "; exit"  # NOTE: Added exit to close the window
+    cmd = "python3 " + fuzzing_py  # + "; exit"  # NOTE: Added exit to close the window
     prg_name = "pgfuzz-fuzzing-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 

@@ -24,8 +24,8 @@ import threading
 import pandas as pd
 import queue
 import subprocess
-from pandas.core import base
-from scipy.stats import mannwhitneyu
+from sklearn.preprocessing import StandardScaler
+
 import requests
 import multiprocessing
 from lxml import etree
@@ -52,7 +52,7 @@ import math
 import numpy as np
 
 
-from pgfuzz import read_config
+from pgfuzz import read_config, get_last_modified_file
 
 # ------------------------------------------------------------------------------------
 # Global variables
@@ -220,6 +220,15 @@ RV_alive = 0
 
 # Policy
 Precondition_path = ""
+
+window_size = 25  # Number of timesteps per sequence
+
+
+def create_sequences(data, window_size=25):
+    X = []
+    for i in range(len(data) - window_size):
+        X.append(data[i : i + window_size])
+    return np.array(X)
 
 
 # Send a curl request to telegram
@@ -686,7 +695,6 @@ def generate_peripheral_msg() -> list:
             )
             current_time = current_milli_time(start_time)
             msg.append(current_time)
-        # -------- Hardcoded for testing ---------------#
         elif "sensor_type" in field_name:
             logger.debug(
                 "Ignoring field {} as it based on sensor_id".format(field_name)
@@ -703,16 +711,16 @@ def generate_peripheral_msg() -> list:
             )
             obstacle_id = 65535
             msg.append(obstacle_id)
-        elif "min_distance" in field_name:
-            logger.debug(
-                "Ignoring field {} as it based on min_distance".format(field_name)
-            )
-            msg.append(-1e1)
-        elif "max_distance" in field_name:
-            logger.debug(
-                "Ignoring field {} as it based on max_distance".format(field_name)
-            )
-            msg.append(1e1)
+        # elif "min_distance" in field_name:
+        #     logger.debug(
+        #         "Ignoring field {} as it based on min_distance".format(field_name)
+        #     )
+        #     msg.append(-1e1)
+        # elif "max_distance" in field_name:
+        #     logger.debug(
+        #         "Ignoring field {} as it based on max_distance".format(field_name)
+        #     )
+        #     msg.append(1e1)
         elif "Mode" in field_name:
             logger.debug("Ignoring field {} as it based on mode".format(field_name))
             msg.append(
@@ -1553,6 +1561,45 @@ def extract_servo(logfile: str) -> pd.DataFrame:
     return pd.DataFrame(servo, columns=columns)  # Ignore this warning for now
 
 
+def extract_servo_bin(input_file: str) -> pd.DataFrame:
+    sim_msgs = []
+    rc_msgs = []
+    filtered_msgs = []
+    logfile = mavutil.mavlink_connection(input_file)
+    start_time = None
+    end_time = None
+    while True:
+        msg = logfile.recv_match()
+        if msg is None:
+            break
+        if msg.get_type() == "SIM":
+            sim_msgs.append(msg.to_dict())
+        elif msg.get_type() == "RCOU":
+            rc_msgs.append(msg.to_dict())
+        elif msg.get_type() == "EV":
+            msg = msg.to_dict()
+            if msg["Id"] == 15:  # Auto armed
+                start_time = msg["TimeUS"]
+                logger.debug("Auto armed at:", start_time)
+            elif msg["Id"] == 11:  # Disarmed
+                end_time = msg["TimeUS"]
+                logger.debug("Disarmed at:", end_time)
+    if start_time is None or end_time is None:
+        logger.warning("Could not find start and end times for the flight.")
+        logger.warning(f"Skipping this file {input_file}")
+        return pd.DataFrame()
+    # Now we can filter the messages
+    # filtered_msgs = rc_msgs
+    for msg in rc_msgs:
+        if start_time <= msg["TimeUS"] <= end_time:
+            filtered_msgs.append(msg)
+    # Create a new dataframe containing only the time and the 4 servo channels
+    # "time","C1","C2","C3","C4"
+    cols = ["C1", "C2", "C3", "C4"]
+    pd_array = pd.DataFrame(filtered_msgs, columns=cols)
+    return pd_array
+
+
 def analyze_logs(current_tlog: str) -> float:
     """
     Intakes the current telemetry log and then outputs the distance
@@ -1560,28 +1607,36 @@ def analyze_logs(current_tlog: str) -> float:
     4 servos -> 3 metrics, each deviation increases the deviation metric by 1/12 ~ 0.833
     Each deviation increases
     """
-    global baseline_pdarray
+    global baseline_pdarray, autoencoder, anomaly_threshold
 
-    pd_array = extract_servo(current_tlog)
+    # pd_array = extract_servo(current_tlog)
+    pd_array = extract_servo_bin(current_tlog)
+    logger.debug(f"the shape of {pd_array.shape}")
+    num_features = 4  # Currently servo values
+    seq_data = create_sequences(pd_array, window_size)
+
+    scaler = StandardScaler()
+    data = seq_data.reshape(-1, num_features)
+    data = scaler.fit_transform(data)
+    data = data.reshape(seq_data.shape)
+
     deviation_metric = 0.000
-    # Perform Mann-Whitney U test for each servo column
-    results = {}
-    servo_columns = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
-    for column in servo_columns:
-        stat, p = mannwhitneyu(
-            pd_array[column], baseline_pdarray[column], alternative="two-sided"
-        )
-        results[column] = {"statistic": stat, "p-value": p}
 
-    for column, result in results.items():
-        logger.info(f"Column: {column}")
-        logger.debug(f"Mann-Whitney U statistic: {result['statistic']}")
-        logger.info(f"P-value: {result['p-value']}")
-        if result["p-value"] < 0.05:
-            logger.debug("Result: Statistically significant difference")
-        else:
-            logger.debug("Result: No statistically significant difference")
-        deviation_metric += result["p-value"]
+    # Predict with the anomaly_model and calculate the anomalies with the threshold as target
+    predicted_data = autoencoder.predict(data)
+    reconstruction_errors = np.mean(np.power(data - predicted_data, 2), axis=(1))
+    anomalies = np.zeros((data.shape[0], num_features), dtype=bool)
+    for index in range(num_features):
+        feature_reconstruction_errors = np.mean(
+            np.power(data[:, :, index] - predicted_data[:, :, index], 2),
+            axis=1,
+        )
+        anomalies[:, index] = feature_reconstruction_errors > anomaly_threshold
+        logger.info(
+            f"Number of anomalies detected in feature {index}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {anomaly_threshold}"
+        )
+    deviation_metric += np.sum(anomalies) / (data.shape[0] * num_features)
+    logger.info(f"Current value of deviation_metric {deviation_metric}")
 
     return deviation_metric
 
@@ -4238,9 +4293,12 @@ def main():
             )
             logger.info("Now analyzing previous run")
             # Get the current tlog file from mav.tlog in the directory
-            current_tlog = os.path.join(os.getcwd(), "mav.tlog")
+            # current_tlog = os.path.join(os.getcwd(), "mav.tlog")
+            # Get the last modified file in the directory
+            logs_dir = os.path.join(os.getcwd(), "logs")
+            current_tlog = get_last_modified_file(logs_dir)
             deviation_metric = analyze_logs(current_tlog)
-            if deviation_metric <= 0.1:
+            if deviation_metric >= 0.5:
                 logger.info("High chance that the mission was problematic")
                 store_mutated_inputs()
             Armed = 0
@@ -4319,6 +4377,8 @@ def init(config_path: str | None):
     global frequencies
     global selected_msg
     global default_msg
+    global autoencoder
+    global anomaly_threshold
     config = read_config(config_path)
     # Required
     try:
@@ -4409,6 +4469,18 @@ def init(config_path: str | None):
 
     default_tlog = config["Required"]["DefaultTLog"]
     baseline_pdarray = extract_servo(default_tlog)
+    anomaly_model = config["Required"]["AnomalyModelPath"]
+    anomaly_threshold = config["Required"]["AnomalyThreshold"]
+
+    if os.path.isfile(anomaly_model):
+        from tensorflow.keras.models import load_model
+
+        autoencoder = load_model(anomaly_model)
+        logger.info("Model loaded")
+        anomaly_threshold = np.load(anomaly_threshold)
+        logger.info(f"Loaded threshold for anomaly detection: {anomaly_threshold}")
+    else:
+        logger.error("Failed to load the model")
 
 
 if __name__ == "__main__":
