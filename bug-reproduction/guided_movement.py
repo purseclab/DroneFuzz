@@ -1,5 +1,6 @@
 from pymavlink import mavutil
 import time
+import os
 
 # Connect to the MAVLink vehicle
 connection_string = "udp:127.0.0.1:14551"  # Adjust as needed for your setup
@@ -31,7 +32,7 @@ def set_mode(mode):
         0,
         0,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True,timeout=3)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=3)
     if ack != None:
         print(f"Mode set to {mode}, ACK: {ack.result}")
 
@@ -150,8 +151,31 @@ def land():
     print("Land command ACK: %s" % ack.result)
 
 
+def wait_for_disarm():
+    """Wait for the vehicle to disarm."""
+    print("Waiting for vehicle to disarm...")
+    while True:
+        msg = vehicle.recv_match(type="STATUSTEXT", blocking=True)
+        if "Disarming" in msg.text:
+            print("Vehicle disarmed")
+            break
+
+
+def wait_for_gps_fix():
+    """Wait for a GPS fix."""
+    print("Waiting for GPS fix...")
+    while True:
+        msg = vehicle.recv_match(type="STATUSTEXT", blocking=True)
+        if "is using GPS" in msg.text:
+            print("GPS obtained")
+            time.sleep(1)
+            break
+
+
 # Main sequence
 wait_for_heartbeat()
+
+wait_for_gps_fix()
 
 # Set GUIDED mode (3 is usually GUIDED, but check your vehicle's documentation)
 GUIDED_MODE = 4  # Adjust if needed
@@ -182,3 +206,5 @@ go_to_waypoint(-35.3632621, 149.1652374, 50)
 
 # Land
 land()
+
+wait_for_disarm()
