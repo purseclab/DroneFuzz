@@ -61,17 +61,10 @@ def arm_and_set_mode(master, mode="AUTO"):
 def wait_for_mission_end(master):
     print("Monitoring mission progress...")
     while True:
-        msg = master.recv_match(type=["HEARTBEAT", "SYS_STATUS"], blocking=True, timeout=1)
-        if not msg:
-            continue
-        if msg.get_type() == "HEARTBEAT":
-            base_mode = msg.base_mode
-            custom_mode = msg.custom_mode
-            if base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED:
-                ext_state = master.recv_match(type="EXTENDED_SYS_STATE", blocking=False)
-                if ext_state and ext_state.landed_state == mavutil.mavlink.MAV_LANDED_STATE_ON_GROUND:
-                    print("Mission finished and vehicle landed.")
-                    break
+        msg = master.recv_match(type=["STATUSTEXT"], blocking=True)
+        if "Disarming" in msg.text:
+            print("Mission ended, vehicle is disarming.")
+            break
 
 def main():
     parser = argparse.ArgumentParser(
