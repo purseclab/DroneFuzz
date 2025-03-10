@@ -1562,7 +1562,7 @@ def extract_servo(logfile: str) -> pd.DataFrame:
     return pd.DataFrame(servo, columns=columns)  # Ignore this warning for now
 
 
-def extract_servo_bin(input_file: str) -> pd.DataFrame:
+def extract_servo_bin(input_file: str) -> pd.DataFrame | None:
     sim_msgs = []
     rc_msgs = []
     filtered_msgs = []
@@ -1589,7 +1589,7 @@ def extract_servo_bin(input_file: str) -> pd.DataFrame:
         logger.error(
             f"Could not find start or end times for the flight.{start_time} {end_time}"
         )
-        return pd.DataFrame()
+        return None
     # Now we can filter the messages
     # filtered_msgs = rc_msgs
     for msg in rc_msgs:
@@ -1613,6 +1613,13 @@ def analyze_logs(current_tlog: str) -> float:
 
     # pd_array = extract_servo(current_tlog)
     pd_array = extract_servo_bin(current_tlog)
+    if pd_array is None:
+        time.sleep(1)
+        logger.info("Trying again")
+        pd_array = extract_servo_bin(current_tlog)
+    if pd_array is None:
+        logger.error("pd_array is none; Exiting")
+        sys.exit(-1)
     logger.debug(f"the shape of {pd_array.shape}")
     num_features = 4  # Currently servo values
     seq_data = create_sequences(pd_array, window_size)
