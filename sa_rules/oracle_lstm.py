@@ -69,8 +69,9 @@ combined_mapping_dict = {
     13: "Lng",
 }
 
+# Ensure the seeds are set always the same
 np.random.seed(1337)
-tf.random.seed(1337)
+tf.random.set_seed(1337)
 
 # Read and concatenate CSV files
 df_list = [pd.read_csv(f)[selected_cols_rc] for f in rc_csv_files]
@@ -84,7 +85,6 @@ data_anomaly_rc = pd.concat(df_test, ignore_index=True)
 
 # df_test = [pd.read_csv(f)[selected_cols_sim] for f in sim_anomaly_files]
 # data_anomaly_sim = pd.concat(df_test, ignore_index=True)
-
 df_fixed = [pd.read_csv(f)[selected_cols_rc] for f in rc_fixed_files]
 data_fixed_rc = pd.concat(df_fixed, ignore_index=True)
 
@@ -239,11 +239,15 @@ for index in range(num_features):
 # Remove anomalies from the first 50 samples and last 200 samples -> change them to False
 anomalies[:INITIAL_CUTOFF] = False  # In the mount scenario
 anomalies[-FINAL_CUTOFF:] = False
+
+deviation_metric = 0.00
 for index in range(num_features):
     print(
         f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {threshold}"
     )
+    deviation_metric += np.sum(anomalies[:, index]) / len(reconstruction_errors)
 
+print("Deviation Metric: ", deviation_metric)
 # anomalies = reconstruction_errors > threshold
 # print(f"Number of anomalies detected: {np.sum(anomalies)} out of {len(reconstruction_errors)} samples, The current threshold is {threshold}")
 # # Create a variable to store the index of the anomalies relative to the test_data
@@ -281,21 +285,29 @@ reconstruction_errors = np.mean(np.power(fixed_data_scaled - X_test_pred, 2), ax
 reconstruction_errors = reconstruction_errors[50:-200]
 print(f"Mean of reconstruction errors: {np.mean(reconstruction_errors)}")
 
+
 # --- Optional: Flag Anomalies ---
 # You can set a threshold (e.g., based on percentile or statistical properties)
-anomalies = np.zeros(fixed_data_scaled.shape[0], dtype=bool)
+anomalies = np.zeros((fixed_data_scaled.shape[0], num_features), dtype=bool)
 for index in range(num_features):
     feature_reconstruction_errors = np.mean(
         np.power(fixed_data_scaled[:, :, index] - X_test_pred[:, :, index], 2), axis=1
     )
-    anomalies = feature_reconstruction_errors > threshold
+    anomalies[:, index] = feature_reconstruction_errors > threshold
+
 
 anomalies[:INITIAL_CUTOFF] = False
 anomalies[-FINAL_CUTOFF:] = False
+
+
+deviation_metric = 0.00
 for index in range(num_features):
     print(
-        f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies)} out of {len(reconstruction_errors)}, The current threshold is {threshold}"
+        f"Number of anomalies detected in feature {combined_mapping_dict[index]}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {threshold}"
     )
+    deviation_metric += np.sum(anomalies[:, index]) / len(reconstruction_errors)
+
+print("Deviation Metric: ", deviation_metric)
 
 # Plot the original and reconstructed sequence only per feature
 # Create a subplot for each feature
@@ -308,7 +320,10 @@ for index in range(num_features):
         reconstructed_feature.mean(axis=1), label="Reconstructed (avg over timesteps)"
     )
     ax[index].scatter(
-        np.where(anomalies)[0], original_feature.mean(axis=1)[anomalies], c="red", s=10
+        np.where(anomalies[:, index])[0],
+        original_feature.mean(axis=1)[anomalies[:, index]],
+        c="red",
+        s=10,
     )
     ax[index].set_xlabel("Sample")
     ax[index].set_ylabel(f"Average Feature Value {combined_mapping_dict[index]}")
