@@ -128,12 +128,12 @@ while True:
         print("Copter is ready....")
         normal_exec()
         time.sleep(0.15)
-        # if not obstacle_bring:
-        print(f"{datetime.datetime.now()} Moving obstacle")
-        f.write("Obstacle\n")
-        obstacle_exec()
-        # obstacle_bring = True
-        # else:
-        f.write("Done\n")
-
+        if not obstacle_bring:
+            print(f"{datetime.datetime.now()} Moving obstacle")
+            f.write("Obstacle\n")
+            obstacle_exec()
+            obstacle_bring = True
+        else:
+            obstacle_bring = False
+            f.write("Done\n")
     time.sleep(0.25)
