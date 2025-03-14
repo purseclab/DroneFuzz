@@ -7,7 +7,7 @@
 # Author: silipwn (contact@as-hw.in)
 # Description: For training and testing an LSTM autoencoder for anomaly detection.
 # Date: 2025-02-23T07:51:33-0500
-# Last-Modified: 2025-03-10T17:14:05-0400
+# Last-Modified: 2025-03-11T10:26:17-0400
 ###
 import os
 import glob
@@ -34,40 +34,35 @@ import matplotlib.pyplot as plt
 # input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_rf_bug/logs/"
 input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_gimbal_bug/logs/"
 rc_csv_files = glob.glob(os.path.join(input_folder, "*_RCOU.csv"))
-# sim_csv_files = glob.glob(os.path.join(input_folder, '*_SIM.csv'))
+sim_csv_files = glob.glob(os.path.join(input_folder, "*_SIM.csv"))
 
 anomaly_csv = input_folder + "/anomaly/"
 rc_anomaly_files = glob.glob(os.path.join(anomaly_csv, "*_RCOU.csv"))
-# sim_anomaly_files = glob.glob(os.path.join(anomaly_csv, '*_SIM.csv'))
+sim_anomaly_files = glob.glob(os.path.join(anomaly_csv, "*_SIM.csv"))
 
 fixed_csv = input_folder + "/fixed/"
 rc_fixed_files = glob.glob(os.path.join(fixed_csv, "*_RCOU.csv"))
-# sim_fixed_files = glob.glob(os.path.join(fixed_csv, '*_SIM.csv'))
+sim_fixed_files = glob.glob(os.path.join(fixed_csv, "*_SIM.csv"))
 
 # List of columns to extract (for example, two features and one target)
 selected_cols_rc = ["chan1_raw", "chan2_raw", "chan3_raw", "chan4_raw"]
-# selected_cols_sim = ['Q1','Q2','Q3','Q4']
+selected_cols_sim = ["yaw", "roll", "pitch"]
 
 # Ignore the first 50 samples and last 200 samples (for takeoff and landing)
 INITIAL_CUTOFF = 50
 FINAL_CUTOFF = 200
 
-combined_mapping_dict = {
-    0: "C1",
-    1: "C2",
-    2: "C3",
-    3: "C4",
-    4: "Q1",
-    5: "Q2",
-    6: "Q3",
-    7: "Q4",
-    8: "Roll",
-    9: "Pitch",
-    10: "Yaw",
-    11: "Alt",
-    12: "Lat",
-    13: "Lng",
-}
+combined_mapping_list = [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "Yaw",
+    "Roll",
+    "Pitch",
+]
+
+combined_mapping_dict = {i: v for i, v in enumerate(combined_mapping_list)}
 
 # Ensure the seeds are set always the same
 np.random.seed(1337)
@@ -77,39 +72,35 @@ tf.random.set_seed(1337)
 df_list = [pd.read_csv(f)[selected_cols_rc] for f in rc_csv_files]
 data_rc = pd.concat(df_list, ignore_index=True)
 
-# df_list = [pd.read_csv(f)[selected_cols_sim] for f in sim_csv_files]
-# data_sim = pd.concat(df_list, ignore_index=True)
+df_list = [pd.read_csv(f)[selected_cols_sim] for f in sim_csv_files]
+data_sim = pd.concat(df_list, ignore_index=True)
 
 df_test = [pd.read_csv(f)[selected_cols_rc] for f in rc_anomaly_files]
 data_anomaly_rc = pd.concat(df_test, ignore_index=True)
 
-# df_test = [pd.read_csv(f)[selected_cols_sim] for f in sim_anomaly_files]
-# data_anomaly_sim = pd.concat(df_test, ignore_index=True)
+df_test = [pd.read_csv(f)[selected_cols_sim] for f in sim_anomaly_files]
+data_anomaly_sim = pd.concat(df_test, ignore_index=True)
 df_fixed = [pd.read_csv(f)[selected_cols_rc] for f in rc_fixed_files]
 data_fixed_rc = pd.concat(df_fixed, ignore_index=True)
 
-# df_fixed = [pd.read_csv(f)[selected_cols_sim] for f in sim_fixed_files]
-# data_fixed_sim = pd.concat(df_fixed, ignore_index=True)
+df_fixed = [pd.read_csv(f)[selected_cols_sim] for f in sim_fixed_files]
+data_fixed_sim = pd.concat(df_fixed, ignore_index=True)
 
 
 # Merge the two dataframes
-# data = pd.concat([data_rc, data_sim], axis=1)
-# data_test = pd.concat([data_anomaly_rc, data_anomaly_sim], axis=1)
-# data_fixed = pd.concat([data_fixed_rc, data_fixed_sim], axis=1)
+data = pd.concat([data_rc, data_sim], axis=1)
+data_test = pd.concat([data_anomaly_rc, data_anomaly_sim], axis=1)
+data_fixed = pd.concat([data_fixed_rc, data_fixed_sim], axis=1)
+# data = data_rc
+# data_test = data_anomaly_rc
+# data_fixed = data_fixed_rc
 
-# Convert the time series data into frequency domain
-# data= np.fft.fft(data_rc)
-# data_test = np.fft.fft(data_anomaly_rc)
-# data_fixed = np.fft.fft(data_fixed_rc)
-data = data_rc
-data_test = data_anomaly_rc
-data_fixed = data_fixed_rc
 # --- Step 2: Prepare features and target ---
 # Separate features and target column
 features = data[selected_cols_rc].values
-# targets = data[selected_cols_sim].values
+targets = data[selected_cols_sim].values
 
-num_features = features.shape[1]  # + targets.shape[1]
+num_features = features.shape[1] + targets.shape[1]
 # --- Step 2: Create Time-Series Sequences ---
 # For anomaly detection, we want to reconstruct the same sequence.
 
@@ -225,6 +216,8 @@ else:
 # Check with real anomaly data
 X_test_pred = autoencoder.predict(test_data_scaled)
 reconstruction_errors = np.mean(np.power(test_data_scaled - X_test_pred, 2), axis=(1))
+reconstruction_errors = reconstruction_errors[50:-200]
+print(f"Mean of reconstruction errors: {np.mean(reconstruction_errors)}")
 
 # You can set a threshold (e.g., based on percentile or statistical properties)
 # Calculate anomalies for each feature seperately, and store into an array for plotting
