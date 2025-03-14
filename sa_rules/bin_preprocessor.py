@@ -19,7 +19,8 @@ from pymavlink import mavutil
 def main(args):
     sim_msgs = []
     rc_msgs = []
-    filtered_msgs = []
+    filtered_msgs_rc = []
+    filtered_msgs_sim = []
     if not os.path.exists(args.input_file):
         print("Error: Input file does not exist.")
         sys.exit(1)
@@ -50,16 +51,19 @@ def main(args):
     # filtered_msgs = rc_msgs
     for msg in rc_msgs:
         if start_time <= msg["TimeUS"] <= end_time:
-            filtered_msgs.append(msg)
+            filtered_msgs_rc.append(msg)
+    for msg in sim_msgs:
+        if start_time <= msg["TimeUS"] <= end_time:
+            filtered_msgs_sim.append(msg)
     # Dump the filtered messages to a CSV file
-    if args.output_file is None:
-        args.output_file = args.input_file.replace(".BIN", ".csv")
-    print(f"Writing filtered messages to {args.output_file}")
-    with open(args.output_file, "w", newline="") as csvfile:
+    print("Generating RCOU CSVs")
+    output_file = args.output_file.replace(".csv", "_RCOU.csv")
+    print(f"Writing filtered messages to {output_file}")
+    with open(output_file, "w", newline="") as csvfile:
         fieldnames = ["time_usec", "chan1_raw", "chan2_raw", "chan3_raw", "chan4_raw"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-        for msg in filtered_msgs:
+        for msg in filtered_msgs_rc:
             writer.writerow(
                 {
                     "time_usec": msg["TimeUS"],
@@ -69,9 +73,26 @@ def main(args):
                     "chan4_raw": msg["C4"],
                 }
             )
-    print(f"Filtered messages written to {args.output_file}")
     print(f"Total messages processed: {len(rc_msgs)}")
-    print(f"Total messages filtered: {len(filtered_msgs)}")
+    print(f"Total messages filtered: {len(filtered_msgs_rc)}")
+    print("Generating SIM CSVs")
+    output_file = args.output_file.replace(".csv", "_SIM.csv")
+    with open(output_file, "w", newline="") as csvfile:
+        fieldnames = ["time_usec", "yaw", "roll", "pitch"]
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for msg in filtered_msgs_sim:
+            writer.writerow(
+                {
+                    "time_usec": msg["TimeUS"],
+                    "yaw": msg["Yaw"],
+                    "roll": msg["Roll"],
+                    "pitch": msg["Pitch"],
+                }
+            )
+    print(f"Filtered messages written to {output_file}")
+    print(f"Total messages processed: {len(rc_msgs)}")
+    print(f"Total messages filtered: {len(filtered_msgs_rc)}")
 
 
 if __name__ == "__main__":
@@ -116,7 +137,7 @@ if __name__ == "__main__":
             if filename.endswith(".BIN"):
                 args.input_file = os.path.join(args.input_dir, filename)
                 args.output_file = os.path.join(
-                    args.input_dir, filename.replace(".BIN", "_RCOU.csv")
+                    args.input_dir, filename.replace(".BIN", ".csv")
                 )
                 main(args)
     elif args.input_file:
