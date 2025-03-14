@@ -1567,7 +1567,8 @@ def extract_servo(logfile: str) -> pd.DataFrame:
 def extract_servo_bin(input_file: str) -> pd.DataFrame | None:
     sim_msgs = []
     rc_msgs = []
-    filtered_msgs = []
+    filtered_msgs_rc = []
+    filtered_msgs_sim = []
     logfile = mavutil.mavlink_connection(input_file)
     start_time = None
     end_time = None
@@ -1596,11 +1597,17 @@ def extract_servo_bin(input_file: str) -> pd.DataFrame | None:
     # filtered_msgs = rc_msgs
     for msg in rc_msgs:
         if start_time <= msg["TimeUS"] <= end_time:
-            filtered_msgs.append(msg)
-    # Create a new dataframe containing only the time and the 4 servo channels
-    # "time","C1","C2","C3","C4"
-    cols = ["C1", "C2", "C3", "C4"]
-    pd_array = pd.DataFrame(filtered_msgs, columns=cols)
+            filtered_msgs_rc.append(msg)
+    for msg in sim_msgs:
+        if start_time <= msg["TimeUS"] <= end_time:
+            filtered_msgs_sim.append(msg)
+    # Concat the filtered_msgs
+    # Now create this
+    rc_cols = ["C1", "C2", "C3", "C4"]
+    sim_cols = ["Q1", "Q2", "Q3", "Q4"]
+    pd_array_rc = pd.DataFrame(filtered_msgs_rc, columns=rc_cols)
+    pd_array_sim = pd.DataFrame(filtered_msgs_sim, columns=sim_cols)
+    pd_array = pd.concat([pd_array_rc, pd_array_sim], axis=1)
     return pd_array
 
 
@@ -1623,7 +1630,7 @@ def analyze_logs(current_tlog: str) -> float:
         logger.error("pd_array is none; Exiting")
         sys.exit(-1)
     logger.debug(f"the shape of {pd_array.shape}")
-    num_features = 4  # Currently servo values
+    num_features = 8  # Currently servo values + quarternions
     seq_data = create_sequences(pd_array, window_size)
 
     scaler = StandardScaler()
