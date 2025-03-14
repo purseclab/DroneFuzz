@@ -31,8 +31,8 @@ import matplotlib.pyplot as plt
 # input_folder = '/mnt/oldhd/Data/PGFUZZ-data/ml_data/rfbug_stable' # Replace with your folder path
 # input_folder = '/mnt/oldhd/Data/PGFUZZ-data/ml_data/gimbalyaw_stable' # Replace with your folder path
 # input_folder = "mount_csvs/"  # Mount Bug
-# input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_rf_bug/logs/"
-input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_gimbal_bug/logs/"
+input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_rf_bug/logs/"
+# input_folder = "/home/silipwn/Documents/Drone/PGFUZZplusplus/ardupilot_gimbal_bug/logs/"
 rc_csv_files = glob.glob(os.path.join(input_folder, "*_RCOU.csv"))
 sim_csv_files = glob.glob(os.path.join(input_folder, "*_SIM.csv"))
 
@@ -46,21 +46,13 @@ sim_fixed_files = glob.glob(os.path.join(fixed_csv, "*_SIM.csv"))
 
 # List of columns to extract (for example, two features and one target)
 selected_cols_rc = ["chan1_raw", "chan2_raw", "chan3_raw", "chan4_raw"]
-selected_cols_sim = ["yaw", "roll", "pitch"]
+selected_cols_sim = ["Q1", "Q2", "Q3", "Q4"]
 
 # Ignore the first 50 samples and last 200 samples (for takeoff and landing)
 INITIAL_CUTOFF = 50
 FINAL_CUTOFF = 200
 
-combined_mapping_list = [
-    "C1",
-    "C2",
-    "C3",
-    "C4",
-    "Yaw",
-    "Roll",
-    "Pitch",
-]
+combined_mapping_list = ["C1", "C2", "C3", "C4", "Q1", "Q2", "Q3", "Q4"]
 
 combined_mapping_dict = {i: v for i, v in enumerate(combined_mapping_list)}
 

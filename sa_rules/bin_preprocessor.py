@@ -78,16 +78,17 @@ def main(args):
     print("Generating SIM CSVs")
     output_file = args.output_file.replace(".csv", "_SIM.csv")
     with open(output_file, "w", newline="") as csvfile:
-        fieldnames = ["time_usec", "yaw", "roll", "pitch"]
+        fieldnames = ["time_usec", "Q1", "Q2", "Q3", "Q4"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         for msg in filtered_msgs_sim:
             writer.writerow(
                 {
                     "time_usec": msg["TimeUS"],
-                    "yaw": msg["Yaw"],
-                    "roll": msg["Roll"],
-                    "pitch": msg["Pitch"],
+                    "Q1": msg["Q1"],
+                    "Q2": msg["Q2"],
+                    "Q3": msg["Q3"],
+                    "Q4": msg["Q4"],
                 }
             )
     print(f"Filtered messages written to {output_file}")
