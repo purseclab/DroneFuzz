@@ -467,6 +467,8 @@ def re_launch():
     # Read the LAST_LOG contents
     last_log_fd = open(LAST_LOG, "r")
     last_log_number = last_log_fd.readline().strip()
+    # Close the file descriptor
+    last_log_fd.close()
     logger.info("The current log file is {0}".format(last_log_number))
     logger.info(
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
