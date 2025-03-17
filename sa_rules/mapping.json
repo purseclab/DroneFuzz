@@ -1,6 +1,6 @@
 [
   {
-    "sensor_type": "AP_OpticalFlow",
+    "sensor_type": "OpticalFlow",
     "parameters": {
       "FLOW_TYPE": 5
     },
@@ -61,7 +61,10 @@
       "ADSB_TYPE": 2
     },
     "msg_type": [
-      null
+      "ADSB_VEHICLE"
+    ],
+    "frequency": [
+      -1
     ]
   },
   {
@@ -77,14 +80,86 @@
     ]
   },
   {
-    "sensor_type": "AP_Gimbal_Long",
+    "sensor_type": "GPS",
     "parameters": {
       "MNT_TYPE": 4
     },
     "msg_type": [
-      "COMMAND_LONG"
+      "GPS_RAW_INT",
+      "GPS_STATUS",
+      "SET_GPS_GLOBAL_ORIGIN",
+      "GPS_GLOBAL_ORIGIN",
+      "HIL_GPS",
+      "GPS_INJECT_DATA",
+      "GPS2_RAW",
+      "GPS_RKT",
+      "GPS_INPUT",
+      "GPS_RTCM_DATA",
+      "GPS2_RKT"
     ],
     "frequency": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      1
+    ]
+  },
+  {
+    "sensor_type": "Terrain",
+    "msg_type": [
+      "TERRAIN_DATA"
+    ],
+    "frequency": [
+      -1
+    ]
+  },
+  {
+    "sensor_type": "Fence",
+    "msg_type": [
+      "FENCE_POINT",
+      "FENCE_FETCH_POINT",
+      "FENCE_STATUS"
+    ],
+    "frequency": [
+      -1,
+      -1,
+      -1
+    ]
+  },
+  {
+    "sensor_type": "OSD",
+    "msg_type": [
+      "OSD_PARAM_SHOW_CONFIG",
+      "OSD_PARAM_CONFIG_REPLY",
+      "OSD_PARAM_SHOW_CONFIG_REPLY",
+      "OSD_PARAM_CONFIG"
+    ],
+    "frequency": [
+      -1,
+      -1,
+      -1,
+      -1
+    ]
+  },
+  {
+    "sensor_type": "OpenDroneID",
+    "msg_type": [
+      "OSD_PARAM_SHOW_CONFIG",
+      "OSD_PARAM_CONFIG_REPLY",
+      "OSD_PARAM_SHOW_CONFIG_REPLY",
+      "OSD_PARAM_CONFIG"
+    ],
+    "frequency": [
+      -1,
+      -1,
+      -1,
       -1
     ]
   }
