@@ -1681,7 +1681,9 @@ def analyze_logs(current_tlog: str) -> float:
         ax[index].set_ylabel("Average Feature Value")
         ax[index].legend()
     # Create the figure name with current_iteration
-    plt.savefig("/tmp/pgfuzz-figure-{}.png".format(count_main_loop))
+    # Create a current time string with DD_MM_YY_HH_MM_SS
+    time_now = datetime.datetime.now().strftime("%d_%m_%y_%H_%M_%S")
+    plt.savefig("/tmp/pgfuzz-figure-{}.png".format(time_now))
     deviation_metric += np.sum(anomalies) / (data.shape[0] * num_features)
     logger.info(f"Current value of deviation_metric {deviation_metric}")
 
