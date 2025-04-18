@@ -122,18 +122,25 @@ def is_copter_ready():
 
 
 # Main loop
+if len(sys.argv) != 2:
+    print("Warning: No supplied, mode assuming normal mode")
+    attack_mode = False
+else:
+    attack_mode = (sys.argv[1] == 'attack')
+    print(f"User cfg mode Attack:{attack_mode}")
 while True:
     normal_exec()
     if is_copter_ready():
         print("Copter is ready....")
         normal_exec()
         time.sleep(0.15)
-        if not obstacle_bring:
-            print(f"{datetime.datetime.now()} Moving obstacle")
-            f.write("Obstacle\n")
-            obstacle_exec()
-            obstacle_bring = True
-        else:
-            obstacle_bring = False
-            f.write("Done\n")
+        if attack_mode:
+            if not obstacle_bring:
+                print(f"{datetime.datetime.now()} Moving obstacle")
+                f.write("Obstacle\n")
+                obstacle_exec()
+                obstacle_bring = True
+            else:
+                obstacle_bring = False
+                f.write("Done\n")
     time.sleep(0.25)

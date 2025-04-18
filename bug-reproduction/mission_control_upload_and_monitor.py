@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+import re
 import time
 from pymavlink import mavutil
 import mission_control
+
 
 def wait_for_gps(master):
     print("Waiting for GPS lock (looking for 'is using GPS')...")
@@ -14,8 +16,9 @@ def wait_for_gps(master):
             continue
         if "is using GPS" in msg.text:
             print("Vehicle is using GPS, proceeding.")
-            time.sleep(2) # Wait a bit more to ensure GPS lock
+            time.sleep(2)  # Wait a bit more to ensure GPS lock
             break
+
 
 def apply_throttle(master, throttle_pwm=1500, duration=1.0):
     end_time = time.time() + duration
@@ -30,14 +33,13 @@ def apply_throttle(master, throttle_pwm=1500, duration=1.0):
             0,  # chan5
             0,  # chan6
             0,  # chan7
-            0   # chan8
+            0,  # chan8
         )
         time.sleep(0.1)
     master.mav.rc_channels_override_send(
-        master.target_system,
-        master.target_component,
-        0, 0, 0, 0, 0, 0, 0, 0
+        master.target_system, master.target_component, 0, 0, 0, 0, 0, 0, 0, 0
     )
+
 
 def arm_and_set_mode(master, mode="AUTO"):
     # https://ardupilot.org/copter/docs/auto-mode.html#starting-a-mission
@@ -51,20 +53,28 @@ def arm_and_set_mode(master, mode="AUTO"):
         master.target_component,
         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
         0,
-        1, 0, 0, 0, 0, 0, 0
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
     )
     print("Arming vehicle...")
     master.set_mode(mode_id)
     print(f"Setting vehicle mode to {mode}.")
     apply_throttle(master, 1500, 1.0)
 
+
 def wait_for_mission_end(master):
     print("Monitoring mission progress...")
     while True:
         msg = master.recv_match(type=["STATUSTEXT"], blocking=True)
-        if "Disarming" in msg.text:
-            print("Mission ended, vehicle is disarming.")
+        if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
+            print("Mission ended, vehicle is disarmed.")
             break
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -75,10 +85,12 @@ def main():
         type=str,
         help="Connection string for the vehicle",
         default="udp:localhost:14550",
-        nargs="?"
+        nargs="?",
     )
     parser.add_argument("--upload", type=str, help="Path to mission file to upload")
-    parser.add_argument("--skip_timeout", action="store_true", help="Skip upload timeout")
+    parser.add_argument(
+        "--skip_timeout", action="store_true", help="Skip upload timeout"
+    )
     args = parser.parse_args()
 
     master = mission_control.connect_vehicle(args.connection_string)
@@ -91,6 +103,7 @@ def main():
         wait_for_mission_end(master)
     else:
         print("No upload file provided.")
+
 
 if __name__ == "__main__":
     main()
