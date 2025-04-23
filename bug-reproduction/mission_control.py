@@ -4,8 +4,9 @@
 
 import argparse
 import os
+import time
 import json
-from pymavlink import mavutil
+from pymavlink import mavutil, mavwp
 
 
 def connect_vehicle(connection_string):
@@ -47,45 +48,62 @@ def download_mission(master, filename):
     print(f"Mission saved to {filename}")
 
 
-def upload_mission(master, filename, skip_timeout):
+def upload_mission(master, filename, skip_timeout=False):
+    """
+    Upload a mission from a waypoint file using MAVProxy's waypoint module
+
+    Args:
+        master: MAVLink connection
+        filename: Path to the mission file (.waypoints format)
+        skip_timeout: Not used with MAVProxy but kept for compatibility
+    """
     if not os.path.exists(filename):
         print(f"Mission file {filename} not found!")
         return
 
-    with open(filename, "r") as f:
-        mission_list = json.load(f)
+    print(f"Loading mission from {filename} using MAVProxy...")
 
-    mission_count = len(mission_list)
-    print(
-        "Connection details {0} {1}".format(
-            master.target_system, master.target_component
-        )
-    )
-    master.mav.mission_count_send(
-        master.target_system, master.target_component, mission_count
-    )
-    # Check for mission_request_int
-    if not skip_timeout:
-        # NOTE: 2024-08-02T16:06:14-0400: silipwn: For some reason we don't see this packet coming at all
-        message = master.recv_match(type="MISSION_REQUEST_INT", blocking=True)
-        print(message)
+    waypoints = mavwp.MAVWPLoader()
+    _ = waypoints.load(filename.strip('"'))
 
-    for i, item in enumerate(mission_list):
-        item["target_system"] = master.target_system
-        item["target_component"] = master.target_component
-        item["seq"] = i
-        # Ignore these fields
-        # mavpackettype
-        item.pop("mavpackettype", None)
-        master.mav.send(mavutil.mavlink.MAVLink_mission_item_int_message(**item))
+    # Clear any existing mission
+    master.waypoint_clear_all_send()
+    time.sleep(1)
 
-    # Wait for mission_ack
-    message = master.recv_match(type="MISSION_ACK", blocking=True)
-    if message.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
-        print("Mission upload complete.")
+    # Send waypoint count
+    master.waypoint_count_send(waypoints.count())
+
+    # Respond to mission requests
+    for i in range(waypoints.count()):
+        try:
+            # Wait for mission request message
+            msg = master.recv_match(type=["MISSION_REQUEST"], blocking=True, timeout=5)
+            if not msg:
+                print("No mission request received")
+                return False
+
+            print(f"Received MISSION_REQUEST for sequence {msg.seq}")
+
+            # Send the requested waypoint
+            master.mav.send(waypoints.wp(msg.seq))
+            print(f"Sending waypoint {msg.seq}")
+
+        except Exception as e:
+            print(f"Error in mission upload: {e}")
+            return False
+
+    # Wait for mission ACK
+    msg = master.recv_match(type=["MISSION_ACK"], blocking=True, timeout=5)
+    if not msg:
+        print("No mission ACK received")
+        return False
+
+    if msg.type == mavutil.mavlink.MAV_MISSION_ACCEPTED:
+        print("Mission upload successful")
+        return True
     else:
-        print("Mission upload failed.")
-        print(message)
+        print(f"Mission upload failed with error: {msg.type}")
+        return False
 
 
 def main():

@@ -96,9 +96,11 @@ def main():
     master = mission_control.connect_vehicle(args.connection_string)
 
     wait_for_gps(master)
+    # print("Sleeping for 10 s, to get the gyros ok")
+    # time.sleep(10) # 2025-04-22T10:00:13-0400: silipwn: Because we need the ADSB to be ok
 
     if args.upload:
-        mission_control.upload_mission(master, args.upload, args.skip_timeout)
+        mission_control.upload_mission(master, args.upload)
         arm_and_set_mode(master, mode="AUTO")
         wait_for_mission_end(master)
     else:
