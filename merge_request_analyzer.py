@@ -14,6 +14,7 @@ import os
 import sys
 import csv
 import time
+import hashlib
 from pathlib import Path
 import anthropic
 import logging
@@ -32,18 +33,27 @@ logger = logging.getLogger(__name__)
 class MergeRequestAnalyzer:
     """Analyzes merge requests using Claude 3.5 to identify critical bugs."""
 
-    def __init__(self, api_key: str, max_retries: int = 2):
+    def __init__(self, api_key: str, max_retries: int = 2, cache_file: str = None, output_path: str = None):
         """
         Initialize the analyzer with API credentials.
 
         Args:
             api_key: Anthropic API key for Claude
             max_retries: Maximum number of retries for API calls
+            cache_file: Path to cache file for storing analyzed PRs
+            output_path: Path to save incremental results
         """
         self.client = anthropic.Anthropic(api_key=api_key)
         self.total_input_tokens = 0
         self.total_output_tokens = 0
         self.max_retries = max_retries
+        self.output_path = output_path
+        self.results_so_far = []
+        
+        # Cache setup
+        self.cache_file = cache_file or "merge_request_cache.json"
+        self.cache = self._load_cache()
+        
         # Claude 3.5 Sonnet pricing (as of 2024)
         self.input_price_per_1m = 3.00  # $3.00 per 1M input tokens
         self.output_price_per_1m = 15.00  # $15.00 per 1M output tokens
@@ -69,6 +79,31 @@ Respond with a JSON object containing:
   "estimated_modification_lines": number
 }
 """
+
+    def _load_cache(self) -> Dict[str, Any]:
+        """Load the cache from disk if it exists."""
+        try:
+            if os.path.exists(self.cache_file):
+                with open(self.cache_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            logger.warning(f"Failed to load cache: {str(e)}. Starting with empty cache.")
+            return {}
+    
+    def _save_cache(self) -> None:
+        """Save the cache to disk."""
+        try:
+            with open(self.cache_file, 'w') as f:
+                json.dump(self.cache, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save cache: {str(e)}")
+    
+    def _generate_cache_key(self, merge_request: Dict[str, Any]) -> str:
+        """Generate a unique key for a merge request to use in the cache."""
+        # Use a combination of merge commit and title for uniqueness
+        key_data = f"{merge_request.get('mergeCommit', '')}-{merge_request.get('title', '')}"
+        return hashlib.md5(key_data.encode()).hexdigest()
 
     def call_claude_api(self, prompt: str, retry_count: int = 0) -> Tuple[Dict[str, Any], bool]:
         """
@@ -162,6 +197,16 @@ Respond with a JSON object containing:
         Returns:
             Dictionary with the original merge request and Claude's analysis
         """
+        # Check cache first
+        cache_key = self._generate_cache_key(merge_request)
+        if cache_key in self.cache:
+            logger.info(f"Using cached result for: {merge_request.get('title', 'Untitled')}")
+            cached_result = self.cache[cache_key].copy()
+            # Update with the latest merge request data but keep the analysis
+            cached_result.update({k: v for k, v in merge_request.items() if k != "analysis"})
+            cached_result["from_cache"] = True
+            return cached_result
+            
         # Prepare the prompt with merge request details
         prompt = f"""
 Merge Request Analysis:
@@ -198,12 +243,17 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
                 result["analysis"] = analysis
                 if retry_count > 0:
                     result["retry_count"] = retry_count
+                
+                # Save to cache
+                self.cache[cache_key] = result
+                self._save_cache()
+                
                 return result
                 
             retry_count += 1
             
         # This should never happen due to the logic in call_claude_api, but just in case
-        return {
+        result = {
             **merge_request,
             "analysis": {
                 "meets_criteria": False,
@@ -215,6 +265,12 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
             },
             "retry_count": self.max_retries,
         }
+        
+        # Even failed results go in the cache to avoid retrying them
+        self.cache[cache_key] = result
+        self._save_cache()
+        
+        return result
 
     def process_json_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -236,6 +292,15 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
 
             results = []
             total = len(data)
+            
+            # Check if we have partial results already
+            if self.output_path and os.path.exists(self.output_path):
+                try:
+                    with open(self.output_path, "r") as f:
+                        self.results_so_far = json.load(f)
+                    logger.info(f"Loaded {len(self.results_so_far)} existing results from {self.output_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to load existing results: {str(e)}")
 
             for i, merge_request in enumerate(data):
                 logger.info(
@@ -243,6 +308,20 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
                 )
                 analyzed = self.analyze_merge_request(merge_request)
                 results.append(analyzed)
+                self.results_so_far.append(analyzed)
+                
+                # Save results incrementally after each PR is processed
+                if self.output_path:
+                    try:
+                        # Create a temporary file first to avoid corrupting the output if there's an error
+                        temp_path = f"{self.output_path}.tmp"
+                        with open(temp_path, "w") as f:
+                            json.dump(self.results_so_far, f, indent=2)
+                        # Rename the temp file to the actual output file
+                        os.replace(temp_path, self.output_path)
+                        logger.debug(f"Saved incremental results ({i+1}/{total})")
+                    except Exception as e:
+                        logger.error(f"Failed to save incremental results: {str(e)}")
 
             return results
 
@@ -399,6 +478,11 @@ def main():
         default=2,
         help="Maximum number of retries for failed API calls (default: 2)",
     )
+    parser.add_argument(
+        "--cache-file",
+        default="merge_request_cache.json",
+        help="File to use for caching analyzed PRs (default: merge_request_cache.json)",
+    )
 
     args = parser.parse_args()
 
@@ -410,7 +494,12 @@ def main():
         )
         sys.exit(1)
 
-    analyzer = MergeRequestAnalyzer(api_key, max_retries=args.max_retries)
+    analyzer = MergeRequestAnalyzer(
+        api_key, 
+        max_retries=args.max_retries,
+        cache_file=args.cache_file,
+        output_path=args.output
+    )
     all_results = []
 
     for input_file in args.input_files:
