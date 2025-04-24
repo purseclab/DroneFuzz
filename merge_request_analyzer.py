@@ -12,10 +12,12 @@ import argparse
 import json
 import os
 import sys
+import csv
 from pathlib import Path
 import anthropic
 import logging
 from typing import List, Dict, Any, Optional
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +38,11 @@ class MergeRequestAnalyzer:
             api_key: Anthropic API key for Claude
         """
         self.client = anthropic.Anthropic(api_key=api_key)
+        self.total_input_tokens = 0
+        self.total_output_tokens = 0
+        # Claude 3.5 Sonnet pricing (as of 2024)
+        self.input_price_per_1m = 3.00  # $3.00 per 1M input tokens
+        self.output_price_per_1m = 15.00  # $15.00 per 1M output tokens
         self.system_prompt = """
 You are an expert in drone software analysis. Your task is to analyze merge requests for drone software 
 and determine if they meet BOTH of these conditions:
@@ -95,6 +102,10 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
                     {"role": "user", "content": prompt}
                 ]
             )
+            
+            # Track token usage
+            self.total_input_tokens += response.usage.input_tokens
+            self.total_output_tokens += response.usage.output_tokens
             
             # Extract and parse the JSON response
             content = response.content[0].text
@@ -218,11 +229,59 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
             output_path: Path to save the results
         """
         try:
+            # Save JSON output
             with open(output_path, 'w') as f:
                 json.dump(results, f, indent=2)
             logger.info(f"Results saved to {output_path}")
+            
+            # Generate CSV output
+            csv_path = output_path.replace('.json', '.csv')
+            if csv_path == output_path:  # If no .json extension was found
+                csv_path = f"{output_path}.csv"
+                
+            with open(csv_path, 'w', newline='') as csvfile:
+                fieldnames = [
+                    'Title', 'URL', 'Meets Criteria', 'Crash Potential', 
+                    'Reproducibility', 'Est. Modification Lines', 'Reasoning'
+                ]
+                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                writer.writeheader()
+                
+                for item in results:
+                    analysis = item.get('analysis', {})
+                    writer.writerow({
+                        'Title': item.get('title', 'No title'),
+                        'URL': item.get('url', 'No URL'),
+                        'Meets Criteria': analysis.get('meets_criteria', False),
+                        'Crash Potential': analysis.get('crash_potential', 'Unknown'),
+                        'Reproducibility': analysis.get('reproducibility', 'Unknown'),
+                        'Est. Modification Lines': analysis.get('estimated_modification_lines', 'Unknown'),
+                        'Reasoning': analysis.get('reasoning', 'No reasoning provided')[:500]  # Truncate long text
+                    })
+            
+            logger.info(f"CSV results saved to {csv_path}")
+            
         except Exception as e:
             logger.error(f"Error saving results to {output_path}: {str(e)}")
+    
+    def calculate_cost(self) -> Dict[str, Any]:
+        """
+        Calculate the approximate cost of API usage.
+        
+        Returns:
+            Dictionary with cost information
+        """
+        input_cost = (self.total_input_tokens / 1_000_000) * self.input_price_per_1m
+        output_cost = (self.total_output_tokens / 1_000_000) * self.output_price_per_1m
+        total_cost = input_cost + output_cost
+        
+        return {
+            "input_tokens": self.total_input_tokens,
+            "output_tokens": self.total_output_tokens,
+            "input_cost": input_cost,
+            "output_cost": output_cost,
+            "total_cost": total_cost
+        }
 
 
 def main():
@@ -252,10 +311,31 @@ def main():
     sorted_results = analyzer.sort_results(all_results)
     analyzer.save_results(sorted_results, args.output)
     
+    # Calculate and print cost information
+    cost_info = analyzer.calculate_cost()
+    
     # Print summary
     critical_bugs = sum(1 for r in sorted_results if r.get("analysis", {}).get("meets_criteria", False))
     logger.info(f"Analysis complete. Found {critical_bugs} critical bugs out of {len(sorted_results)} merge requests.")
-    logger.info(f"Results saved to {args.output}")
+    logger.info(f"Results saved to {args.output} and CSV equivalent")
+    logger.info(f"API Usage: {cost_info['input_tokens']} input tokens, {cost_info['output_tokens']} output tokens")
+    logger.info(f"Estimated cost: ${cost_info['total_cost']:.2f} (${cost_info['input_cost']:.2f} input, ${cost_info['output_cost']:.2f} output)")
+    
+    # Save cost information to a separate file
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    cost_file = f"api_cost_{timestamp}.json"
+    with open(cost_file, 'w') as f:
+        json.dump({
+            "timestamp": datetime.now().isoformat(),
+            "merge_requests_analyzed": len(sorted_results),
+            "critical_bugs_found": critical_bugs,
+            "input_tokens": cost_info['input_tokens'],
+            "output_tokens": cost_info['output_tokens'],
+            "input_cost_usd": cost_info['input_cost'],
+            "output_cost_usd": cost_info['output_cost'],
+            "total_cost_usd": cost_info['total_cost']
+        }, f, indent=2)
+    logger.info(f"Cost information saved to {cost_file}")
 
 
 if __name__ == "__main__":
