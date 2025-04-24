@@ -13,10 +13,11 @@ import json
 import os
 import sys
 import csv
+import time
 from pathlib import Path
 import anthropic
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 # Configure logging
@@ -31,16 +32,18 @@ logger = logging.getLogger(__name__)
 class MergeRequestAnalyzer:
     """Analyzes merge requests using Claude 3.5 to identify critical bugs."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, max_retries: int = 2):
         """
         Initialize the analyzer with API credentials.
 
         Args:
             api_key: Anthropic API key for Claude
+            max_retries: Maximum number of retries for API calls
         """
         self.client = anthropic.Anthropic(api_key=api_key)
         self.total_input_tokens = 0
         self.total_output_tokens = 0
+        self.max_retries = max_retries
         # Claude 3.5 Sonnet pricing (as of 2024)
         self.input_price_per_1m = 3.00  # $3.00 per 1M input tokens
         self.output_price_per_1m = 15.00  # $15.00 per 1M output tokens
@@ -67,32 +70,17 @@ Respond with a JSON object containing:
 }
 """
 
-    def analyze_merge_request(self, merge_request: Dict[str, Any]) -> Dict[str, Any]:
+    def call_claude_api(self, prompt: str, retry_count: int = 0) -> Tuple[Dict[str, Any], bool]:
         """
-        Analyze a single merge request using Claude 3.5.
-
+        Call Claude API with retry logic.
+        
         Args:
-            merge_request: Dictionary containing merge request data
-
+            prompt: The prompt to send to Claude
+            retry_count: Current retry attempt
+            
         Returns:
-            Dictionary with the original merge request and Claude's analysis
+            Tuple of (analysis dict, success boolean)
         """
-        # Prepare the prompt with merge request details
-        prompt = f"""
-Merge Request Analysis:
-
-Title: {merge_request.get('title', 'No title')}
-URL: {merge_request.get('url', 'No URL')}
-
-Description:
-{merge_request.get('body', 'No description')}
-
-Modified Files:
-{json.dumps(merge_request.get('files', []), indent=2)}
-
-Commit: {merge_request.get('mergeCommit', 'No commit info')}
-"""
-
         try:
             # Call Claude API
             response = self.client.messages.create(
@@ -120,31 +108,113 @@ Commit: {merge_request.get('mergeCommit', 'No commit info')}
                 else:
                     # Try to parse the whole response as JSON
                     analysis = json.loads(content)
+                
+                # Verify the response has the expected fields
+                required_fields = ["meets_criteria", "reasoning", "crash_potential", 
+                                  "reproducibility", "estimated_modification_lines"]
+                
+                if all(field in analysis for field in required_fields):
+                    return analysis, True
+                else:
+                    missing = [field for field in required_fields if field not in analysis]
+                    logger.warning(f"Claude response missing required fields: {missing}")
+                    if retry_count < self.max_retries:
+                        return None, False
+                    else:
+                        analysis["missing_fields"] = missing
+                        return analysis, True
+                        
             except json.JSONDecodeError:
-                logger.warning(
-                    "Failed to parse JSON from Claude's response. Using raw response."
-                )
-                analysis = {
-                    "meets_criteria": False,
-                    "reasoning": "Failed to parse Claude's response",
-                    "raw_response": content,
-                }
-
-            # Combine original merge request with analysis
-            result = merge_request.copy()
-            result["analysis"] = analysis
-            return result
+                logger.warning(f"Failed to parse JSON from Claude's response (attempt {retry_count+1}/{self.max_retries+1})")
+                if retry_count < self.max_retries:
+                    return None, False
+                else:
+                    return {
+                        "meets_criteria": False,
+                        "reasoning": "Failed to parse Claude's response after multiple attempts",
+                        "crash_potential": "Unknown",
+                        "reproducibility": "Unknown",
+                        "estimated_modification_lines": 0,
+                        "raw_response": content,
+                    }, True
 
         except Exception as e:
             logger.error(f"Error calling Claude API: {str(e)}")
-            return {
-                **merge_request,
-                "analysis": {
+            if retry_count < self.max_retries:
+                return None, False
+            else:
+                return {
                     "meets_criteria": False,
-                    "reasoning": f"API error: {str(e)}",
+                    "reasoning": f"API error after {retry_count+1} attempts: {str(e)}",
+                    "crash_potential": "Unknown",
+                    "reproducibility": "Unknown", 
+                    "estimated_modification_lines": 0,
                     "error": True,
-                },
-            }
+                }, True
+
+    def analyze_merge_request(self, merge_request: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Analyze a single merge request using Claude 3.5.
+
+        Args:
+            merge_request: Dictionary containing merge request data
+
+        Returns:
+            Dictionary with the original merge request and Claude's analysis
+        """
+        # Prepare the prompt with merge request details
+        prompt = f"""
+Merge Request Analysis:
+
+Title: {merge_request.get('title', 'No title')}
+URL: {merge_request.get('url', 'No URL')}
+
+Description:
+{merge_request.get('body', 'No description')}
+
+Modified Files:
+{json.dumps(merge_request.get('files', []), indent=2)}
+
+Commit: {merge_request.get('mergeCommit', 'No commit info')}
+"""
+
+        # Implement retry logic
+        retry_count = 0
+        while retry_count <= self.max_retries:
+            if retry_count > 0:
+                logger.info(f"Retrying API call (attempt {retry_count+1}/{self.max_retries+1})")
+                # Add a small delay between retries
+                time.sleep(2)
+                
+                # Modify prompt slightly for retry to encourage better formatting
+                retry_prompt = prompt + f"\n\nIMPORTANT: This is retry #{retry_count}. Please ensure your response is valid JSON with all required fields: meets_criteria, reasoning, crash_potential, reproducibility, and estimated_modification_lines."
+                analysis, success = self.call_claude_api(retry_prompt, retry_count)
+            else:
+                analysis, success = self.call_claude_api(prompt, retry_count)
+                
+            if success:
+                # Combine original merge request with analysis
+                result = merge_request.copy()
+                result["analysis"] = analysis
+                if retry_count > 0:
+                    result["retry_count"] = retry_count
+                return result
+                
+            retry_count += 1
+            
+        # This should never happen due to the logic in call_claude_api, but just in case
+        return {
+            **merge_request,
+            "analysis": {
+                "meets_criteria": False,
+                "reasoning": "Failed to get valid response after maximum retries",
+                "crash_potential": "Unknown",
+                "reproducibility": "Unknown",
+                "estimated_modification_lines": 0,
+                "error": True,
+            },
+            "retry_count": self.max_retries,
+        }
 
     def process_json_file(self, file_path: str) -> List[Dict[str, Any]]:
         """
@@ -323,6 +393,12 @@ def main():
     parser.add_argument(
         "--api-key", help="Anthropic API key (or set ANTHROPIC_API_KEY env var)"
     )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=2,
+        help="Maximum number of retries for failed API calls (default: 2)",
+    )
 
     args = parser.parse_args()
 
@@ -334,7 +410,7 @@ def main():
         )
         sys.exit(1)
 
-    analyzer = MergeRequestAnalyzer(api_key)
+    analyzer = MergeRequestAnalyzer(api_key, max_retries=args.max_retries)
     all_results = []
 
     for input_file in args.input_files:
@@ -377,6 +453,7 @@ def main():
                 "input_cost_usd": cost_info["input_cost"],
                 "output_cost_usd": cost_info["output_cost"],
                 "total_cost_usd": cost_info["total_cost"],
+                "max_retries": args.max_retries,
             },
             f,
             indent=2,
