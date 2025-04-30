@@ -15,21 +15,27 @@ import string
 
 import time
 import json
-import datetime
+
+# import datetime
 import shutil
 import logging
 import random
 import numpy
 import threading
 import pandas as pd
-import queue
+
+# import queue
 import subprocess
-from sklearn.preprocessing import StandardScaler
+
+# from sklearn.preprocessing import StandardScaler
+from scipy.spatial.distance import euclidean
+from fastdtw import fastdtw
 
 import requests
 import multiprocessing
 from lxml import etree
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 
 # Tell python where to find mavlink so we can import it
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)), "../mavlink"))
@@ -1392,7 +1398,6 @@ def store_mutated_inputs():
 
     logger.info("***************Potential bug!***************")
     send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Potential bug!")
-    send_offline_message("Milgaya babu bhaiyya, bug mil gaya!")
 
     # Print attitude_ctr
     logger.info("[Attitude counter] %d" % attitude_ctr)
@@ -1403,7 +1408,7 @@ def store_mutated_inputs():
     # Store the mutated inputs as a txt file
     # './policies/chute/*.txt'
     file_name = ""
-    file_name += "./policy_violations/"
+    file_name += "./potential_bugs/"
     file_name += str(potential_bug_cnt)
     file_name += ".txt"
 
@@ -1411,8 +1416,8 @@ def store_mutated_inputs():
         f2 = open(file_name, "w")
     except IOError:
         # Create the directory
-        os.mkdir("./policy_violations/")
-        logger.info("Create the policy_violations dir as not found")
+        os.mkdir("./potential_bugs/")
+        logger.info("Creating the potential_bugs dir as not found")
         f2 = open(file_name, "w")
     f2.writelines(lines)
     f1.close()
@@ -1566,7 +1571,7 @@ def extract_servo(logfile: str) -> pd.DataFrame:
     return pd.DataFrame(servo, columns=columns)  # Ignore this warning for now
 
 
-def extract_servo_bin(input_file: str) -> pd.DataFrame | None:
+def extract_servo_bin(input_file: str) -> dict:
     sim_msgs = []
     rc_msgs = []
     filtered_msgs_rc = []
@@ -1606,11 +1611,19 @@ def extract_servo_bin(input_file: str) -> pd.DataFrame | None:
     # Concat the filtered_msgs
     # Now create this
     rc_cols = ["C1", "C2", "C3", "C4"]
-    sim_cols = ["Q1", "Q2", "Q3", "Q4"]
-    pd_array_rc = pd.DataFrame(filtered_msgs_rc, columns=rc_cols)
-    pd_array_sim = pd.DataFrame(filtered_msgs_sim, columns=sim_cols)
-    pd_array = pd.concat([pd_array_rc, pd_array_sim], axis=1)
-    return pd_array
+    # pd_array_rc = pd.DataFrame(filtered_msgs_rc, columns=rc_cols)
+    return {ch: [pkt[ch] for pkt in filtered_msgs_rc] for ch in rc_cols}
+    # return pd_array_rc
+
+
+def multivariate_dtw(series1, series2):
+    # Convert to numpy arrays for efficient computation
+    s1 = np.array([series1[ch] for ch in ["C1", "C2", "C3", "C4"]]).T
+    s2 = np.array([series2[ch] for ch in ["C1", "C2", "C3", "C4"]]).T
+
+    # Compute DTW with Euclidean distance
+    distance, path = fastdtw(s1, s2, dist=euclidean)
+    return distance, path
 
 
 def analyze_logs(current_tlog: str) -> float:
@@ -1620,76 +1633,19 @@ def analyze_logs(current_tlog: str) -> float:
     4 servos -> 3 metrics, each deviation increases the deviation metric by 1/12 ~ 0.833
     Each deviation increases
     """
-    global autoencoder, anomaly_threshold
+    global default_threshold, default_log
 
-    # pd_array = extract_servo(current_tlog)
-    pd_array = extract_servo_bin(current_tlog)
-    if pd_array is None:
+    pd_dict = extract_servo_bin(current_tlog)
+    if pd_dict is None:
         time.sleep(1)
         logger.info("Trying again")
-        pd_array = extract_servo_bin(current_tlog)
-    if pd_array is None:
+        pd_dict = extract_servo_bin(current_tlog)
+    if pd_dict is None:
         logger.error("pd_array is none; Exiting")
         sys.exit(-1)
-    logger.debug(f"the shape of {pd_array.shape}")
-    num_features = 8  # Currently servo values + quarternions
-    seq_data = create_sequences(pd_array, window_size)
 
-    scaler = StandardScaler()
-    data = seq_data.reshape(-1, num_features)
-    data = scaler.fit_transform(data)
-    data = data.reshape(seq_data.shape)
-
-    deviation_metric = 0.000
-    # Remove the initial regions to avoid the detections
-    INITIAL_CUTOFF = 50
-    FINAL_CUTOFF = 200
-
-    # Predict with the anomaly_model and calculate the anomalies with the threshold as target
-    predicted_data = autoencoder.predict(data)
-    reconstruction_errors = np.mean(np.power(data - predicted_data, 2), axis=(1))
-    anomalies = np.zeros((data.shape[0], num_features), dtype=bool)
-    for index in range(num_features):
-        feature_reconstruction_errors = np.mean(
-            np.power(data[:, :, index] - predicted_data[:, :, index], 2),
-            axis=1,
-        )
-        anomalies[:, index] = feature_reconstruction_errors > anomaly_threshold
-        anomalies[:, index][:INITIAL_CUTOFF] = False
-        anomalies[:, index][-FINAL_CUTOFF:] = False
-        logger.info(
-            f"Number of anomalies detected in feature {index}: {np.sum(anomalies[:, index])} out of {len(reconstruction_errors)} samples, The current threshold is {anomaly_threshold}"
-        )
-
-    # TODO: Save a figure of plots of each of the features compared
-    fig, ax = plt.subplots(num_features, 1, figsize=(12, 4 * num_features))
-    for index in range(num_features):
-        original_feature = data[:, :, index]
-        reconstructed_feature = predicted_data[:, :, index]
-        ax[index].plot(
-            original_feature.mean(axis=1), label="Original (avg over timesteps)"
-        )
-        ax[index].plot(
-            reconstructed_feature.mean(axis=1),
-            label="Reconstructed (avg over timesteps)",
-        )
-        ax[index].scatter(
-            np.where(anomalies[:, index])[0],
-            original_feature.mean(axis=1)[anomalies[:, index]],
-            c="red",
-            s=10,
-        )
-        ax[index].set_xlabel("Sample")
-        ax[index].set_ylabel("Average Feature Value")
-        ax[index].legend()
-    # Create the figure name with current_iteration
-    # Create a current time string with DD_MM_YY_HH_MM_SS
-    time_now = datetime.datetime.now().strftime("%d_%m_%y_%H_%M_%S")
-    plt.savefig("/tmp/pgfuzz-figure-{}.png".format(time_now))
-    deviation_metric += np.sum(anomalies) / (data.shape[0] * num_features)
-    logger.info(f"Current value of deviation_metric {deviation_metric}")
-
-    return deviation_metric
+    distance, _ = multivariate_dtw(default_log, pd_dict)
+    return distance
 
 
 # ------------------------------------------------------------------------------------
@@ -3500,7 +3456,6 @@ def land(vehicle):
 
 # ------------------------------------------------------------------------------------
 def guided_mission():
-    # # Set GUIDED mode (3 is usually GUIDED, but check your vehicle's documentation)
     vehicle = mavutil.mavlink_connection("localhost:14550")
     vehicle.wait_heartbeat()
     logger.info("Got the wait_heartbeat")
@@ -4020,11 +3975,11 @@ def include_xml(elem, base_path, processed_files=None):
     for include in elem.xpath(".//include"):
         filename = include.text
         filepath = os.path.join(base_path, filename)
-        print(f"Processing include: {filepath}")
+        logger.debug(f"Processing include: {filepath}")
 
         # Check if the file has already been processed
         if filepath in processed_files:
-            print(f"Skipping already processed file: {filepath}")
+            logger.debug(f"Skipping already processed file: {filepath}")
             continue
 
         if os.path.exists(filepath):
@@ -4104,6 +4059,17 @@ def load_xml_messages(file_path: str, filter: list) -> list:
         logger.info("No messages found in the XML file.")
         exit(1)
     return xml_msg
+
+
+def wait_for_gps_fix(vehicle):
+    """Wait for a GPS fix."""
+    logger.info("Waiting for GPS fix...")
+    while True:
+        msg = vehicle.recv_match(type="STATUSTEXT", blocking=True)
+        if "is using GPS" in msg.text:
+            logger.info("GPS obtained")
+            time.sleep(1)
+            break
 
 
 # ------------------------------------------------------------------------------------
@@ -4225,7 +4191,8 @@ def main():
 
     time.sleep(20)  # TODO: Figure out the ideal time to wait
 
-    mav_conn.wait_gps_fix()
+    wait_for_gps_fix(mav_conn)
+    # mav_conn.wait_gps_fix()
     time.sleep(2)
 
     # Upload the mission
@@ -4352,8 +4319,15 @@ def main():
             # Get the last modified file in the directory
             logs_dir = os.path.join(os.getcwd(), "logs")
             current_tlog = get_last_modified_file(logs_dir)
+            if current_tlog is None:
+                logger.error("No log found exiting")
             deviation_metric = analyze_logs(current_tlog)
-            if deviation_metric >= (anomaly_threshold * 2):
+            delta = 100  # Empirical value based on the existing bugs
+            if (
+                deviation_metric >= default_threshold + delta
+                or deviation_metric <= default_threshold + delta
+            ):
+                logger.info(f"The deviation_metric was {deviation_metric}")
                 logger.info("High chance that the mission was problematic")
                 store_mutated_inputs()
             # TODO: A way to say some input is more interesting than something
@@ -4434,8 +4408,8 @@ def init(config_path: str | None):
     global frequencies
     global selected_msg
     global default_msg
-    global autoencoder
-    global anomaly_threshold
+    global default_threshold
+    global default_log
     config = read_config(config_path)
     # Required
     try:
@@ -4524,18 +4498,10 @@ def init(config_path: str | None):
 
     logger.info("Pymavlink version %s" % pymavlink.__version__)
 
-    anomaly_model = config["Required"]["AnomalyModelPath"]
-    anomaly_threshold = config["Required"]["AnomalyThreshold"]
+    default_threshold = float(config["Required"]["DefaultThreshold"])
+    log = config["Required"]["DefaultTlog"]
 
-    if os.path.isfile(anomaly_model):
-        from tensorflow.keras.models import load_model
-
-        autoencoder = load_model(anomaly_model)
-        logger.info("Model loaded")
-        anomaly_threshold = np.load(anomaly_threshold)
-        logger.info(f"Loaded threshold for anomaly detection: {anomaly_threshold}")
-    else:
-        logger.error("Failed to load the model")
+    default_log = extract_servo_bin(log)
 
 
 if __name__ == "__main__":
