@@ -301,7 +301,7 @@ if __name__ == "__main__":
     # Register the SIGINT handler
     signal.signal(signal.SIGINT, sigint_handler)
 
-    cmd = "python3 " + open_simulator  # + "; exit"
+    cmd = "python3 " + open_simulator + "; exit"
     prg_name = "pgfuzz-sitl-" + str(int(time.time()))
     spawn_tmux_window(window_name=prg_name, command=cmd)
 

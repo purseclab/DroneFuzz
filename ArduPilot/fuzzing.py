@@ -474,6 +474,7 @@ def re_launch():
         "#------------------------- RE-LAUNCH the vehicle -----------------------------"
     )
     # Clear the msg queue
+    logger.debug("Check the mavlink_msg_queue {0}".format(mavlink_msg_queue.qsize()))
     while not mavlink_msg_queue.empty():
         mavlink_msg_queue.get_nowait()
 
@@ -522,7 +523,7 @@ def re_launch():
 
     # Also copy the mav.tlog with the last_log_number
     mav_tlog_fpath = "{0}/ArduPilot/mav.tlog".format(pgfuzz_dir)
-    mav_tlog_save_fpath = "{0}/ArduPilot/mav-{1}.tlog".format(
+    mav_tlog_save_fpath = "{0}/ArduPilot/tlogs/mav-{1}.tlog".format(
         pgfuzz_dir, int(last_log_number)
     )
     # Copy the tlog file
@@ -698,22 +699,22 @@ def generate_peripheral_msg() -> list:
             )
             current_time = current_milli_time(start_time)
             msg.append(current_time)
-        elif "sensor_type" in field_name:
-            logger.debug(
-                "Ignoring field {} as it based on sensor_id".format(field_name)
-            )
-            sensor_id = 0
-            msg.append(sensor_id)
-        elif "frame" in field_name:
-            logger.debug("Ignoring field {} as it based on frame".format(field_name))
-            frame = 12
-            msg.append(frame)
-        elif "obstacle_id" in field_name:
-            logger.debug(
-                "Ignoring field {} as it based on obstacle_id".format(field_name)
-            )
-            obstacle_id = 65535
-            msg.append(obstacle_id)
+        # elif "sensor_type" in field_name:
+        #     logger.debug(
+        #         "Ignoring field {} as it based on sensor_id".format(field_name)
+        #     )
+        #     sensor_id = 0
+        #     msg.append(sensor_id)
+        # elif "frame" in field_name:
+        #     logger.debug("Ignoring field {} as it based on frame".format(field_name))
+        #     frame = 12
+        #     msg.append(frame)
+        # elif "obstacle_id" in field_name:
+        #     logger.debug(
+        #         "Ignoring field {} as it based on obstacle_id".format(field_name)
+        #     )
+        #     obstacle_id = 65535
+        #     msg.append(obstacle_id)
         # elif "min_distance" in field_name:
         #     logger.debug(
         #         "Ignoring field {} as it based on min_distance".format(field_name)
@@ -724,16 +725,16 @@ def generate_peripheral_msg() -> list:
         #         "Ignoring field {} as it based on max_distance".format(field_name)
         #     )
         #     msg.append(1e1)
-        elif "Mode" in field_name:
-            logger.debug("Ignoring field {} as it based on mode".format(field_name))
-            msg.append(
-                2
-            )  # https://mavlink.io/en/messages/common.html#MAV_MOUNT_MODE_MAVLINK_TARGETING
-        elif "Yaw" in field_name:
-            logger.debug("Setting the yaw field to value")
-            angle = random.randint(0, 180)
-            msg.append(angle)
-        # -------- Hardcoded for testing ---------------#
+        # elif "Mode" in field_name:
+        #     logger.debug("Ignoring field {} as it based on mode".format(field_name))
+        #     msg.append(
+        #         2
+        #     )  # https://mavlink.io/en/messages/common.html#MAV_MOUNT_MODE_MAVLINK_TARGETING
+        # elif "Yaw" in field_name:
+        #     logger.debug("Setting the yaw field to value")
+        #     angle = random.randint(0, 180)
+        #     msg.append(angle)
+        # # -------- Hardcoded for testing ---------------#
         elif type(field_type) is list:
             # This is a special condition where we have a custom designed values because the message is param
             min, max, inc = field_type
@@ -1391,6 +1392,7 @@ def store_mutated_inputs():
 
     logger.info("***************Potential bug!***************")
     send_status_text(mavutil.mavlink.MAV_SEVERITY_CRITICAL, "Potential bug!")
+    send_offline_message("Milgaya babu bhaiyya, bug mil gaya!")
 
     # Print attitude_ctr
     logger.info("[Attitude counter] %d" % attitude_ctr)
@@ -1618,7 +1620,7 @@ def analyze_logs(current_tlog: str) -> float:
     4 servos -> 3 metrics, each deviation increases the deviation metric by 1/12 ~ 0.833
     Each deviation increases
     """
-    global baseline_pdarray, autoencoder, anomaly_threshold
+    global autoencoder, anomaly_threshold
 
     # pd_array = extract_servo(current_tlog)
     pd_array = extract_servo_bin(current_tlog)
@@ -1660,7 +1662,7 @@ def analyze_logs(current_tlog: str) -> float:
         )
 
     # TODO: Save a figure of plots of each of the features compared
-    fig, ax = plt.subplots(num_features, 1)
+    fig, ax = plt.subplots(num_features, 1, figsize=(12, 4 * num_features))
     for index in range(num_features):
         original_feature = data[:, :, index]
         reconstructed_feature = predicted_data[:, :, index]
@@ -3391,7 +3393,7 @@ def arm_vehicle(vehicle):
         0,
         0,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
     if ack.result != 0:
         logger.debug("Arming failed")
         exception_queue.put("Arming failed with ACK: %s" % ack.result)
@@ -3415,7 +3417,7 @@ def takeoff_vehicle(vehicle, altitude):
         0,
         altitude,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
     if ack.result != 0:
         exception_queue.put("Takeoff failed with ACK: %s" % ack.result)
     if ack is not None:
@@ -3456,6 +3458,7 @@ def go_to_waypoint(vehicle, lat, lon, alt):
         0,
         0,  # yaw, yaw rate
     )
+    # Run only for like 10 mins
     while True:
         msg = mavlink_msg_queue.get()
         msg = msg.to_dict()
@@ -3464,6 +3467,7 @@ def go_to_waypoint(vehicle, lat, lon, alt):
         requred_lat = round(lat, ndigits=5)
         required_lon = round(lon, ndigits=5)
         tolerance = 0.00005
+        time.sleep(1)
         if approx_equal(current_lat, requred_lat, tolerance) and approx_equal(
             current_lon, required_lon, tolerance
         ):
@@ -3488,7 +3492,9 @@ def land(vehicle):
         0,
         0,
     )
-    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=7)
+    ack = vehicle.recv_match(type="COMMAND_ACK", blocking=True, timeout=10)
+    if ack.result is None:
+        exception_queue.put("Landing recv with ACK: %s" % ack.result)
     logger.info("Land command ACK: %s" % ack.result)
 
 
@@ -3804,7 +3810,7 @@ def pick_up_cmd():
     elif input_type == 3:
         execute_env(num=random.randint(0, len(read_inputs.env_name) - 1))
 
-    # 4) Add Sensor mutations
+    # 4) Add Peripheral mutations
     elif input_type == 4:
         return generate_peripheral_msg()
 
@@ -4347,9 +4353,12 @@ def main():
             logs_dir = os.path.join(os.getcwd(), "logs")
             current_tlog = get_last_modified_file(logs_dir)
             deviation_metric = analyze_logs(current_tlog)
-            if deviation_metric >= 0.5:
+            if deviation_metric >= (anomaly_threshold * 2):
                 logger.info("High chance that the mission was problematic")
                 store_mutated_inputs()
+            # TODO: A way to say some input is more interesting than something
+            # if deviation_metric >= ():
+            #     logger.warning("Found some interesting inputs")
             Armed = 0
             hit_ground = 0
             re_launch()
@@ -4418,7 +4427,6 @@ def init(config_path: str | None):
     global SUT
     global telegram_token
     global telegram_chat_id
-    global baseline_pdarray
     global mavlink_xml_file
     global msg_list
     global mission_enabled
@@ -4516,8 +4524,6 @@ def init(config_path: str | None):
 
     logger.info("Pymavlink version %s" % pymavlink.__version__)
 
-    default_tlog = config["Required"]["DefaultTLog"]
-    baseline_pdarray = extract_servo(default_tlog)
     anomaly_model = config["Required"]["AnomalyModelPath"]
     anomaly_threshold = config["Required"]["AnomalyThreshold"]
 
