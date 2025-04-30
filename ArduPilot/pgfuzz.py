@@ -91,7 +91,7 @@ def good_path(path: str) -> bool:
         return False
 
 
-def get_last_modified_file(directory):
+def get_last_modified_file(directory) -> str | None:
     try:
         files = [os.path.join(directory, f) for f in os.listdir(directory)]
         files = [f for f in files if os.path.isfile(f)]
