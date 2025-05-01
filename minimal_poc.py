@@ -18,6 +18,7 @@ import threading
 # from fastdtw import fastdtw
 
 mavlink_timeout = 5
+approx_threshold = 0.1  # Threshold for approximate location matching
 
 
 class TCPConn:
@@ -26,14 +27,9 @@ class TCPConn:
         self.connected = True
         self.lock = threading.Lock()
         self.msg_queue = Queue()
+        self.loc_queue = Queue()
         self.drone_ready = False  # Drone ready with GPS lock
         # GPS location
-        self.drone_loc_state = {
-            "lat": 0.0,
-            "lon": 0.0,
-            "alt": 0.0,
-            "rel_alt": 0.0,
-        }
         # Connection details
         self.conn = mavutil.mavlink_connection(
             "tcp:localhost:5760", auto_reconnect=True
@@ -84,17 +80,14 @@ class TCPConn:
                             print(f"Command failed with result: {msg.result}")
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
-                        self.drone_loc_state["lat"] = (
-                            msg.lat / 1e7
-                        )  # Convert to degrees
-                        self.drone_loc_state["lon"] = (
-                            msg.lon / 1e7
-                        )  # Convert to degrees
-                        self.drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
-                        self.drone_loc_state["rel_alt"] = (
+                        drone_loc_state = {}
+                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
+                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
+                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
+                        drone_loc_state["rel_alt"] = (
                             msg.relative_alt / 1e3
                         )  # Convert to meters
-                        print(self.drone_loc_state)
+                        self.loc_queue.put(drone_loc_state)
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
@@ -123,6 +116,24 @@ class TCPConn:
             0,
             0,
         )
+        print("Setting mode to: " + mode)
+
+    def land(self):
+        """Land the vehicle."""
+        self.conn.mav.command_long_send(
+            self.conn.target_system,
+            self.conn.target_component,
+            mavutil.mavlink.MAV_CMD_NAV_LAND,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )
+        # TODO Check for the disarmed message
 
     def arm(self):
         self.conn.mav.command_long_send(
@@ -154,12 +165,16 @@ class TCPConn:
             altitude,
         )
         # Check if the drone state is within the altitude range
-        with self.location_waiting:
-            while self.drone_loc_state["rel_alt"] < altitude:
-                print(
-                    f"Waiting for drone to reach takeoff altitude: {self.drone_loc_state['rel_alt']} m"
-                )
-                self.location_waiting.wait(1)
+        while True:
+            loc = self.loc_queue.get(timeout=mavlink_timeout)
+            if (
+                altitude - approx_threshold
+                <= loc["rel_alt"]
+                <= altitude + approx_threshold
+            ):
+                print(f"Drone has taken off to altitude: {loc['rel_alt']} meters")
+                break
+            time.sleep(0.1)
 
     def go_to_waypoint(self, lat, lon, alt):
         """Navigate to a specified waypoint."""
@@ -182,6 +197,13 @@ class TCPConn:
             0,
             0,  # yaw, yaw rate
         )
+        while True:
+            loc = self.loc_queue.get(timeout=mavlink_timeout)
+            if (lat - approx_threshold <= loc["lat"] <= lat + approx_threshold) and (
+                lon - approx_threshold <= loc["lon"] <= lon + approx_threshold
+            ):
+                print(f"Reached waypoint: lat={loc['lat']}, lon={loc['lon']}")
+                break
 
     def upload_mission(self, mission_file):
         pass
@@ -230,9 +252,20 @@ class FuzzConfig:
     def send_mission(self):
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
-        self.tcp_conn.takeoff(10)
-        time.sleep(50)
-        self.tcp_conn.go_to_waypoint(37.7749, -122.4194, 100)  # Example coordinates
+        self.tcp_conn.takeoff(50)
+        self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
+        # # Go to Point B -35.3626941, 149.166221
+        self.tcp_conn.go_to_waypoint(-35.3626941, 149.166221, 50)
+        # # Loiter for a while
+        self.tcp_conn.set_mode("LOITER")
+        time.sleep(10)  # This becomes a blocking sleep, so we get stuck here :|
+        self.tcp_conn.set_mode("GUIDED")
+        # # -35.362839699999995, 149.1646279,
+        self.tcp_conn.go_to_waypoint(-35.362839699999995, 149.1646279, 50)
+        # # Go to point X -35.3632621, 149.1652374,
+        self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
+        # # Land
+        self.tcp_conn.land()
 
     def cleanup_sim(self):
         self.tcp_conn.cleanup()
