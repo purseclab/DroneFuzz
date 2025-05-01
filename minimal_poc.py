@@ -22,20 +22,39 @@ mavlink_timeout = 5
 
 class TCPConn:
     def __init__(self):
-        print(os.environ["MAVLINK20"])
-        self.conn = mavutil.mavlink_connection(
-            "tcp:localhost:5760", auto_reconnect=True
-        )
+        # Python inits
         self.connected = True
         self.lock = threading.Lock()
         self.msg_queue = Queue()
         self.drone_ready = False  # Drone ready with GPS lock
+        # GPS location
+        self.drone_loc_state = {
+            "lat": 0.0,
+            "lon": 0.0,
+            "alt": 0.0,
+            "rel_alt": 0.0,
+        }
+        # Connection details
+        self.conn = mavutil.mavlink_connection(
+            "tcp:localhost:5760", auto_reconnect=True
+        )
         self.conn.wait_heartbeat()
         self.internal_error = False
+        self.location_waiting = threading.Condition()
         # Start a thread to keep sending heartbeats
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
         # Start a thread to monitor communications
         threading.Thread(target=self.monitor_comms, daemon=True).start()
+        self.setup_streams()
+
+    def setup_streams(self):
+        self.conn.mav.request_data_stream_send(
+            self.conn.target_system,  # target system
+            self.conn.target_component,  # target component
+            mavutil.mavlink.MAV_DATA_STREAM_ALL,  # Stream ID
+            4,  # Rate in Hz
+            1,  # Start/Stop (1=start, 0=stop)
+        )
 
     def send_heartbeat(self):
         while self.connected:
@@ -63,6 +82,19 @@ class TCPConn:
                     if msg.get_type() == "COMMAND_ACK":
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
                             print(f"Command failed with result: {msg.result}")
+                    if msg.get_type() == "GLOBAL_POSITION_INT":
+                        # Update the drone's GPS location state
+                        self.drone_loc_state["lat"] = (
+                            msg.lat / 1e7
+                        )  # Convert to degrees
+                        self.drone_loc_state["lon"] = (
+                            msg.lon / 1e7
+                        )  # Convert to degrees
+                        self.drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
+                        self.drone_loc_state["rel_alt"] = (
+                            msg.relative_alt / 1e3
+                        )  # Convert to meters
+                        print(self.drone_loc_state)
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
@@ -121,6 +153,13 @@ class TCPConn:
             0,
             altitude,
         )
+        # Check if the drone state is within the altitude range
+        with self.location_waiting:
+            while self.drone_loc_state["rel_alt"] < altitude:
+                print(
+                    f"Waiting for drone to reach takeoff altitude: {self.drone_loc_state['rel_alt']} m"
+                )
+                self.location_waiting.wait(1)
 
     def go_to_waypoint(self, lat, lon, alt):
         """Navigate to a specified waypoint."""
@@ -191,7 +230,9 @@ class FuzzConfig:
     def send_mission(self):
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
-        self.tcp_conn.takeoff(100)  # Take off to 10 meters
+        self.tcp_conn.takeoff(10)
+        time.sleep(50)
+        self.tcp_conn.go_to_waypoint(37.7749, -122.4194, 100)  # Example coordinates
 
     def cleanup_sim(self):
         self.tcp_conn.cleanup()
@@ -221,14 +262,13 @@ if __name__ == "__main__":
     argument_parser.add_argument(
         "--ap_dir", type=str, help="Ardupilot directory", required=True
     )
-
     args = argument_parser.parse_args()
-    # TODO Add sanity checks for the input files and folders
-    # Check if the bin exists
+
     cfg = FuzzConfig(args.bin, args.ap_dir)
+
+    # Register the signal handler for cleanup
     while not cfg.tcp_conn.drone_ready:
         print("Waiting for drone to be ready with GPS lock...")
         time.sleep(3)
     cfg.send_mission()
-    time.sleep(100)
     cfg.cleanup_sim()
