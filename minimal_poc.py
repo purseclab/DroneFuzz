@@ -134,6 +134,12 @@ class TCPConn:
             0,
         )
         # TODO Check for the disarmed message
+        while True:
+            loc = self.loc_queue.get(timeout=mavlink_timeout)
+            if loc["rel_alt"] <= approx_threshold:
+                print(f"Drone reached an relative altitude: {loc['rel_alt']} meters")
+                break
+            time.sleep(0.1)
 
     def arm(self):
         self.conn.mav.command_long_send(
@@ -266,6 +272,7 @@ class FuzzConfig:
         self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
         # # Land
         self.tcp_conn.land()
+        print("Finished mission")
 
     def cleanup_sim(self):
         self.tcp_conn.cleanup()
