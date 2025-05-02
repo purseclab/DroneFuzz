@@ -8,7 +8,6 @@ import argparse
 import time
 import os
 import random
-import json
 from lxml import etree
 
 # Set the mavlink version to 2
@@ -27,7 +26,8 @@ approx_threshold = 0.1  # Threshold for approximate location matching
 class TCPConn:
     def __init__(self):
         # Python inits
-        self.connected = True
+        self.connected = threading.Event()
+        self.connected.set()
         self.lock = threading.Lock()
         self.msg_queue = Queue()
         self.loc_queue = Queue()
@@ -56,7 +56,7 @@ class TCPConn:
         )
 
     def send_heartbeat(self):
-        while self.connected:
+        while self.connected.is_set():
             self.conn.mav.heartbeat_send(
                 mavutil.mavlink.MAV_TYPE_GCS,  # Ground Control Station
                 mavutil.mavlink.MAV_AUTOPILOT_INVALID,
@@ -65,9 +65,10 @@ class TCPConn:
                 0,
             )
             time.sleep(1)  # Sleep for a second before sending the next heartbeat
+        print("Connection closed, stopping heartbeat thread.")
 
     def monitor_comms(self):
-        while self.connected:
+        while self.connected.is_set():
             msg = self.conn.recv_match(blocking=True, timeout=1)
             if msg:
                 with self.lock:
@@ -91,6 +92,7 @@ class TCPConn:
                             msg.relative_alt / 1e3
                         )  # Convert to meters
                         self.loc_queue.put(drone_loc_state)
+        print("Connection closed, stopping monitor thread.")
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
@@ -217,9 +219,14 @@ class TCPConn:
         pass
 
     def cleanup(self):
+        self.connected.clear()
+        time.sleep(0.5)
         if self.conn:
             self.conn.close()
             print("TCP connection closed.")
+        # Clear all the queues
+        self.msg_queue.queue.clear()
+        self.loc_queue.queue.clear()
 
 
 def include_xml(elem, base_path, processed_files=None):
@@ -369,11 +376,8 @@ class FuzzConfig:
             print(f"Loading MAVLink message definitions from {xml_file}")
             self.xml_messages = load_xml_messages(xml_file)
             print(f"Loaded {len(self.xml_messages)} message definitions")
-
         self.setup()
-
-        self.run_sim()
-        self.tcp_conn = TCPConn()
+        self.tcp_conn = None
 
     def setup(self):
         # Load the JSON Peripheral mapping
@@ -422,9 +426,17 @@ class FuzzConfig:
         print("Finished mission")
 
     def cleanup_sim(self):
-        self.tcp_conn.cleanup()
-        self.sim_handle.terminate()
-        print("Simulation terminated.")
+        # Stop fuzzing first
+        self.stop_fuzzing()
+
+        # Then cleanup TCP connection
+        if self.tcp_conn:
+            self.tcp_conn.cleanup()
+
+        # Finally terminate the simulation
+        if hasattr(self, "sim_handle") and self.sim_handle:
+            self.sim_handle.terminate()
+            print("Simulation terminated.")
 
     def start_fuzzing(self):
         """Start the fuzzing thread."""
@@ -491,6 +503,12 @@ def file_exists(file_o_dir):
         raise FileNotFoundError(f"File or directory {file_o_dir} does not exist.")
 
 
+def signal_handler(signum, frame):
+    # Basically a signal handler to cleanup the simulation
+    # And print a summary of the fuzzing session
+    pass
+
+
 if __name__ == "__main__":
     argument_parser = argparse.ArgumentParser()
     argument_parser.add_argument(
@@ -510,11 +528,20 @@ if __name__ == "__main__":
     )
     args = argument_parser.parse_args()
 
-    cfg = FuzzConfig(args.bin, args.ap_dir, xml_file=args.xml_file)
+    cfg = FuzzConfig(
+        bin=args.bin,
+        src_dir=args.ap_dir,
+        xml_file=args.xml_file,
+        peripheral=args.peripheral,
+    )
 
     # Register the signal handler for cleanup
-    while not cfg.tcp_conn.drone_ready:
-        print("Waiting for drone to be ready with GPS lock...")
-        time.sleep(3)
-    cfg.send_mission()
-    cfg.cleanup_sim()
+    # Main loop run forever
+    for _ in range(3):
+        cfg.run_sim()
+        cfg.tcp_conn = TCPConn()
+        while not cfg.tcp_conn.drone_ready:
+            print("Waiting for drone to be ready with GPS lock...")
+            time.sleep(3)
+        cfg.send_mission()
+        cfg.cleanup_sim()
