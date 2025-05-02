@@ -75,7 +75,6 @@ class TCPConn:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
                         # Crazy check because pymavlink lock doesn't work
-                        print(msg.text)
                         if "is using GPS" in msg.text:
                             print("Drone is ready with gps_lock ")
                             self.drone_ready = True
@@ -382,6 +381,12 @@ class FuzzConfig:
     def setup(self):
         # Load the JSON Peripheral mapping
         self.peripheral_mapping = {}
+        self.fuzzer_stats = {
+            "simulations_completed": 0,
+            "messages_sent": 0,
+            "last_mission_time": 0.0,
+            "current_mission_time": 0.0,
+        }
 
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
@@ -395,6 +400,7 @@ class FuzzConfig:
                 shell=False,
                 preexec_fn=os.setsid,
             )
+            self.fuzzer_stats["current_mission_time"] = time.time()
         except Exception as e:
             raise Exception(f"Simulation errored with {e}")
 
@@ -424,10 +430,17 @@ class FuzzConfig:
         # Land
         self.tcp_conn.land()
         print("Finished mission")
+        self.fuzzer_stats["simulations_completed"] += 1
+        self.fuzzer_stats["last_mission_time"] = (
+            time.time() - self.fuzzer_stats["current_mission_time"]
+        )
 
     def cleanup_sim(self):
         # Stop fuzzing first
         self.stop_fuzzing()
+
+        # Reset the time
+        self.fuzzer_stats["current_mission_time"] = 0.0
 
         # Then cleanup TCP connection
         if self.tcp_conn:
@@ -437,6 +450,8 @@ class FuzzConfig:
         if hasattr(self, "sim_handle") and self.sim_handle:
             self.sim_handle.terminate()
             print("Simulation terminated.")
+
+        print(self.fuzzer_stats)
 
     def start_fuzzing(self):
         """Start the fuzzing thread."""
@@ -471,6 +486,7 @@ class FuzzConfig:
                     msg_def["msg_name"], msg_def["msg_id"], field_values
                 )
                 print(f"Sent fuzzed message: {msg_def['msg_name']}")
+                self.fuzzer_stats["messages_sent"] += 1
             except Exception as e:
                 print(f"Error sending fuzzed message: {e}")
 
