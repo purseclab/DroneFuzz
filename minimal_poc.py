@@ -8,6 +8,7 @@ import argparse
 import time
 import os
 import random
+import signal
 from lxml import etree
 
 # Set the mavlink version to 2
@@ -26,6 +27,7 @@ approx_threshold = 0.1  # Threshold for approximate location matching
 class TCPConn:
     def __init__(self):
         # Python inits
+        self.shutdown_requested = False
         self.connected = threading.Event()
         self.connected.set()
         self.lock = threading.Lock()
@@ -56,41 +58,51 @@ class TCPConn:
         )
 
     def send_heartbeat(self):
-        while self.connected.is_set():
-            self.conn.mav.heartbeat_send(
-                mavutil.mavlink.MAV_TYPE_GCS,  # Ground Control Station
-                mavutil.mavlink.MAV_AUTOPILOT_INVALID,
-                0,
-                0,
-                0,
-            )
-            time.sleep(1)  # Sleep for a second before sending the next heartbeat
+        while self.connected.is_set() and not self.shutdown_requested:
+            try:
+                self.conn.mav.heartbeat_send(
+                    mavutil.mavlink.MAV_TYPE_GCS,  # Ground Control Station
+                    mavutil.mavlink.MAV_AUTOPILOT_INVALID,
+                    0,
+                    0,
+                    0,
+                )
+                time.sleep(1)  # Sleep for a second before sending the next heartbeat
+            except Exception as e:
+                print(f"Error in send_heartbeat: {e}")
+                if not self.shutdown_requested:
+                    time.sleep(1)
         print("Connection closed, stopping heartbeat thread.")
 
     def monitor_comms(self):
-        while self.connected.is_set():
-            msg = self.conn.recv_match(blocking=True, timeout=1)
-            if msg:
-                with self.lock:
-                    self.msg_queue.put(msg)
-                    if msg.get_type() == "STATUSTEXT":
-                        # Crazy check because pymavlink lock doesn't work
-                        if "is using GPS" in msg.text:
-                            print("Drone is ready with gps_lock ")
-                            self.drone_ready = True
-                    if msg.get_type() == "COMMAND_ACK":
-                        if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                            print(f"Command failed with result: {msg.result}")
-                    if msg.get_type() == "GLOBAL_POSITION_INT":
-                        # Update the drone's GPS location state
-                        drone_loc_state = {}
-                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
-                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
-                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
-                        drone_loc_state["rel_alt"] = (
-                            msg.relative_alt / 1e3
-                        )  # Convert to meters
-                        self.loc_queue.put(drone_loc_state)
+        while self.connected.is_set() and not self.shutdown_requested:
+            try:
+                msg = self.conn.recv_match(blocking=True, timeout=1)
+                if msg:
+                    with self.lock:
+                        self.msg_queue.put(msg)
+                        if msg.get_type() == "STATUSTEXT":
+                            # Crazy check because pymavlink lock doesn't work
+                            if "is using GPS" in msg.text:
+                                print("Drone is ready with gps_lock ")
+                                self.drone_ready = True
+                        if msg.get_type() == "COMMAND_ACK":
+                            if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                                print(f"Command failed with result: {msg.result}")
+                        if msg.get_type() == "GLOBAL_POSITION_INT":
+                            # Update the drone's GPS location state
+                            drone_loc_state = {}
+                            drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
+                            drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
+                            drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
+                            drone_loc_state["rel_alt"] = (
+                                msg.relative_alt / 1e3
+                            )  # Convert to meters
+                            self.loc_queue.put(drone_loc_state)
+            except Exception as e:
+                print(f"Error in monitor_comms: {e}")
+                if not self.shutdown_requested:
+                    time.sleep(1)  # Wait before retrying
         print("Connection closed, stopping monitor thread.")
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
@@ -218,14 +230,17 @@ class TCPConn:
         pass
 
     def cleanup(self):
+        self.shutdown_requested = True
         self.connected.clear()
-        time.sleep(0.5)
+        time.sleep(0.5)  # Give threads time to stop
         if self.conn:
             self.conn.close()
             print("TCP connection closed.")
         # Clear all the queues
-        self.msg_queue.queue.clear()
-        self.loc_queue.queue.clear()
+        while not self.msg_queue.empty():
+            self.msg_queue.get()
+        while not self.loc_queue.empty():
+            self.loc_queue.get()
 
 
 def include_xml(elem, base_path, processed_files=None):
@@ -349,6 +364,10 @@ class FuzzConfig:
         xml_file=None,
         peripheral=None,
     ):
+        self.shutdown_requested = False
+        # Register signal handlers
+        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGTERM, self.signal_handler)
         if file_exists(bin) and file_exists(src_dir):
             print(f"Using SITL binary: {bin}")
             print(f"Using Ardupilot directory: {src_dir}")
@@ -401,6 +420,7 @@ class FuzzConfig:
                 preexec_fn=os.setsid,
             )
             self.fuzzer_stats["current_mission_time"] = time.time()
+            self.tcp_conn = TCPConn()
         except Exception as e:
             raise Exception(f"Simulation errored with {e}")
 
@@ -435,6 +455,42 @@ class FuzzConfig:
             time.time() - self.fuzzer_stats["current_mission_time"]
         )
 
+    def signal_handler(self, _signum, _frame):
+        """Handle shutdown signals gracefully"""
+        print("Shutdown requested...")
+        print("Will terminate after current execution")
+        self.shutdown_requested = True
+
+    def cleanup_and_exit(self):
+        """Perform cleanup and print summary before exit"""
+        print("\nPerforming cleanup...")
+
+        # Stop fuzzing first
+        self.stop_fuzzing()
+
+        # Cleanup TCP connection
+        if hasattr(self, "tcp_conn") and self.tcp_conn:
+            self.tcp_conn.cleanup()
+
+        # Terminate simulation
+        if hasattr(self, "sim_handle") and self.sim_handle:
+            try:
+                self.sim_handle.terminate()
+                self.sim_handle.wait(timeout=5)  # Wait for process to terminate
+            except TimeoutError:
+                self.sim_handle.kill()  # Force kill if terminate doesn't work
+            print("Simulation terminated.")
+
+        # Print summary
+        print("\nFuzzing Session Summary:")
+        print("-" * 30)
+        print(f"Simulations completed: {self.fuzzer_stats['simulations_completed']}")
+        print(f"Messages sent: {self.fuzzer_stats['messages_sent']}")
+        print(
+            f"Last mission time: {self.fuzzer_stats['last_mission_time']:.2f} seconds"
+        )
+        print("-" * 30)
+
     def cleanup_sim(self):
         # Stop fuzzing first
         self.stop_fuzzing()
@@ -451,6 +507,7 @@ class FuzzConfig:
             self.sim_handle.terminate()
             print("Simulation terminated.")
 
+    def summary(self):
         print(self.fuzzer_stats)
 
     def start_fuzzing(self):
@@ -485,7 +542,6 @@ class FuzzConfig:
                 self.send_fuzzed_message(
                     msg_def["msg_name"], msg_def["msg_id"], field_values
                 )
-                print(f"Sent fuzzed message: {msg_def['msg_name']}")
                 self.fuzzer_stats["messages_sent"] += 1
             except Exception as e:
                 print(f"Error sending fuzzed message: {e}")
@@ -519,45 +575,52 @@ def file_exists(file_o_dir):
         raise FileNotFoundError(f"File or directory {file_o_dir} does not exist.")
 
 
-def signal_handler(signum, frame):
-    # Basically a signal handler to cleanup the simulation
-    # And print a summary of the fuzzing session
-    pass
-
-
 if __name__ == "__main__":
-    argument_parser = argparse.ArgumentParser()
-    argument_parser.add_argument(
-        "--bin", type=str, help="Path to the SITL binary", required=True
-    )
-    argument_parser.add_argument(
-        "--peripheral", type=str, help="Peripheral to fuzz", required=True
-    )
-    argument_parser.add_argument(
-        "--ap_dir", type=str, help="Ardupilot directory", required=True
-    )
-    argument_parser.add_argument(
-        "--xml_file",
-        type=str,
-        help="Path to MAVLink XML definition file",
-        required=True,
-    )
-    args = argument_parser.parse_args()
+    cfg = None
+    try:
+        argument_parser = argparse.ArgumentParser()
+        argument_parser.add_argument(
+            "--bin", type=str, help="Path to the SITL binary", required=True
+        )
+        argument_parser.add_argument(
+            "--peripheral", type=str, help="Peripheral to fuzz", required=True
+        )
+        argument_parser.add_argument(
+            "--ap_dir", type=str, help="Ardupilot directory", required=True
+        )
+        argument_parser.add_argument(
+            "--xml_file",
+            type=str,
+            help="Path to MAVLink XML definition file",
+            required=True,
+        )
+        args = argument_parser.parse_args()
 
-    cfg = FuzzConfig(
-        bin=args.bin,
-        src_dir=args.ap_dir,
-        xml_file=args.xml_file,
-        peripheral=args.peripheral,
-    )
+        cfg = FuzzConfig(
+            bin=args.bin,
+            src_dir=args.ap_dir,
+            xml_file=args.xml_file,
+            peripheral=args.peripheral,
+        )
 
-    # Register the signal handler for cleanup
-    # Main loop run forever
-    for _ in range(3):
-        cfg.run_sim()
-        cfg.tcp_conn = TCPConn()
-        while not cfg.tcp_conn.drone_ready:
-            print("Waiting for drone to be ready with GPS lock...")
-            time.sleep(3)
-        cfg.send_mission()
-        cfg.cleanup_sim()
+        # Main loop
+        while not cfg.shutdown_requested:
+            try:
+                cfg.run_sim()
+                while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+                    print("Waiting for drone to be ready with GPS lock...")
+                    time.sleep(3)
+                if not cfg.shutdown_requested:
+                    cfg.send_mission()
+                cfg.cleanup_sim()
+            except Exception as e:
+                print(f"Error in main loop: {e}")
+                if not cfg.shutdown_requested:
+                    print("Attempting to restart simulation...")
+                    time.sleep(5)  # Wait before retrying
+    except Exception as e:
+        print(f"Fatal error: {e}")
+    finally:
+        # Ensure cleanup happens even if there's an unhandled exception
+        if cfg:
+            cfg.cleanup_and_exit()
