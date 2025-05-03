@@ -10,6 +10,7 @@ import yaml
 import os
 import random
 import signal
+import tempfile
 from lxml import etree
 
 # Set the mavlink version to 2
@@ -83,6 +84,7 @@ class TCPConn:
                     with self.lock:
                         self.msg_queue.put(msg)
                         if msg.get_type() == "STATUSTEXT":
+                            print(msg.text)
                             # Crazy check because pymavlink lock doesn't work
                             if "is using GPS" in msg.text:
                                 print("Drone is ready with gps_lock ")
@@ -90,6 +92,8 @@ class TCPConn:
                         if msg.get_type() == "COMMAND_ACK":
                             if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
                                 print(f"Command failed with result: {msg.result}")
+                                print()
+                                self.shutdown_requested = True
                         if msg.get_type() == "GLOBAL_POSITION_INT":
                             # Update the drone's GPS location state
                             drone_loc_state = {}
@@ -251,11 +255,11 @@ def include_xml(elem, base_path, processed_files=None):
     for include in elem.xpath(".//include"):
         filename = include.text
         filepath = os.path.join(base_path, filename)
-        print(f"Processing include: {filepath}")
+        # print(f"Processing include: {filepath}")
 
         # Check if the file has already been processed
         if filepath in processed_files:
-            print(f"Skipping already processed file: {filepath}")
+            # print(f"Skipping already processed file: {filepath}")
             continue
 
         if os.path.exists(filepath):
@@ -295,7 +299,7 @@ def load_xml_messages(file_path: str, filter: list) -> list:
             # Check if the message name is inside the filter list
             if msg_name in filter:
                 fields = []
-                print("Debug: Found the message {}".format(msg_name))
+                # print("Debug: Found the message {}".format(msg_name))
                 if msg.xpath(".//field"):
                     for entry in msg.xpath(".//field"):
                         entry_name = entry.get("name")
@@ -377,7 +381,7 @@ class FuzzConfig:
         self.ap_dir = src_dir
         self.vehicle = vehicle
         self.timeout = 1000  # TODO: Eventually figure out how to set this
-        self.msg_def = peripheral
+        self.peripheral_under_test = peripheral
         self.param_file = os.path.join(
             self.ap_dir + "Tools/autotest/default_params/" + self.vehicle + ".parm"
         )
@@ -386,24 +390,50 @@ class FuzzConfig:
         # Fuzzing related attributes
         self.fuzzing_active = False
         self.fuzzing_thread = None
+        self.sim_ready = False
         self.xml_file = xml_file
         self.xml_messages = []
         self.fuzz_interval = 0.5  # Send a fuzzed message every 0.5 seconds
         self.setup(yaml_file=yaml_file)
 
+    def periodic_send(self, frequency, xml_msg, default_values):
+        print(f"Starting periodic send for {xml_msg} every {frequency} seconds")
+        while True:
+            if not self.fuzzing_active and self.sim_ready:
+                try:
+                    # Check if the default values have time
+                    # Replace with current time
+                    if "time" in default_values:
+                        time_idx = default_values.index("time")
+                        default_values[time_idx] = int(
+                            time.time() - self.fuzzer_stats["current_mission_time"]
+                        )
+                    self.send_fuzzed_message(
+                        xml_msg["msg_name"], xml_msg["msg_id"], default_values
+                    )
+                except Exception as e:
+                    print(f"Error sending message: {e}")
+                    self.shutdown_requested = True
+
+                time.sleep(1 / frequency)
+
     def setup(self, yaml_file=None):
-        # Load the YAML Peripheral mapping
-        with open(yaml_file, "r") as f:
-            peripheral_mapping = yaml.safe_load(f)
-        self.peripheral_mapping = peripheral_mapping["sensors"].get(self.msg_def, {})
-        print(f"Using peripheral mapping from {yaml_file}:")
-        print(f"Peripheral mapping for {self.msg_def}: {self.peripheral_mapping}")
         self.fuzzer_stats = {
             "simulations_completed": 0,
             "messages_sent": 0,
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
         }
+        # Load the YAML Peripheral mapping
+        with open(yaml_file, "r") as f:
+            peripheral_mapping = yaml.safe_load(f)
+        self.peripheral_mapping = peripheral_mapping["sensors"].get(
+            self.peripheral_under_test, {}
+        )
+        print(f"Using peripheral mapping from {yaml_file}:")
+        print(
+            f"Peripheral mapping for {self.peripheral_under_test}: {self.peripheral_mapping}"
+        )
 
         # Find the filter from the peripheral mapping
         msg_filter = self.peripheral_mapping.get("msg_type", [])
@@ -414,10 +444,55 @@ class FuzzConfig:
             print(f"Loading MAVLink message definitions from {self.xml_file}")
             self.xml_messages = load_xml_messages(self.xml_file, filter=msg_filter)
             print(f"Loaded {len(self.xml_messages)} message definitions")
+        # Check if the peripheral mapping has a frequency associated with it
+        # If each peripheral has a frequency, spawn a new thread for each peripheral
+        self.periodic_thread = {}
+        self.default_msg = {}
+
+        # Iterate through each msg_type and check the associated frequency
+        selected_msgs = self.peripheral_mapping.get("msg_type", [])
+        selected_freq = self.peripheral_mapping["frequency"]
+        print("Selected messages for fuzzing:", selected_msgs)
+        print("Selected frequencies for fuzzing:", selected_freq)
+        for msg in selected_msgs:
+            # Get the frequency from the same index
+            msg_idx = selected_msgs.index(msg)
+            msg_freq = selected_freq[msg_idx] if msg else -1
+            print(f"Message: {msg}, Frequency: {msg_freq}")
+            xml_msg = load_xml_messages(self.xml_file, filter=[msg])
+            # We will get a list of frequencies and then spawn a thread for each peripheral
+            if msg_freq != -1:
+                try:
+                    self.default_msg[msg_idx] = self.peripheral_mapping.get(
+                        "default_msg", {}
+                    )
+                    print(
+                        f"Default message for {msg_freq}: {self.default_msg[msg_idx]}"
+                    )
+                except KeyError:
+                    print("Can't find default msg for frequency, Not spawning threads")
+                    return
+
+                self.periodic_thread[msg_freq] = threading.Thread(
+                    target=self.periodic_send,
+                    args=(msg_freq, xml_msg[0], self.default_msg[msg_idx]),
+                    daemon=True,
+                )
+                self.periodic_thread[msg_freq].start()
+                print("Periodic thread started")
+        # Also if we have a parameter file, create a temporary one and send it to the simulator
+        if self.peripheral_mapping.get("parameters"):
+            self.fuzzer_param_file = tempfile.mkstemp(".parm", "pgfuzz", "/tmp")[1]
+            with open(self.fuzzer_param_file, "w") as f:
+                for parameter, values in self.peripheral_mapping["parameters"].items():
+                    f.write(f"{parameter} {values}\n")
 
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
+        if self.fuzzer_param_file:
+            self.sitl_cmd += "," + self.fuzzer_param_file
+        print(self.sitl_cmd)
         try:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
@@ -429,6 +504,7 @@ class FuzzConfig:
             )
             self.fuzzer_stats["current_mission_time"] = time.time()
             self.tcp_conn = TCPConn()
+            self.sim_ready = True
         except Exception as e:
             raise Exception(f"Simulation errored with {e}")
 
@@ -503,8 +579,15 @@ class FuzzConfig:
         # Stop fuzzing first
         self.stop_fuzzing()
 
+        # Stop the periodic threads
+        if self.periodic_thread:
+            for thread in self.periodic_thread.values():
+                thread.join(timeout=2)
+            print("Periodic threads stopped")
+
         # Reset the time
         self.fuzzer_stats["current_mission_time"] = 0.0
+        self.sim_ready = True
 
         # Then cleanup TCP connection
         if self.tcp_conn:
@@ -621,19 +704,19 @@ if __name__ == "__main__":
 
         # Main loop
         while not cfg.shutdown_requested:
-            try:
-                cfg.run_sim()
-                while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                    print("Waiting for drone to be ready with GPS lock...")
-                    time.sleep(3)
-                if not cfg.shutdown_requested:
-                    cfg.send_mission()
-                cfg.cleanup_sim()
-            except Exception as e:
-                print(f"Error in main loop: {e}")
-                if not cfg.shutdown_requested:
-                    print("Attempting to restart simulation...")
-                    time.sleep(5)  # Wait before retrying
+            # try:
+            cfg.run_sim()
+            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+                print("Waiting for drone to be ready with GPS lock...")
+                time.sleep(3)
+            if not cfg.shutdown_requested:
+                cfg.send_mission()
+            cfg.cleanup_sim()
+            # except Exception as e:
+            #     print(f"Error in main loop: {e}")
+            #     if not cfg.shutdown_requested:
+            #         print("Attempting to restart simulation...")
+            #         time.sleep(5)  # Wait before retrying
     except Exception as e:
         print(f"Fatal error: {e}")
     finally:
