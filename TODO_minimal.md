@@ -7,13 +7,13 @@
     2. Messages sent
     3. Average time taken
   - DONE Ensure that we run forever
-  - TODO Parse the mapping and fix filter
+  - DONE Parse the mapping
   - TODO Handle periodic messages
   - TODO Get the default threshold with N runs
   - TODO Get the DTW working
   - TODO Maybe get fancy logger
   - TODO Fix the time within the fuzzer usec (for the messages)
-  - TODO Add fancy tqdm to show the progress
+  - TODO Add fancy tqdm to show the progress and if bug found
     - Since we keep track of the time since the simulation start we can effectively set the time for the message
 - Compare with DTW
   - Will have to save the RCOU values as we don't have MAVProxy with us anymore
