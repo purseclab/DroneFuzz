@@ -6,6 +6,7 @@
 # Check the status after the mission finishes
 import argparse
 import time
+import yaml
 import os
 import random
 import signal
@@ -276,7 +277,7 @@ def include_xml(elem, base_path, processed_files=None):
                 parent.insert(index, child)
 
 
-def load_xml_messages(file_path: str, filter: list = ["OPTICAL_FLOW"]) -> list:
+def load_xml_messages(file_path: str, filter: list) -> list:
     xml_msg = []
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(file_path, parser)
@@ -363,6 +364,7 @@ class FuzzConfig:
         vehicle="copter",
         xml_file=None,
         peripheral=None,
+        yaml_file=None,
     ):
         self.shutdown_requested = False
         # Register signal handlers
@@ -381,31 +383,37 @@ class FuzzConfig:
         )
         if file_exists(self.param_file):
             print("Using parameter file: " + self.param_file)
-
         # Fuzzing related attributes
         self.fuzzing_active = False
         self.fuzzing_thread = None
         self.xml_file = xml_file
         self.xml_messages = []
         self.fuzz_interval = 0.5  # Send a fuzzed message every 0.5 seconds
+        self.setup(yaml_file=yaml_file)
 
-        # Load XML message definitions if provided
-        if xml_file and os.path.exists(xml_file):
-            print(f"Loading MAVLink message definitions from {xml_file}")
-            self.xml_messages = load_xml_messages(xml_file)
-            print(f"Loaded {len(self.xml_messages)} message definitions")
-        self.setup()
-        self.tcp_conn = None
-
-    def setup(self):
-        # Load the JSON Peripheral mapping
-        self.peripheral_mapping = {}
+    def setup(self, yaml_file=None):
+        # Load the YAML Peripheral mapping
+        with open(yaml_file, "r") as f:
+            peripheral_mapping = yaml.safe_load(f)
+        self.peripheral_mapping = peripheral_mapping["sensors"].get(self.msg_def, {})
+        print(f"Using peripheral mapping from {yaml_file}:")
+        print(f"Peripheral mapping for {self.msg_def}: {self.peripheral_mapping}")
         self.fuzzer_stats = {
             "simulations_completed": 0,
             "messages_sent": 0,
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
         }
+
+        # Find the filter from the peripheral mapping
+        msg_filter = self.peripheral_mapping.get("msg_type", [])
+        print(f"Using message filter: {msg_filter}")
+
+        # Load XML message definitions if provided
+        if self.xml_file and os.path.exists(self.xml_file):
+            print(f"Loading MAVLink message definitions from {self.xml_file}")
+            self.xml_messages = load_xml_messages(self.xml_file, filter=msg_filter)
+            print(f"Loaded {len(self.xml_messages)} message definitions")
 
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
@@ -594,13 +602,21 @@ if __name__ == "__main__":
             help="Path to MAVLink XML definition file",
             required=True,
         )
+        argument_parser.add_argument(
+            "--yaml", type=str, help="YAML file for peripheral mapping", required=True
+        )
         args = argument_parser.parse_args()
+
+        # Sanity check for all files
+        for arg in [args.bin, args.ap_dir, args.xml_file, args.yaml]:
+            file_exists(arg)
 
         cfg = FuzzConfig(
             bin=args.bin,
             src_dir=args.ap_dir,
             xml_file=args.xml_file,
             peripheral=args.peripheral,
+            yaml_file=args.yaml,
         )
 
         # Main loop
