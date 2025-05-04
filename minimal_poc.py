@@ -82,7 +82,7 @@ class TCPConn:
                 msg = self.conn.recv_match(blocking=True, timeout=1)
                 if msg:
                     with self.lock:
-                        self.msg_queue.put(msg)
+                        self.msg_queue.put(msg.to_dict())
                         if msg.get_type() == "STATUSTEXT":
                             print(msg.text)
                             # Crazy check because pymavlink lock doesn't work
