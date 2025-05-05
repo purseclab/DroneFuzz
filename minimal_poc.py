@@ -532,7 +532,8 @@ class FuzzConfig:
             self.tcp_conn = TCPConn()
             self.sim_ready = True
         except Exception as e:
-            raise Exception(f"Simulation errored with {e}")
+            # this would just kill the entire script, so need to handle it gracefully
+            print(f"Error starting simulation: {e}")
 
     def send_mission(self, fuzzing=True):
         self.tcp_conn.set_mode("GUIDED")
@@ -627,15 +628,15 @@ class FuzzConfig:
                 if self.calibration_active:
                     self.fuzzer_stats["dtw_threshold"] = (
                         self.fuzzer_stats["dtw_threshold"] + distance
-                    ) / self.calibration_rounds
-                    print(
-                        f"DTW distance for calibration: {distance}, threshold set to {self.fuzzer_stats['dtw_threshold']}"
                     )
                 if self.fuzzing_active:
-                    if (
-                        distance
-                        > self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
-                    ):
+                    min_fuzz_threshold = (
+                        self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
+                    )
+                    max_fuzz_threshold = (
+                        self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
+                    )
+                    if min_fuzz_threshold > distance > max_fuzz_threshold:
                         print(
                             f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
                         )
@@ -646,6 +647,9 @@ class FuzzConfig:
         if hasattr(self, "sim_handle") and self.sim_handle:
             self.sim_handle.terminate()
             print("Simulation terminated.")
+        time.sleep(1)  # Give some time for the threads to finish
+
+        # TODO Check if we actually have a SITL binary running
 
     def summary(self):
         print(self.fuzzer_stats)
@@ -772,7 +776,13 @@ if __name__ == "__main__":
             if not cfg.shutdown_requested:
                 cfg.send_mission(fuzzing=False)
             cfg.cleanup_sim()
+        cfg.fuzzer_stats["dtw_threshold"] = (
+            cfg.fuzzer_stats["dtw_threshold"] / cfg.calibration_rounds
+        )
         cfg.calibration_active = False
+        print(
+            f"The DTW threshold for fuzzing is set to {cfg.fuzzer_stats['dtw_threshold']:.2f}"
+        )
         # Reset all the stats
         cfg.fuzzer_stats["current_mission_time"] = 0.0
         cfg.fuzzer_stats["simulations_completed"] = 0
@@ -786,7 +796,7 @@ if __name__ == "__main__":
                 print("Waiting for drone to be ready with GPS lock...")
                 time.sleep(3)
             if not cfg.shutdown_requested:
-                cfg.send_mission(fuzzing=False)
+                cfg.send_mission()
             cfg.cleanup_sim()
             # except Exception as e:
             #     print(f"Error in main loop: {e}")
