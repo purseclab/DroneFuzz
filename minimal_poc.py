@@ -12,6 +12,9 @@ import random
 import signal
 import tempfile
 from lxml import etree
+from fastdtw import fastdtw
+from scipy.spatial.distance import euclidean
+import numpy as np
 
 # Set the mavlink version to 2
 os.environ["MAVLINK20"] = "1"
@@ -19,8 +22,7 @@ from pymavlink import mavutil
 import subprocess
 from queue import Queue
 import threading
-
-# from fastdtw import fastdtw
+import copy
 
 mavlink_timeout = 5
 approx_threshold = 0.1  # Threshold for approximate location matching
@@ -32,10 +34,11 @@ class TCPConn:
         self.shutdown_requested = False
         self.connected = threading.Event()
         self.connected.set()
-        self.lock = threading.Lock()
         self.msg_queue = Queue()
         self.loc_queue = Queue()
+        self.rcou_queue = Queue()
         self.drone_ready = False  # Drone ready with GPS lock
+        self.drone_in_air = False
         # GPS location
         # Connection details
         self.conn = mavutil.mavlink_connection(
@@ -81,34 +84,38 @@ class TCPConn:
             try:
                 msg = self.conn.recv_match(blocking=True, timeout=1)
                 if msg:
-                    with self.lock:
-                        self.msg_queue.put(msg.to_dict())
-                        if msg.get_type() == "STATUSTEXT":
-                            print(msg.text)
-                            # Crazy check because pymavlink lock doesn't work
-                            if "is using GPS" in msg.text:
-                                print("Drone is ready with gps_lock ")
-                                self.drone_ready = True
-                        if msg.get_type() == "COMMAND_ACK":
-                            if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                                print(f"Command failed with result: {msg.result}")
-                                print()
-                                self.shutdown_requested = True
-                        if msg.get_type() == "GLOBAL_POSITION_INT":
-                            # Update the drone's GPS location state
-                            drone_loc_state = {}
-                            drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
-                            drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
-                            drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
-                            drone_loc_state["rel_alt"] = (
-                                msg.relative_alt / 1e3
-                            )  # Convert to meters
-                            self.loc_queue.put(drone_loc_state)
+                    self.msg_queue.put(msg)
+                    if msg.get_type() == "STATUSTEXT":
+                        # print(msg.text)
+                        # Crazy check because pymavlink lock doesn't work
+                        if "is using GPS" in msg.text:
+                            print("Drone is ready with gps_lock ")
+                            self.drone_ready = True
+                    if msg.get_type() == "COMMAND_ACK":
+                        if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                            print(f"Command failed with result: {msg.result}")
+                            self.shutdown_requested = True
+                    if msg.get_type() == "GLOBAL_POSITION_INT":
+                        # Update the drone's GPS location state
+                        drone_loc_state = {}
+                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
+                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
+                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
+                        drone_loc_state["rel_alt"] = (
+                            msg.relative_alt / 1e3
+                        )  # Convert to meters
+                        self.loc_queue.put(drone_loc_state)
+                    if (
+                        msg.get_type() == "SERVO_OUTPUT_RAW"
+                    ):  # Only when drone is in air
+                        if self.drone_in_air:
+                            self.rcou_queue.put(msg.to_dict())
             except Exception as e:
                 print(f"Error in monitor_comms: {e}")
+                self.shutdown_requested = True
                 if not self.shutdown_requested:
                     time.sleep(1)  # Wait before retrying
-        print("Connection closed, stopping monitor thread.")
+                print("Connection closed, stopping monitor thread.")
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
@@ -158,6 +165,7 @@ class TCPConn:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if loc["rel_alt"] <= approx_threshold:
                 print(f"Drone reached an relative altitude: {loc['rel_alt']} meters")
+                self.drone_in_air = False
                 break
             time.sleep(0.1)
 
@@ -199,6 +207,7 @@ class TCPConn:
                 <= altitude + approx_threshold
             ):
                 print(f"Drone has taken off to altitude: {loc['rel_alt']} meters")
+                self.drone_in_air = True
                 break
             time.sleep(0.1)
 
@@ -236,16 +245,23 @@ class TCPConn:
 
     def cleanup(self):
         self.shutdown_requested = True
+        rcou_list = []
+        print(self.msg_queue.qsize(), " messages in the queue")
+        while not self.rcou_queue.empty():
+            rcou_list.append(self.rcou_queue.get())
         self.connected.clear()
-        time.sleep(0.5)  # Give threads time to stop
-        if self.conn:
-            self.conn.close()
-            print("TCP connection closed.")
+        time.sleep(0.5)  # Give some time for the threads to finish
         # Clear all the queues
         while not self.msg_queue.empty():
             self.msg_queue.get()
         while not self.loc_queue.empty():
             self.loc_queue.get()
+        if self.conn:
+            self.conn.close()
+            print("TCP connection closed.")
+        if rcou_list:
+            print(f"Received {len(rcou_list)} RC channel updates.")
+        return rcou_list
 
 
 def include_xml(elem, base_path, processed_files=None):
@@ -369,6 +385,8 @@ class FuzzConfig:
         xml_file=None,
         peripheral=None,
         yaml_file=None,
+        calibration_rounds=3,
+        dtw_threshold=100.00,
     ):
         self.shutdown_requested = False
         # Register signal handlers
@@ -387,12 +405,16 @@ class FuzzConfig:
         )
         if file_exists(self.param_file):
             print("Using parameter file: " + self.param_file)
+        self.calibration_active = False
+        self.calibration_rounds = calibration_rounds
         # Fuzzing related attributes
         self.fuzzing_active = False
         self.fuzzing_thread = None
+        self.fuzzer_dtw_threshold = dtw_threshold
         self.sim_ready = False
         self.xml_file = xml_file
         self.xml_messages = []
+        self.rcou_vals = []
         self.fuzz_interval = 0.5  # Send a fuzzed message every 0.5 seconds
         self.setup(yaml_file=yaml_file)
 
@@ -423,6 +445,7 @@ class FuzzConfig:
             "messages_sent": 0,
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
+            "dtw_threshold": 0.0,
         }
         # Load the YAML Peripheral mapping
         with open(yaml_file, "r") as f:
@@ -490,9 +513,12 @@ class FuzzConfig:
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
+        if self.calibration_active:
+            assert (
+                self.fuzzing_active is False
+            ), "Cannot run calibration while fuzzing is active"
         if self.fuzzer_param_file:
             self.sitl_cmd += "," + self.fuzzer_param_file
-        print(self.sitl_cmd)
         try:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
@@ -508,13 +534,14 @@ class FuzzConfig:
         except Exception as e:
             raise Exception(f"Simulation errored with {e}")
 
-    def send_mission(self):
+    def send_mission(self, fuzzing=True):
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
         self.tcp_conn.takeoff(50)
 
         # Start fuzzing after takeoff
-        self.start_fuzzing()
+        if fuzzing:
+            self.start_fuzzing()
 
         self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
         # Go to Point B -35.3626941, 149.166221
@@ -529,7 +556,8 @@ class FuzzConfig:
         self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
 
         # Stop fuzzing before landing
-        self.stop_fuzzing()
+        if fuzzing:
+            self.stop_fuzzing()
 
         # Land
         self.tcp_conn.land()
@@ -577,7 +605,8 @@ class FuzzConfig:
 
     def cleanup_sim(self):
         # Stop fuzzing first
-        self.stop_fuzzing()
+        if self.fuzzing_active:
+            self.stop_fuzzing()
 
         # Stop the periodic threads
         if self.periodic_thread:
@@ -587,11 +616,31 @@ class FuzzConfig:
 
         # Reset the time
         self.fuzzer_stats["current_mission_time"] = 0.0
-        self.sim_ready = True
 
         # Then cleanup TCP connection
         if self.tcp_conn:
-            self.tcp_conn.cleanup()
+            if self.rcou_vals:
+                prev_rcou_vals = copy.deepcopy(self.rcou_vals)
+                self.rcou_vals = self.tcp_conn.cleanup()
+                distance, _path = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
+                print("DTW distance calculated: ", distance)
+                if self.calibration_active:
+                    self.fuzzer_stats["dtw_threshold"] = (
+                        self.fuzzer_stats["dtw_threshold"] + distance
+                    ) / self.calibration_rounds
+                    print(
+                        f"DTW distance for calibration: {distance}, threshold set to {self.fuzzer_stats['dtw_threshold']}"
+                    )
+                if self.fuzzing_active:
+                    if (
+                        distance
+                        > self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
+                    ):
+                        print(
+                            f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
+                        )
+            else:
+                self.rcou_vals = self.tcp_conn.cleanup()
 
         # Finally terminate the simulation
         if hasattr(self, "sim_handle") and self.sim_handle:
@@ -600,6 +649,16 @@ class FuzzConfig:
 
     def summary(self):
         print(self.fuzzer_stats)
+
+    def calculate_dtw(self, series1, series2):
+        """Calculate the DTW distance between two time series."""
+        # We get a list of dictionaries, so we need to convert them to numpy arrays
+        # Assuming series1 and series2 are lists of dictionaries with keys "chan1_raw","chan2_raw", etc.
+        fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
+        s1 = np.array([[pkt[f] for f in fields] for pkt in series1])
+        s2 = np.array([[pkt[f] for f in fields] for pkt in series2])
+        distance, path = fastdtw(s1, s2, dist=euclidean)
+        return distance, path
 
     def start_fuzzing(self):
         """Start the fuzzing thread."""
@@ -702,6 +761,23 @@ if __name__ == "__main__":
             yaml_file=args.yaml,
         )
 
+        # Establish the threshold for the fuzzing runs
+        # Run the mission with simulations and default parameters
+        cfg.calibration_active = True
+        for _ in range(0, cfg.calibration_rounds):
+            cfg.run_sim()
+            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+                print("Waiting for drone to be ready with GPS lock...")
+                time.sleep(3)
+            if not cfg.shutdown_requested:
+                cfg.send_mission(fuzzing=False)
+            cfg.cleanup_sim()
+        cfg.calibration_active = False
+        # Reset all the stats
+        cfg.fuzzer_stats["current_mission_time"] = 0.0
+        cfg.fuzzer_stats["simulations_completed"] = 0
+        cfg.fuzzer_stats["messages_sent"] = 0
+        # Run the simulation with fuzzing
         # Main loop
         while not cfg.shutdown_requested:
             # try:
@@ -710,7 +786,7 @@ if __name__ == "__main__":
                 print("Waiting for drone to be ready with GPS lock...")
                 time.sleep(3)
             if not cfg.shutdown_requested:
-                cfg.send_mission()
+                cfg.send_mission(fuzzing=False)
             cfg.cleanup_sim()
             # except Exception as e:
             #     print(f"Error in main loop: {e}")

@@ -3,7 +3,7 @@
 # File            : exec_servo_oracle.py
 # Description     : This file takes in 2 sets of 2 files, a BIN file and a callgrind.out file
 # Date            : 19.04.2025
-# Last Modified   : 2025-04-19T20:27:32-0400
+# Last Modified   : 2025-05-04T14:54:08-0400
 #
 import argparse
 import os
@@ -25,9 +25,7 @@ def multivariate_dtw(series1, series2):
     s2 = np.array([series2[ch] for ch in ["C1", "C2", "C3", "C4"]]).T
 
     # Compute DTW with Euclidean distance
-    distance, path = fastdtw(s1, s2, dist=euclidean)
-    return distance, path
-
+    
 
 def compare_bins(args):
     vehicle_conn_1 = mavutil.mavlink_connection(args.bin_file)
@@ -55,6 +53,8 @@ def compare_bins(args):
 
     series_a = preprocess_mav_data(rcout_1)
     series_b = preprocess_mav_data(rcout_2)
+    print(len(series_a))
+    print(len(series_b))
 
     distance, path = multivariate_dtw(series_a, series_b)
     # Compare the RCOU values from both array with the given threshold
