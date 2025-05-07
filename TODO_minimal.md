@@ -10,13 +10,13 @@
   - DONE Parse the mapping
   - DONE Handle periodic messages
   - DONE Exit simulation if PreArm error
-  - TODO Get the default threshold with N runs
+  - DONE Get the default threshold with N runs
     - Need to actually get the rcou values to be sent to the simulation object
     - Cause TCP conn is closed after each run
-  - TODO Get the DTW working
+  - DONE Get the DTW working
   - TODO Remove clean duplication
   - TODO Log inputs to a file
-  - TODO Fix the time within the fuzzer usec (for the messages)
+  - DONE Fix the time within the fuzzer usec (for the messages)
   - TODO Add fancy tqdm to show the progress and if bug found
   - TODO Add SIM/CFG parameters from PGFUZZ
     - Since we keep track of the time since the simulation start we can effectively set the time for the message

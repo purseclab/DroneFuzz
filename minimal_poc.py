@@ -6,6 +6,7 @@
 # Check the status after the mission finishes
 import argparse
 import time
+import re
 import yaml
 import os
 import random
@@ -18,7 +19,7 @@ import numpy as np
 
 # Set the mavlink version to 2
 os.environ["MAVLINK20"] = "1"
-from pymavlink import mavutil
+from pymavlink import mavutil, mavwp
 import subprocess
 from queue import Queue
 import threading
@@ -37,6 +38,7 @@ class TCPConn:
         self.msg_queue = Queue()
         self.loc_queue = Queue()
         self.rcou_queue = Queue()
+        self.mission_msg_queue = Queue()
         self.drone_ready = False  # Drone ready with GPS lock
         self.drone_in_air = False
         # GPS location
@@ -62,6 +64,27 @@ class TCPConn:
             1,  # Start/Stop (1=start, 0=stop)
         )
 
+    # TODO: Maybe make this modular
+    def apply_throttle(self, throttle_pwm=1500, duration=1.0):
+        end_time = time.time() + duration
+        while time.time() < end_time:
+            self.conn.mav.rc_channels_override_send(
+                self.conn.target_system,
+                self.conn.target_component,
+                0,  # chan1
+                0,  # chan2
+                throttle_pwm,  # chan3
+                0,  # chan4
+                0,  # chan5
+                0,  # chan6
+                0,  # chan7
+                0,  # chan8
+            )
+            time.sleep(0.1)
+        self.conn.mav.rc_channels_override_send(
+            self.conn.target_system, self.conn.target_component, 0, 0, 0, 0, 0, 0, 0, 0
+        )
+
     def send_heartbeat(self):
         while self.connected.is_set() and not self.shutdown_requested:
             try:
@@ -79,6 +102,17 @@ class TCPConn:
                     time.sleep(1)
         print("Connection closed, stopping heartbeat thread.")
 
+    def _monitor_flags(self, msg):
+        if "is using GPS" in msg.text:
+            print("Drone is ready with gps_lock ")
+            self.drone_ready = True
+        if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
+            print("Mission ended, vehicle is disarmed.")
+            self.drone_in_air = False
+        if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
+            print("AUTO Mission started, takeoff.")
+            self.drone_in_air = True
+
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
             try:
@@ -86,14 +120,12 @@ class TCPConn:
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
-                        # print(msg.text)
+                        print(msg.text)
                         # Crazy check because pymavlink lock doesn't work
-                        if "is using GPS" in msg.text:
-                            print("Drone is ready with gps_lock ")
-                            self.drone_ready = True
+                        self._monitor_flags(msg)
                     if msg.get_type() == "COMMAND_ACK":
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                            print(f"Command failed with result: {msg.result}")
+                            print(f"Command failed: {msg}")
                             self.shutdown_requested = True
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
@@ -110,6 +142,8 @@ class TCPConn:
                     ):  # Only when drone is in air
                         if self.drone_in_air:
                             self.rcou_queue.put(msg.to_dict())
+                    if msg.get_type() == "MISSION_REQUEST":
+                        self.mission_msg_queue.put(msg)
             except Exception as e:
                 print(f"Error in monitor_comms: {e}")
                 self.shutdown_requested = True
@@ -239,9 +273,6 @@ class TCPConn:
             ):
                 print(f"Reached waypoint: lat={loc['lat']}, lon={loc['lon']}")
                 break
-
-    def upload_mission(self, mission_file):
-        pass
 
     def cleanup(self):
         self.shutdown_requested = True
@@ -387,6 +418,7 @@ class FuzzConfig:
         yaml_file=None,
         calibration_rounds=3,
         dtw_threshold=100.00,
+        auto_mission_enabled=False,
     ):
         self.shutdown_requested = False
         # Register signal handlers
@@ -400,6 +432,7 @@ class FuzzConfig:
         self.vehicle = vehicle
         self.timeout = 1000  # TODO: Eventually figure out how to set this
         self.peripheral_under_test = peripheral
+        self.auto_mission_enabled = auto_mission_enabled
         self.param_file = os.path.join(
             self.ap_dir + "Tools/autotest/default_params/" + self.vehicle + ".parm"
         )
@@ -523,8 +556,8 @@ class FuzzConfig:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
                 # Temporarily commented out to debug
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # stdout=subprocess.PIPE,
+                # stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
             )
@@ -535,9 +568,47 @@ class FuzzConfig:
             # this would just kill the entire script, so need to handle it gracefully
             print(f"Error starting simulation: {e}")
 
-    def send_mission(self, fuzzing=True):
+    def monitor_auto_mission(self):
+        # Wait till the drone is in air
+        print("Waiting till drone is in air")
+        while self.tcp_conn.drone_in_air:
+            time.sleep(3)
+
+    def upload_auto_mission(self, mission_file="/tmp/mission.txt"):
+        """
+        Upload a mission from a waypoint file using MAVProxy's waypoint module
+
+        Args:
+            mission_file: Path to the mission file (.waypoints format)
+        """
+        waypoints = mavwp.MAVWPLoader()
+        _ = waypoints.load(mission_file.strip('"'))
+
+        # Clear any existing mission
+        self.tcp_conn.conn.waypoint_clear_all_send()
+
+        # Send waypoint count
+        self.tcp_conn.conn.waypoint_count_send(waypoints.count())
+
+        # Respond to mission requests
+        for _ in range(waypoints.count()):
+            try:
+                # Wait for mission request message
+                msg = self.tcp_conn.mission_msg_queue.get(timeout=4)
+
+                print(f"Received MISSION_REQUEST for sequence {msg.seq}")
+
+                # Send the requested waypoint
+                self.tcp_conn.conn.mav.send(waypoints.wp(msg.seq))
+                print(f"Sending waypoint {msg.seq}")
+
+            except Exception as e:
+                print(f"Error in mission upload: {e}")
+
+    def standard_guided(self, fuzzing=True):
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
+        # Monitor
         self.tcp_conn.takeoff(50)
 
         # Start fuzzing after takeoff
@@ -562,6 +633,18 @@ class FuzzConfig:
 
         # Land
         self.tcp_conn.land()
+
+    def send_mission(self, fuzzing=True):
+        if self.auto_mission_enabled:
+            self.upload_auto_mission(mission_file=self.auto_mission_enabled)
+            # ARM to AUTO and then
+            self.tcp_conn.arm()
+            self.tcp_conn.set_mode("AUTO")
+            self.tcp_conn.apply_throttle()
+            self.monitor_auto_mission()
+        else:
+            print("Using standard triangle mission")
+            self.standard_guided(fuzzing=fuzzing)
         print("Finished mission")
         self.fuzzer_stats["simulations_completed"] += 1
         self.fuzzer_stats["last_mission_time"] = (
@@ -743,6 +826,13 @@ if __name__ == "__main__":
             "--ap_dir", type=str, help="Ardupilot directory", required=True
         )
         argument_parser.add_argument(
+            "--auto_mission",
+            type=str,
+            help="Auto mission file",
+            required=False,
+            default="/tmp/mission.txt",
+        )
+        argument_parser.add_argument(
             "--xml_file",
             type=str,
             help="Path to MAVLink XML definition file",
@@ -753,8 +843,25 @@ if __name__ == "__main__":
         )
         args = argument_parser.parse_args()
 
+        if args.auto_mission == "/tmp/mission.txt":
+            # Create a temporary file with the triangle mission
+            content = """QGC WPL 110
+0       0       0       16      0.0     0.0     0.0     0.0     -35.3632620     149.1652373     584.1699829101562 1
+1       0       3       22      0.0     0.0     0.0     0.0     -35.3632622     149.1652375     50.0    1
+2       0       3       16      0.0     0.0     0.0     0.0     -35.3626941     149.1662210     50.0    1
+3       0       3       16      0.0     0.0     0.0     0.0     -35.3628397     149.1646279     50.0    1
+4       0       0       20      0.0     0.0     0.0     0.0     0.0000000       0.0000000       0.0     1
+                """
+            with open(args.auto_mission, "w") as f:
+                f.write(content)
+
         # Sanity check for all files
-        for arg in [args.bin, args.ap_dir, args.xml_file, args.yaml]:
+        for arg in [
+            args.bin,
+            args.ap_dir,
+            args.xml_file,
+            args.yaml,
+        ]:
             file_exists(arg)
 
         cfg = FuzzConfig(
@@ -763,6 +870,7 @@ if __name__ == "__main__":
             xml_file=args.xml_file,
             peripheral=args.peripheral,
             yaml_file=args.yaml,
+            auto_mission_enabled=args.auto_mission,
         )
 
         # Establish the threshold for the fuzzing runs
