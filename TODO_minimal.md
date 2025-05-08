@@ -19,7 +19,12 @@
   - TODO Remove clean duplication
   - DONE Log inputs (buggy) to a file
   - DONE Fix the time within the fuzzer usec (for the messages)
-  - TODO Add fancy tqdm to show the progress and if bug found
+  - TODO Fix the base distance with random messages
+    - 2025-05-08 09:24 Currently running a mission with patched bug to check
+  - TODO Fix to a generic mission that does everything
+  - DONE Fix the oracle DTW
+  - TODO Fix the fuzzing inside auto mode?
+  - DONE Add fancy tqdm to show the progress and if bug found
   - TODO Add SIM/CFG parameters from PGFUZZ
     - Since we keep track of the time since the simulation start we can effectively set the time for the message
   - TODO Figure out to check all configurations before starting stuff
