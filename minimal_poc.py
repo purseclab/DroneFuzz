@@ -488,12 +488,13 @@ class FuzzConfig:
         self.fuzzer_dtw_threshold = (
             args.dtw_threshold
             if args.dtw_threshold
-            else self.config.get("dtw_threshold", 50.00)
+            else self.config.get("dtw_threshold", 100.00)
         )
         self.sim_ready = False
         self.fuzz_interval = self.config.get(
             "fuzz_interval", 0.5
         )  # Send a fuzzed message every 0.5 seconds
+        self.fuzz_msgs = []
 
         # Initialize fuzzer
         self.fuzzer_param_file = None
@@ -772,23 +773,7 @@ class FuzzConfig:
                     )
                     self.golden_rc_vals = self.rcou_vals
                 else:
-                    distance, _path = self.calculate_dtw(
-                        self.golden_rc_vals, self.rcou_vals
-                    )
-                    print("DTW distance calculated: ", distance)
-                    min_fuzz_threshold = (
-                        self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
-                    )
-                    max_fuzz_threshold = (
-                        self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
-                    )
-                    if (distance < min_fuzz_threshold) or (
-                        distance > max_fuzz_threshold
-                    ):
-                        print(
-                            f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
-                        )
-                        self.fuzzer_stats["first_bug"] = time.time() - self.start_time
+                    self.oracle()
             else:
                 self.rcou_vals = self.tcp_conn.cleanup()
 
@@ -799,6 +784,31 @@ class FuzzConfig:
         time.sleep(1)  # Give some time for the threads to finish
 
         # TODO Check if we actually have a SITL binary running
+
+    def oracle(self):
+        distance, _path = self.calculate_dtw(self.golden_rc_vals, self.rcou_vals)
+        print("DTW distance calculated: ", distance)
+        min_fuzz_threshold = (
+            self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
+        )
+        max_fuzz_threshold = (
+            self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
+        )
+        if (distance < min_fuzz_threshold) or (distance > max_fuzz_threshold):
+            print(
+                f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
+            )
+            if self.fuzzer_stats["first_bug"] == 0.0:
+                self.fuzzer_stats["first_bug"] = time.time() - self.start_time
+            # Save inputs for later analysis
+        input_file = tempfile.mkstemp(
+            suffix=".txt", prefix="pgfuzz-inputs", dir="/tmp"
+        )[1]
+        print(f"Saving inputs to {input_file}")
+        with open(input_file, "w") as f:
+            # Dump all the values inside the fuzz_msgs
+            for msg in self.fuzz_msgs:
+                f.write(f"{msg}\n")
 
     def calculate_dtw(self, series1, series2):
         """Calculate the DTW distance between two time series."""
@@ -847,6 +857,8 @@ class FuzzConfig:
                 self.send_fuzzed_message(
                     msg_def["msg_name"], msg_def["msg_id"], field_values
                 )
+                msg_dict = {msg_def["msg_name"]: field_values}
+                self.fuzz_msgs.append(msg_dict)
                 self.fuzzer_stats["messages_sent"] += 1
             except Exception as e:
                 print(f"Error sending fuzzed message: {e}")
