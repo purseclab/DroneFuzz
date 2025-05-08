@@ -120,7 +120,7 @@ class TCPConn:
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
-                        print(msg.text)
+                        # print(msg.text)
                         # Crazy check because pymavlink lock doesn't work
                         self._monitor_flags(msg)
                     if msg.get_type() == "COMMAND_ACK":
@@ -408,48 +408,96 @@ def generate_field_value(field_type):
 
 
 class FuzzConfig:
-    def __init__(
-        self,
-        bin=None,
-        src_dir="/ardupilot",
-        vehicle="copter",
-        xml_file=None,
-        peripheral=None,
-        yaml_file=None,
-        calibration_rounds=3,
-        dtw_threshold=100.00,
-        auto_mission_enabled=False,
-    ):
-        self.shutdown_requested = False
+    def __init__(self, args):
         # Register signal handlers
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
-        if file_exists(bin) and file_exists(src_dir):
-            print(f"Using SITL binary: {bin}")
-            print(f"Using Ardupilot directory: {src_dir}")
-        self.sitl_bin = bin
-        self.ap_dir = src_dir
-        self.vehicle = vehicle
-        self.timeout = 1000  # TODO: Eventually figure out how to set this
-        self.peripheral_under_test = peripheral
-        self.auto_mission_enabled = auto_mission_enabled
+        self.shutdown_requested = False
+
+        # Load configuration from config YAML file first
+        self.config_file = args.config if args.config else None
+        self.config = {}
+        if self.config_file and os.path.exists(self.config_file):
+            with open(self.config_file, "r") as f:
+                self.config = yaml.safe_load(f)
+                print(f"Loaded configuration from {self.config_file}")
+
+        # Load peripheral mapping from peripheral YAML file
+        self.peripheral_file = args.peripheral_file if args.peripheral_file else None
+        self.peripheral_mapping = {}
+        if self.peripheral_file and os.path.exists(self.peripheral_file):
+            with open(self.peripheral_file, "r") as f:
+                self.peripheral_mapping = yaml.safe_load(f)
+                print(f"Loaded peripheral mapping from {self.peripheral_file}")
+
+        # Setup files - command line args override yaml config
+        self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin")
+        self.ap_dir = (
+            args.ap_dir if args.ap_dir else self.config.get("ap_dir", "/ardupilot")
+        )
+        self.xml_file = args.xml if args.xml else self.config.get("xml_file")
+
+        # Auto mission configuration
+        self.auto_mission_enabled = False
+        self.auto_mission_path = (
+            args.auto_mission if args.auto_mission else self.config.get("auto_mission")
+        )
+        if self.auto_mission_path and file_exists(self.auto_mission_path):
+            print("Mission file found, AUTO mode testing enabled")
+            self.auto_mission_enabled = True
+
+        # Variables - command line args override yaml config
+        self.peripheral_under_test = (
+            args.peripheral if args.peripheral else self.config.get("peripheral")
+        )
+        self.vehicle = (
+            args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
+        )
+
+        # Mission control
+        self.timeout = self.config.get("timeout", 1000)
+        calibration_rounds = (
+            args.calibration_rounds
+            if args.calibration_rounds
+            else self.config.get("calibration_rounds", 10)
+        )
+
+        # Validate required files
+        if file_exists(self.sitl_bin) and file_exists(self.ap_dir):
+            print(f"Using SITL binary: {self.sitl_bin}")
+            print(f"Using Ardupilot directory: {self.ap_dir}")
+
+        # Parameter file
         self.param_file = os.path.join(
-            self.ap_dir + "Tools/autotest/default_params/" + self.vehicle + ".parm"
+            self.ap_dir, "Tools/autotest/default_params/", f"{self.vehicle}.parm"
         )
         if file_exists(self.param_file):
             print("Using parameter file: " + self.param_file)
+
+        # Calibration settings
         self.calibration_active = False
         self.calibration_rounds = calibration_rounds
+
         # Fuzzing related attributes
-        self.fuzzing_active = False
-        self.fuzzing_thread = None
-        self.fuzzer_dtw_threshold = dtw_threshold
-        self.sim_ready = False
-        self.xml_file = xml_file
         self.xml_messages = []
         self.rcou_vals = []
-        self.fuzz_interval = 0.5  # Send a fuzzed message every 0.5 seconds
-        self.setup(yaml_file=yaml_file)
+        self.golden_rc_vals = []
+        self.start_time = time.time()  # Rough estimate only
+        self.fuzzing_active = False
+        self.fuzzing_thread = None
+        self.fuzzer_dtw_threshold = (
+            args.dtw_threshold
+            if args.dtw_threshold
+            else self.config.get("dtw_threshold", 50.00)
+        )
+        self.sim_ready = False
+        self.fuzz_interval = self.config.get(
+            "fuzz_interval", 0.5
+        )  # Send a fuzzed message every 0.5 seconds
+
+        # Initialize fuzzer
+        self.fuzzer_param_file = None
+        self.setup()
 
     def periodic_send(self, frequency, xml_msg, default_values):
         print(f"Starting periodic send for {xml_msg} every {frequency} seconds")
@@ -472,27 +520,32 @@ class FuzzConfig:
 
                 time.sleep(1 / frequency)
 
-    def setup(self, yaml_file=None):
+    def setup(self):
         self.fuzzer_stats = {
             "simulations_completed": 0,
             "messages_sent": 0,
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
             "dtw_threshold": 0.0,
+            "first_bug": 0.0,
         }
-        # Load the YAML Peripheral mapping
-        with open(yaml_file, "r") as f:
-            peripheral_mapping = yaml.safe_load(f)
-        self.peripheral_mapping = peripheral_mapping["sensors"].get(
-            self.peripheral_under_test, {}
-        )
-        print(f"Using peripheral mapping from {yaml_file}:")
-        print(
-            f"Peripheral mapping for {self.peripheral_under_test}: {self.peripheral_mapping}"
-        )
+
+        # Get the peripheral mapping for the selected peripheral
+        if self.peripheral_mapping and "sensors" in self.peripheral_mapping:
+            self.peripheral_config = self.peripheral_mapping["sensors"].get(
+                self.peripheral_under_test, {}
+            )
+            print(
+                f"Using peripheral mapping for {self.peripheral_under_test}: {self.peripheral_config}"
+            )
+        else:
+            print(
+                f"Warning: No peripheral mapping found for {self.peripheral_under_test}"
+            )
+            self.peripheral_config = {}
 
         # Find the filter from the peripheral mapping
-        msg_filter = self.peripheral_mapping.get("msg_type", [])
+        msg_filter = self.peripheral_config.get("msg_type", [])
         print(f"Using message filter: {msg_filter}")
 
         # Load XML message definitions if provided
@@ -506,8 +559,8 @@ class FuzzConfig:
         self.default_msg = {}
 
         # Iterate through each msg_type and check the associated frequency
-        selected_msgs = self.peripheral_mapping.get("msg_type", [])
-        selected_freq = self.peripheral_mapping["frequency"]
+        selected_msgs = self.peripheral_config.get("msg_type", [])
+        selected_freq = self.peripheral_config.get("frequency", [])
         print("Selected messages for fuzzing:", selected_msgs)
         print("Selected frequencies for fuzzing:", selected_freq)
         for msg in selected_msgs:
@@ -517,9 +570,9 @@ class FuzzConfig:
             print(f"Message: {msg}, Frequency: {msg_freq}")
             xml_msg = load_xml_messages(self.xml_file, filter=[msg])
             # We will get a list of frequencies and then spawn a thread for each peripheral
-            if msg_freq != -1:
+            if msg_freq != -1 and xml_msg:
                 try:
-                    self.default_msg[msg_idx] = self.peripheral_mapping.get(
+                    self.default_msg[msg_idx] = self.peripheral_config.get(
                         "default_msg", {}
                     )
                     print(
@@ -537,10 +590,10 @@ class FuzzConfig:
                 self.periodic_thread[msg_freq].start()
                 print("Periodic thread started")
         # Also if we have a parameter file, create a temporary one and send it to the simulator
-        if self.peripheral_mapping.get("parameters"):
+        if self.peripheral_config.get("parameters"):
             self.fuzzer_param_file = tempfile.mkstemp(".parm", "pgfuzz", "/tmp")[1]
             with open(self.fuzzer_param_file, "w") as f:
-                for parameter, values in self.peripheral_mapping["parameters"].items():
+                for parameter, values in self.peripheral_config["parameters"].items():
                     f.write(f"{parameter} {values}\n")
 
     def run_sim(self):
@@ -556,8 +609,8 @@ class FuzzConfig:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
                 # Temporarily commented out to debug
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
             )
@@ -574,7 +627,7 @@ class FuzzConfig:
         while self.tcp_conn.drone_in_air:
             time.sleep(3)
 
-    def upload_auto_mission(self, mission_file="/tmp/mission.txt"):
+    def upload_auto_mission(self, mission_file):
         """
         Upload a mission from a waypoint file using MAVProxy's waypoint module
 
@@ -636,7 +689,7 @@ class FuzzConfig:
 
     def send_mission(self, fuzzing=True):
         if self.auto_mission_enabled:
-            self.upload_auto_mission(mission_file=self.auto_mission_enabled)
+            self.upload_auto_mission(mission_file=self.auto_mission_path)
             # ARM to AUTO and then
             self.tcp_conn.arm()
             self.tcp_conn.set_mode("AUTO")
@@ -685,6 +738,11 @@ class FuzzConfig:
         print(
             f"Last mission time: {self.fuzzer_stats['last_mission_time']:.2f} seconds"
         )
+        print(f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}")
+        print("Total time taken: {:.2f} seconds".format(time.time() - self.start_time))
+        print(
+            "First bug detected: {:.2f} seconds".format(self.fuzzer_stats["first_bug"])
+        )
         print("-" * 30)
 
     def cleanup_sim(self):
@@ -706,23 +764,31 @@ class FuzzConfig:
             if self.rcou_vals:
                 prev_rcou_vals = copy.deepcopy(self.rcou_vals)
                 self.rcou_vals = self.tcp_conn.cleanup()
-                distance, _path = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
-                print("DTW distance calculated: ", distance)
                 if self.calibration_active:
+                    distance, _path = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
+                    print("DTW distance calculated: ", distance)
                     self.fuzzer_stats["dtw_threshold"] = (
                         self.fuzzer_stats["dtw_threshold"] + distance
                     )
-                if self.fuzzing_active:
+                    self.golden_rc_vals = self.rcou_vals
+                else:
+                    distance, _path = self.calculate_dtw(
+                        self.golden_rc_vals, self.rcou_vals
+                    )
+                    print("DTW distance calculated: ", distance)
                     min_fuzz_threshold = (
-                        self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
+                        self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
                     )
                     max_fuzz_threshold = (
                         self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
                     )
-                    if min_fuzz_threshold > distance > max_fuzz_threshold:
+                    if (distance < min_fuzz_threshold) or (
+                        distance > max_fuzz_threshold
+                    ):
                         print(
                             f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
                         )
+                        self.fuzzer_stats["first_bug"] = time.time() - self.start_time
             else:
                 self.rcou_vals = self.tcp_conn.cleanup()
 
@@ -733,9 +799,6 @@ class FuzzConfig:
         time.sleep(1)  # Give some time for the threads to finish
 
         # TODO Check if we actually have a SITL binary running
-
-    def summary(self):
-        print(self.fuzzer_stats)
 
     def calculate_dtw(self, series1, series2):
         """Calculate the DTW distance between two time series."""
@@ -772,8 +835,13 @@ class FuzzConfig:
             msg_def = random.choice(self.xml_messages)
             field_values = []
             for field in msg_def["fields"]:
-                field_values.append(generate_field_value(field["type"]))
-
+                if "frame" in field["name"]:
+                    field_values.append(12)
+                elif "obstacle_id" in field["name"]:
+                    obstacle_id = 65535
+                    field_values.append(obstacle_id)
+                else:
+                    field_values.append(generate_field_value(field["type"]))
             # Send the fuzzed message
             try:
                 self.send_fuzzed_message(
@@ -815,71 +883,68 @@ def file_exists(file_o_dir):
 if __name__ == "__main__":
     cfg = None
     try:
-        argument_parser = argparse.ArgumentParser()
-        argument_parser.add_argument(
-            "--bin", type=str, help="Path to the SITL binary", required=True
+        argument_parser = argparse.ArgumentParser(
+            description="PGFUZZ++ - A fuzzer for ArduPilot peripherals"
         )
         argument_parser.add_argument(
-            "--peripheral", type=str, help="Peripheral to fuzz", required=True
+            "--bin", type=str, help="Path to the SITL binary", required=False
         )
         argument_parser.add_argument(
-            "--ap_dir", type=str, help="Ardupilot directory", required=True
+            "--peripheral", type=str, help="Peripheral to fuzz", required=False
         )
         argument_parser.add_argument(
-            "--auto_mission",
-            type=str,
-            help="Auto mission file",
-            required=False,
-            default="/tmp/mission.txt",
+            "--ap_dir", type=str, help="Ardupilot directory", required=False
         )
         argument_parser.add_argument(
-            "--xml_file",
+            "--auto_mission", type=str, help="Auto mission file", required=False
+        )
+        argument_parser.add_argument(
+            "--xml",
             type=str,
             help="Path to MAVLink XML definition file",
+            required=False,
+        )
+        # TODO: XOR this functionality where you can basically specify either a config file or cli args
+        argument_parser.add_argument(
+            "--config",
+            type=str,
+            help="YAML file for general configuration",
+        )
+        argument_parser.add_argument(
+            "--peripheral_file",
+            type=str,
+            help="YAML file for peripheral mapping",
             required=True,
         )
         argument_parser.add_argument(
-            "--yaml", type=str, help="YAML file for peripheral mapping", required=True
+            "--vehicle",
+            type=str,
+            help="Vehicle type (copter, plane, rover, etc.)",
+            required=False,
+        )
+        argument_parser.add_argument(
+            "--calibration_rounds",
+            type=int,
+            help="Number of calibration rounds to run",
+            required=False,
+        )
+        argument_parser.add_argument(
+            "--dtw_threshold",
+            type=float,
+            help="DTW threshold for anomaly detection",
+            required=False,
         )
         args = argument_parser.parse_args()
 
-        if args.auto_mission == "/tmp/mission.txt":
-            # Create a temporary file with the triangle mission
-            content = """QGC WPL 110
-0       0       0       16      0.0     0.0     0.0     0.0     -35.3632620     149.1652373     584.1699829101562 1
-1       0       3       22      0.0     0.0     0.0     0.0     -35.3632622     149.1652375     50.0    1
-2       0       3       16      0.0     0.0     0.0     0.0     -35.3626941     149.1662210     50.0    1
-3       0       3       16      0.0     0.0     0.0     0.0     -35.3628397     149.1646279     50.0    1
-4       0       0       20      0.0     0.0     0.0     0.0     0.0000000       0.0000000       0.0     1
-                """
-            with open(args.auto_mission, "w") as f:
-                f.write(content)
-
-        # Sanity check for all files
-        for arg in [
-            args.bin,
-            args.ap_dir,
-            args.xml_file,
-            args.yaml,
-        ]:
-            file_exists(arg)
-
-        cfg = FuzzConfig(
-            bin=args.bin,
-            src_dir=args.ap_dir,
-            xml_file=args.xml_file,
-            peripheral=args.peripheral,
-            yaml_file=args.yaml,
-            auto_mission_enabled=args.auto_mission,
-        )
+        cfg = FuzzConfig(args)
 
         # Establish the threshold for the fuzzing runs
         # Run the mission with simulations and default parameters
         cfg.calibration_active = True
         for _ in range(0, cfg.calibration_rounds):
             cfg.run_sim()
+            print("Waiting for drone to be ready with GPS lock...")
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                print("Waiting for drone to be ready with GPS lock...")
                 time.sleep(3)
             if not cfg.shutdown_requested:
                 cfg.send_mission(fuzzing=False)

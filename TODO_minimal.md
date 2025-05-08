@@ -14,6 +14,8 @@
     - Need to actually get the rcou values to be sent to the simulation object
     - Cause TCP conn is closed after each run
   - DONE Get the DTW working
+  - TODO Patch the random messages to generate the correct fields
+  - TODO Track the DTW detection time and save to a file
   - TODO Remove clean duplication
   - TODO Log inputs to a file
   - DONE Fix the time within the fuzzer usec (for the messages)
