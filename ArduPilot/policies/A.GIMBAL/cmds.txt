@@ -1,5 +1,0 @@
-Flight_Mode,5
-RC1,0
-RC2,0
-RC3,0
-RC4,0

@@ -1,1 +1,0 @@
-gh pr list --state merged --label BUG --json mergeCommit,title,url
