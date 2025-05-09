@@ -824,7 +824,7 @@ class FuzzConfig:
         if self.tcp_conn:
             if self.shutdown_requested:
                 self.tcp_conn.cleanup()
-            if self.rcou_vals:
+            elif self.rcou_vals:
                 prev_rcou_vals = copy.deepcopy(self.rcou_vals)
                 self.rcou_vals = self.tcp_conn.cleanup()
                 if self.calibration_active:
