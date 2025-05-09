@@ -928,7 +928,7 @@ class FuzzConfig:
                 self.send_fuzzed_message(
                     msg_def["msg_name"], msg_def["msg_id"], field_values
                 )
-                msg_dict = {msg_def["msg_name"]: field_values}
+                msg_dict = [msg_def["msg_name"], field_values]
                 self.fuzz_msgs.append(msg_dict)
                 self.fuzzer_stats["messages_sent"] += 1
             except Exception as e:
