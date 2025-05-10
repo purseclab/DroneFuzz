@@ -833,6 +833,9 @@ class FuzzConfig:
         logger.info(
             "Total time taken: {:.2f} seconds".format(time.time() - self.start_time)
         )
+        logger.info(
+            f"Potential crashes detected: {self.fuzzer_stats['potential_crashes']}"
+        )
         logger.info("-" * 30)
 
     def cleanup_sim(self):
