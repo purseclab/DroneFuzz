@@ -7,6 +7,7 @@
 import argparse
 import time
 import re
+from pandas.io.sql import com
 import yaml
 import os
 import random
@@ -58,23 +59,6 @@ def setup_logging(log_level=logging.INFO):
     file_handler.setFormatter(file_formatter)
     console_handler.setFormatter(console_formatter)
 
-    # Create a filter for console handler to only show certain messages
-    class ConsoleFilter(logging.Filter):
-        def __init__(self):
-            super().__init__()
-            self.last_message = ""
-
-        def filter(self, record):
-            # Store the last message
-            self.last_message = record.getMessage()
-            # Only show the most recent message (overwrite previous)
-            record.msg = f"{self.last_message:<80}"  # Pad to fixed width
-            # Only show WARNING and above, plus specific INFO messages
-            return record.levelno >= logging.WARNING
-
-    console_filter = ConsoleFilter()
-    console_handler.addFilter(console_filter)
-
     # Add handlers to logger
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
@@ -84,7 +68,6 @@ def setup_logging(log_level=logging.INFO):
 
 
 # Initialize logger
-logger = setup_logging()
 
 mavlink_timeout = 5
 approx_threshold = 0.1  # Threshold for approximate location matching
@@ -603,8 +586,9 @@ class FuzzConfig:
                     # Replace with current time
                     if "time" in default_values:
                         time_idx = default_values.index("time")
-                        default_values[time_idx] = int(
-                            time.time() - self.fuzzer_stats["current_mission_time"]
+                        default_values[time_idx] = round(
+                            (time.time() - self.fuzzer_stats["current_mission_time"])
+                            * 1000
                         )
                     self.send_fuzzed_message(
                         xml_msg["msg_name"], xml_msg["msg_id"], default_values
@@ -693,6 +677,11 @@ class FuzzConfig:
             with open(self.fuzzer_param_file, "w") as f:
                 for parameter, values in self.peripheral_config["parameters"].items():
                     f.write(f"{parameter} {values}\n")
+        # Create a temporary folder for the fuzzed messages locally in the same directory that we are running
+        self.fuzzer_temp_dir = tempfile.mkdtemp("pgfuzz", "fuzzing_data", os.getcwd())
+        logger.info(
+            f"Creating temporary directory for fuzzed messages: {self.fuzzer_temp_dir}"
+        )
 
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
@@ -722,8 +711,10 @@ class FuzzConfig:
     def monitor_auto_mission(self):
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
+        self.start_fuzzing()
         while self.tcp_conn.drone_in_air:
             time.sleep(3)
+        self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
         """
@@ -895,8 +886,13 @@ class FuzzConfig:
         )
 
     def oracle(self):
-        distance, _ = self.calculate_dtw(self.golden_rc_vals, self.rcou_vals)
-        logger.info(f"DTW distance calculated: {distance} | {self.get_stats_summary()}")
+        combined_distance = 0.0
+        for golden_rc_vals in self.golden_rc_vals:
+            combined_distance, _ = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
+            logger.info(
+                f"DTW distance calculated: {combined_distance} | {self.get_stats_summary()}"
+            )
+        distance = combined_distance / len(self.golden_rc_vals)
         min_fuzz_threshold = (
             self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
         )
@@ -909,9 +905,8 @@ class FuzzConfig:
             )
             self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis
-        # TODO Save to the local dir
         input_file = tempfile.mkstemp(
-            suffix=".txt", prefix="pgfuzz-inputs", dir="/tmp"
+            suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_dir
         )[1]
         logger.info(f"Saving inputs to {input_file}")
         with open(input_file, "w") as f:
@@ -967,6 +962,13 @@ class FuzzConfig:
                         (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                     )
                     field_values.append(current_time)
+                elif type(field["type"]) is list:
+                    min, max, inc = field["type"]
+                    field_value = None
+                    if (min == "float") & (max == "float") & (inc is None):
+                        # Handling a specific case of params
+                        field_value = generate_field_value("float")
+                        field_values.append(field_value)
                 # Else use the generate_field_value function
                 else:
                     field_values.append(generate_field_value(field["type"]))
@@ -981,7 +983,7 @@ class FuzzConfig:
             except Exception as e:
                 logger.error(f"Error sending fuzzed message: {e}")
 
-            time.sleep(self.fuzz_interval)
+            time.sleep(1 / self.fuzz_interval)
 
     def send_fuzzed_message(self, msg_name, msg_id, field_values):
         """Send a fuzzed message using the MAVLink connection."""
@@ -997,7 +999,14 @@ class FuzzConfig:
         except AttributeError:
             # If the message class doesn't exist, use a more generic approach
             logger.warning(f"Message class for {msg_name} not found, using raw send")
-            self.tcp_conn.conn.mav.send_raw_mavlink(msg_id, *field_values)
+            packed_msg = mavutil.mavlink.MAVLink_command_long_message(
+                0,  # target_system
+                0,  # target_component
+                int(msg_id),  # command
+                0,  # confirmation
+                *field_values,  # parameters
+            )
+            self.tcp_conn.conn.mav.send(packed_msg)
         except Exception as e:
             logger.error(f"Error sending message {msg_name}: {e}")
 
@@ -1067,39 +1076,45 @@ if __name__ == "__main__":
         )
         args = argument_parser.parse_args()
 
+        logger = setup_logging()
         cfg = FuzzConfig(args)
 
         # Establish the threshold for the fuzzing runs
         # Run the mission with simulations and default parameters
-        print("\nBeginning calibration")
+        logger.info("\nBeginning calibration")
         cfg.calibration_active = True
 
         # Create tqdm progress bar for calibration
-        calib_pbar = tqdm(range(0, cfg.calibration_rounds), desc="Calibration Progress")
-
-        # Function to update calibration tqdm with stats
-        def update_calib_tqdm_postfix(i, total):
-            calib_pbar.set_postfix(
-                {
-                    "round": f"{i+1}/{total}",
-                    "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
-                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                }
-            )
-
-        for i in calib_pbar:
+        # calib_pbar = tqdm(range(0, cfg.calibration_rounds), desc="Calibration Progress")
+        #
+        # # Function to update calibration tqdm with stats
+        # def update_calib_tqdm_postfix(i, total):
+        #     calib_pbar.set_postfix(
+        #         {
+        #             "round": f"{i+1}/{total}",
+        #             "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+        #             "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+        #         }
+        #     )
+        #     calib_pbar.refresh()  # Force refresh the progress bar
+        #
+        # for i in calib_pbar:
+        for i in range(cfg.calibration_rounds):
             logger.info(f"Starting calibration round {i+1}/{cfg.calibration_rounds}")
             cfg.run_sim()
 
             logger.info("Waiting for drone to be ready with GPS lock...")
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                time.sleep(3)
+                time.sleep(1)
 
-            if not cfg.shutdown_requested:
-                cfg.send_mission()
+            if cfg.shutdown_requested:
+                cfg.cleanup_and_exit()
+                exit(0)
+            else:
+                cfg.send_mission(fuzzing=True)
 
             cfg.cleanup_sim()
-            update_calib_tqdm_postfix(i, cfg.calibration_rounds)
+            # update_calib_tqdm_postfix(i, cfg.calibration_rounds)
         cfg.fuzzer_stats["dtw_threshold"] = (
             cfg.fuzzer_stats["dtw_threshold"] / cfg.calibration_rounds
         )
@@ -1114,20 +1129,21 @@ if __name__ == "__main__":
         # Run the simulation with fuzzing
         # Main loop with progress tracking and stats
         fuzzing_iterations = 0
-        pbar = tqdm()
+        # pbar = tqdm()
 
         # Function to update tqdm with stats
-        def update_tqdm_postfix():
-            pbar.set_postfix(
-                {
-                    "sims": cfg.fuzzer_stats["simulations_completed"],
-                    "msgs": cfg.fuzzer_stats["messages_sent"],
-                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                    "dtw": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
-                    "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
-                }
-            )
-
+        # def update_tqdm_postfix():
+        #     pbar.set_postfix(
+        #         {
+        #             "sims": cfg.fuzzer_stats["simulations_completed"],
+        #             "msgs": cfg.fuzzer_stats["messages_sent"],
+        #             "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+        #             "dtw": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+        #             "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
+        #         }
+        #     )
+        #     pbar.refresh()  # Force refresh the progress bar
+        #
         while not cfg.shutdown_requested:
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
@@ -1135,14 +1151,15 @@ if __name__ == "__main__":
 
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
                 logger.info("Waiting for drone to be ready with GPS lock...")
-                time.sleep(3)
+                time.sleep(1)
+                # pbar.refresh()  # Keep progress bar visible during waiting
 
             if not cfg.shutdown_requested:
                 cfg.send_mission()
 
             cfg.cleanup_sim()
-            pbar.update(1)
-            update_tqdm_postfix()
+            # pbar.update(1)
+            # update_tqdm_postfix()
             # except Exception as e:
             #     print(f"Error in main loop: {e}")
             #     if not cfg.shutdown_requested:

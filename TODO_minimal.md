@@ -24,11 +24,13 @@
 - DONE Fix the base distance with random messages
   - 2025-05-08 09:24 Currently running a mission with patched bug to check
 - DONE Figure out if we can use the ENUMs somehow actually
+- DONE Save to local file
 
 ## TODO
 
 - TODO Remove clean duplication ???
-- TODO Figure out how to effectively fuzz in Auto mode
+- DONE Figure out how to effectively fuzz in Auto mode
+- TODO Figure out param issue
 - TODO Figure out a way to duplicate results, how can we re-run the generate messages?
   - IN progress -> Can do that with the generated log message?
 - TODO Send the fuzzing message in the same way as periodic messages
