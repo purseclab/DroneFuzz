@@ -495,13 +495,13 @@ class FuzzConfig:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_file}")
         # Just check if the file contains atleast sitl_bin and ap_dir
-        if not self.config.get("sitl_bin") or not self.config.get("ap_dir"):
+        if not self.config.get("sitl_bin") or not self.config.get("ap_dir") or not self.config.get("peripheral_file"):
             raise ValueError(
-                "Atleast SITL binary and Ardupilot directory are required in the config file."
+                "Atleast SITL binary and peripheral_file are required in the config file."
             )
         
         # Load peripheral mapping from peripheral YAML file
-        self.peripheral_file = args.peripheral_file if args.peripheral_file else None
+        self.peripheral_file = args.peripheral_file if args.peripheral_file else self.config.get("peripheral_file")
         self.peripheral_mapping = {}
         if self.peripheral_file and os.path.exists(self.peripheral_file):
             with open(self.peripheral_file, "r") as f:
