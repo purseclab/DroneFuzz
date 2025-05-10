@@ -1,0 +1,89 @@
+# Sensor type mappings with their parameters, message types and frequencies
+sensors:
+  OpticalFlow:
+    parameters:
+      FLOW_TYPE: 5
+    frequency: [-1, -1, -1]
+    msg_type:
+      - OPTICAL_FLOW
+      - OPTICAL_FLOW_RAD
+      - HIL_OPTICAL_FLOW
+
+  AP_Rangefinder:
+    parameters:
+      RNGFND_TYPE: 5
+    msg_type:
+      - DISTANCE_SENSOR
+
+  AP_EFI:
+    parameters:
+      EFI_TYPE: 9
+    msg_type:
+      - EFI_STATUS
+
+  AP_Proximity:
+    parameters:
+      PRX_TYPE: 2
+    msg_type:
+      - OBSTACLE_DISTANCE_3D
+    frequency: [25]
+    default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
+
+  AP_ADSB:
+    parameters:
+      ADSB_TYPE: 2
+    msg_type:
+      - ADSB_VEHICLE
+    frequency: [-1]
+
+  AP_Gimbal:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - MAV_CMD_DO_MOUNT_CONTROL
+    frequency: [-1]
+
+  GPS:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - GPS_RAW_INT
+      - GPS_STATUS
+      - SET_GPS_GLOBAL_ORIGIN
+      - GPS_GLOBAL_ORIGIN
+      - HIL_GPS
+      - GPS_INJECT_DATA
+      - GPS2_RAW
+      - GPS_RKT
+      - GPS_INPUT
+      - GPS_RTCM_DATA
+      - GPS2_RKT
+    frequency: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1]
+
+  Terrain:
+    msg_type:
+      - TERRAIN_DATA
+    frequency: [-1]
+
+  Fence:
+    msg_type:
+      - FENCE_POINT
+      - FENCE_FETCH_POINT
+      - FENCE_STATUS
+    frequency: [-1, -1, -1]
+
+  OSD:
+    msg_type:
+      - OSD_PARAM_SHOW_CONFIG
+      - OSD_PARAM_CONFIG_REPLY
+      - OSD_PARAM_SHOW_CONFIG_REPLY
+      - OSD_PARAM_CONFIG
+    frequency: [-1, -1, -1, -1]
+
+  OpenDroneID:
+    msg_type:
+      - OSD_PARAM_SHOW_CONFIG
+      - OSD_PARAM_CONFIG_REPLY
+      - OSD_PARAM_SHOW_CONFIG_REPLY
+      - OSD_PARAM_CONFIG
+    frequency: [-1, -1, -1, -1]
