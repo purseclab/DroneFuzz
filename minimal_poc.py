@@ -795,8 +795,8 @@ class FuzzConfig:
 
     def signal_handler(self, _signum, _frame):
         """Handle shutdown signals gracefully"""
-        print("Shutdown requested...")
-        print("Will terminate after current execution")
+        print("\nShutdown requested...")
+        print("Will terminate after current execution\n")
         self.shutdown_requested = True
 
     def cleanup_and_exit(self):
@@ -1087,36 +1087,38 @@ if __name__ == "__main__":
         cfg.calibration_active = True
 
         # Create tqdm progress bar for calibration
-        # calib_pbar = tqdm(range(0, cfg.calibration_rounds), desc="Calibration Progress")
-        #
-        # # Function to update calibration tqdm with stats
-        # def update_calib_tqdm_postfix(i, total):
-        #     calib_pbar.set_postfix(
-        #         {
-        #             "round": f"{i+1}/{total}",
-        #             "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
-        #             "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-        #         }
-        #     )
-        #     calib_pbar.refresh()  # Force refresh the progress bar
-        #
-        # for i in calib_pbar:
-        for i in range(cfg.calibration_rounds):
+        calib_pbar = tqdm(range(cfg.calibration_rounds), desc="Calibration Progress")
+
+        # Function to update calibration tqdm with stats
+        def update_calib_tqdm_postfix():
+            calib_pbar.set_postfix(
+                {
+                    "round": f"{calib_pbar.n + 1}/{cfg.calibration_rounds}",
+                    "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+                }
+            )
+            # tqdm.write can be used here for important messages if needed
+            # For example: tqdm.write(f"Important calibration update for round {calib_pbar.n + 1}")
+
+        for i in calib_pbar:
             logger.info(f"Starting calibration round {i+1}/{cfg.calibration_rounds}")
+            # Use tqdm.write for messages that should not interfere with the bar
+            tqdm.write(f"Calibration Round: {i+1}/{cfg.calibration_rounds}")
             cfg.run_sim()
 
             logger.info("Waiting for drone to be ready with GPS lock...")
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                time.sleep(1)
+                time.sleep(3)
 
             if cfg.shutdown_requested:
                 cfg.cleanup_and_exit()
                 exit(0)
             else:
-                cfg.send_mission(fuzzing=True)
+                cfg.send_mission()
 
             cfg.cleanup_sim()
-            # update_calib_tqdm_postfix(i, cfg.calibration_rounds)
+            update_calib_tqdm_postfix()
         cfg.fuzzer_stats["dtw_threshold"] = (
             cfg.fuzzer_stats["dtw_threshold"] / cfg.calibration_rounds
         )
@@ -1131,39 +1133,43 @@ if __name__ == "__main__":
         # Run the simulation with fuzzing
         # Main loop with progress tracking and stats
         fuzzing_iterations = 0
-        # pbar = tqdm()
+        pbar = tqdm(desc="Fuzzing Progress")
 
         # Function to update tqdm with stats
-        # def update_tqdm_postfix():
-        #     pbar.set_postfix(
-        #         {
-        #             "sims": cfg.fuzzer_stats["simulations_completed"],
-        #             "msgs": cfg.fuzzer_stats["messages_sent"],
-        #             "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-        #             "dtw": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
-        #             "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
-        #         }
-        #     )
-        #     pbar.refresh()  # Force refresh the progress bar
-        #
+        def update_tqdm_postfix():
+            pbar.set_postfix(
+                {
+                    "sims": cfg.fuzzer_stats["simulations_completed"],
+                    "msgs": cfg.fuzzer_stats["messages_sent"],
+                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+                    "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}", # dtw_threshold is now an average
+                    "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
+                }
+            )
+            # Example of printing an important message during fuzzing
+            # if cfg.fuzzer_stats['potential_crashes'] > 0:
+            #     tqdm.write(f"Potential crash detected! Count: {cfg.fuzzer_stats['potential_crashes']}")
+
         while not cfg.shutdown_requested:
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
+            tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
             cfg.run_sim()
 
-            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                logger.info("Waiting for drone to be ready with GPS lock...")
+            logger.info("Waiting for drone to be ready with GPS lock...")
+            tqdm.write("Waiting for drone GPS lock...")
+            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested: 
                 time.sleep(1)
-                # pbar.refresh()  # Keep progress bar visible during waiting
+                pbar.refresh()  # Keep progress bar visible during waiting
 
             if not cfg.shutdown_requested:
                 cfg.send_mission()
 
             cfg.cleanup_sim()
-            # pbar.update(1)
-            # update_tqdm_postfix()
+            pbar.update(1)
+            update_tqdm_postfix()
             # except Exception as e:
-            #     print(f"Error in main loop: {e}")
+            #     tqdm.write(f"Error in main loop: {e}") # Use tqdm.write for errors too
             #     if not cfg.shutdown_requested:
             #         print("Attempting to restart simulation...")
             #         time.sleep(5)  # Wait before retrying

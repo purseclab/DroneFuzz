@@ -28,15 +28,14 @@
 - DONE Figure out how to effectively fuzz in Auto mode
 - DONE Figure out param issue
 - DONE Fix the fuzzing inside auto mode?
-
+- DONE Send the fuzzing message in the same way as periodic messages
+  - Can use the same function as the periodic messages
 
 ## TODO
 
 - TODO Remove clean duplication ???
 - TODO Figure out a way to duplicate results, how can we re-run the generate messages?
   - IN progress -> Can do that with the generated log message?
-- TODO Send the fuzzing message in the same way as periodic messages
-  - Can use the same function as the periodic messages
 - TODO Fix to a generic mission that does everything
   - Can use a variant that forcibly changes modes
 - TODO Add SIM/CFG parameters from PGFUZZ
