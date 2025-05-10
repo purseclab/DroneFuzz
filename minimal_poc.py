@@ -32,28 +32,30 @@ import copy
 
 
 # Setup logging
-def setup_logging(log_level=logging.INFO):
+def setup_logging():
     """Setup logging with timestamp in filename"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"pgfuzz_{timestamp}.log"
 
     # Create logger
     logger = logging.getLogger("pgfuzz")
-    logger.setLevel(log_level)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+
 
     # Create file handler for all logs
     file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(log_level)
+    file_handler.setLevel(logging.INFO)
 
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(log_level)
+    console_handler.setLevel(logging.WARNING)
 
     # Create formatters
     file_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    console_formatter = logging.Formatter("\r%(message)s")
+    console_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # Apply formatters
     file_handler.setFormatter(file_formatter)
@@ -63,7 +65,7 @@ def setup_logging(log_level=logging.INFO):
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    logger.info(f"Logging initialized. Log file: {log_filename}")
+    print(f"Logging initialized. Log file: {log_filename}")
     return logger
 
 
@@ -141,7 +143,7 @@ class TCPConn:
                 )
                 time.sleep(1)  # Sleep for a second before sending the next heartbeat
             except Exception as e:
-                print(f"Error in send_heartbeat: {e}")
+                logger.error(f"Error in send_heartbeat: {e}")
                 if not self.shutdown_requested:
                     time.sleep(1)
         logger.info("Connection closed, stopping heartbeat thread.")
@@ -370,8 +372,6 @@ def include_xml(elem, base_path, processed_files=None):
     for include in elem.xpath(".//include"):
         filename = include.text
         filepath = os.path.join(base_path, filename)
-        # print(f"Processing include: {filepath}")
-
         # Check if the file has already been processed
         if filepath in processed_files:
             # print(f"Skipping already processed file: {filepath}")
@@ -574,7 +574,7 @@ class FuzzConfig:
         self.fuzzer_param_file = None
         self.setup()
         if self.msg_freq:
-            print("Setting the fuzzing interval to match message frequency")
+            logger.info("Setting the fuzzing interval to match message frequency")
             self.fuzz_interval = self.msg_freq
 
     def periodic_send(self, frequency, xml_msg, default_values):
@@ -862,7 +862,7 @@ class FuzzConfig:
                     self.fuzzer_stats["dtw_threshold"] = (
                         self.fuzzer_stats["dtw_threshold"] + distance
                     )
-                    self.golden_rc_vals = self.rcou_vals
+                    self.golden_rc_vals.append(self.rcou_vals)
                 else:
                     self.oracle()
             else:
@@ -890,9 +890,9 @@ class FuzzConfig:
         for golden_rc_vals in self.golden_rc_vals:
             combined_distance, _ = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
             logger.info(
-                f"DTW distance calculated: {combined_distance} | {self.get_stats_summary()}"
+                f"DTW distance calculated: {combined_distance} len: {len(self.golden_rc_vals)}"
             )
-        distance = combined_distance / len(self.golden_rc_vals)
+        distance = (combined_distance / len(self.golden_rc_vals))
         min_fuzz_threshold = (
             self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
         )
@@ -998,7 +998,6 @@ class FuzzConfig:
             self.tcp_conn.conn.mav.send(msg)
         except AttributeError:
             # If the message class doesn't exist, use a more generic approach
-            logger.warning(f"Message class for {msg_name} not found, using raw send")
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
                 0,  # target_system
                 0,  # target_component
