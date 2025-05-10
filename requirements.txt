@@ -1,0 +1,22 @@
+colorlog==6.8.2
+numpy
+pandas
+psutil==6.1.1
+pymavlink==2.4.41
+requests==2.32.3
+scipy
+lxml==5.3.0
+scikit-learn==1.6.1
+fastdtw==0.3.4
+# tensorflow==2.18.0
+# matplotlib==3.10.0
+# From ArduPilot
+future
+MAVProxy
+pexpect
+geocoder
+empy==3.3.4
+ptyprocess
+dronecan
+pyyaml
+tqdm
