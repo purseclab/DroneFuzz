@@ -25,19 +25,20 @@
   - 2025-05-08 09:24 Currently running a mission with patched bug to check
 - DONE Figure out if we can use the ENUMs somehow actually
 - DONE Save to local file
+- DONE Figure out how to effectively fuzz in Auto mode
+- DONE Figure out param issue
+- DONE Fix the fuzzing inside auto mode?
+
 
 ## TODO
 
 - TODO Remove clean duplication ???
-- DONE Figure out how to effectively fuzz in Auto mode
-- TODO Figure out param issue
 - TODO Figure out a way to duplicate results, how can we re-run the generate messages?
   - IN progress -> Can do that with the generated log message?
 - TODO Send the fuzzing message in the same way as periodic messages
   - Can use the same function as the periodic messages
 - TODO Fix to a generic mission that does everything
   - Can use a variant that forcibly changes modes
-- TODO Fix the fuzzing inside auto mode?
 - TODO Add SIM/CFG parameters from PGFUZZ
   - Since we keep track of the time since the simulation start we can effectively set the time for the message
 - TODO Figure out to check all configurations before starting stuff
