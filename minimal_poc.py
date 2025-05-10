@@ -494,7 +494,12 @@ class FuzzConfig:
             with open(self.config_file, "r") as f:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_file}")
-
+        # Just check if the file contains atleast sitl_bin and ap_dir
+        if not self.config.get("sitl_bin") or not self.config.get("ap_dir"):
+            raise ValueError(
+                "Atleast SITL binary and Ardupilot directory are required in the config file."
+            )
+        
         # Load peripheral mapping from peripheral YAML file
         self.peripheral_file = args.peripheral_file if args.peripheral_file else None
         self.peripheral_mapping = {}
@@ -513,7 +518,7 @@ class FuzzConfig:
         # Auto mission configuration
         self.auto_mission_enabled = False
         self.auto_mission_path = (
-            args.auto_mission if args.auto_mission else self.config.get("auto_mission")
+            args.auto_mission if args.auto_mission else self.config.get("mission_file")
         )
         if self.auto_mission_path and file_exists(self.auto_mission_path):
             logger.info("Mission file found, AUTO mode testing enabled")
@@ -561,7 +566,7 @@ class FuzzConfig:
         self.fuzzer_dtw_threshold = (
             args.dtw_threshold
             if args.dtw_threshold
-            else self.config.get("dtw_threshold", 50.00)
+            else self.config.get("dtw_threshold", 100.00)
         )
         self.sim_ready = False
         self.fuzz_interval = self.config.get(
@@ -1046,7 +1051,6 @@ if __name__ == "__main__":
             help="Path to MAVLink XML definition file",
             required=False,
         )
-        # TODO: XOR this functionality where you can basically specify either a config file or cli args
         argument_parser.add_argument(
             "--config",
             type=str,
@@ -1056,7 +1060,6 @@ if __name__ == "__main__":
             "--peripheral_file",
             type=str,
             help="YAML file for peripheral mapping",
-            required=True,
         )
         argument_parser.add_argument(
             "--vehicle",
@@ -1077,6 +1080,27 @@ if __name__ == "__main__":
             required=False,
         )
         args = argument_parser.parse_args()
+
+        # Check for required arguments if --config is not provided
+        if not args.config:
+            missing_args = []
+            if not args.bin:
+                missing_args.append("--bin")
+            if not args.peripheral:
+                missing_args.append("--peripheral")
+            if not args.xml:
+                missing_args.append("--xml")
+            if not args.peripheral_file:
+                missing_args.append("--peripheral_file")
+            if not args.ap_dir:
+                missing_args.append("--ap_dir")
+            
+            if missing_args:
+                argument_parser.error(
+                    "The following arguments are required when --config is not provided: {}".format(
+                        ", ".join(missing_args)
+                    )
+                )
 
         logger = setup_logging()
         cfg = FuzzConfig(args)

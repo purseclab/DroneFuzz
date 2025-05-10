@@ -1,0 +1,14 @@
+# Use full paths, it's not that hard
+## Sim parameters
+sitl_bin: /pgfuzz/src/build/sitl/bin/arducopter
+peripheral_file: /pgfuzz/mapping.yaml
+ap_dir: /pgfuzz/src/
+xml_file: /pgfuzz/src/xmls/ardupilotmega.xml
+peripheral: AP_Gimbal
+vehicle: copter
+# yaml_file: /pgfuzz/mapping.yaml
+mission_file: /pgfuzz/mission.txt
+calibration_rounds: 10
+# param_file:
+## Fuzzer configs
+# timeout: 1000
