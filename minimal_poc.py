@@ -52,7 +52,7 @@ def setup_logging(log_level=logging.INFO):
     file_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    console_formatter = logging.Formatter("%(levelname)s: %(message)s")
+    console_formatter = logging.Formatter("\r%(message)s")
 
     # Apply formatters
     file_handler.setFormatter(file_formatter)
@@ -60,11 +60,20 @@ def setup_logging(log_level=logging.INFO):
 
     # Create a filter for console handler to only show certain messages
     class ConsoleFilter(logging.Filter):
+        def __init__(self):
+            super().__init__()
+            self.last_message = ""
+
         def filter(self, record):
+            # Store the last message
+            self.last_message = record.getMessage()
+            # Only show the most recent message (overwrite previous)
+            record.msg = f"{self.last_message:<80}"  # Pad to fixed width
             # Only show WARNING and above, plus specific INFO messages
             return record.levelno >= logging.WARNING
 
-    console_handler.addFilter(ConsoleFilter())
+    console_filter = ConsoleFilter()
+    console_handler.addFilter(console_filter)
 
     # Add handlers to logger
     logger.addHandler(file_handler)
@@ -349,6 +358,28 @@ class TCPConn:
         return rcou_list
 
 
+def get_enum(root, enum_name):
+    """
+    Find and return a list of enum values for the given enum name.
+    Returns a dictionary with entry names as keys and their values and descriptions.
+    """
+    enum_elements = root.xpath(f"//enum[@name='{enum_name}']")
+    if not enum_elements:
+        print(f"Enum '{enum_name}' not found")
+        return None
+
+    enum_values = []
+    for enum in enum_elements:
+        for entry in enum.xpath(".//entry"):
+            # name = entry.get("name")
+            value = entry.get("value")
+            # description = entry.xpath("./description")
+            # desc_text = description[0].text if description else "No description"
+            enum_values.append(value)
+
+    return enum_values
+
+
 def include_xml(elem, base_path, processed_files=None):
     if processed_files is None:
         processed_files = set()
@@ -400,19 +431,24 @@ def load_xml_messages(file_path: str, filter: list) -> list:
             # Check if the message name is inside the filter list
             if msg_name in filter:
                 fields = []
-                # print("Debug: Found the message {}".format(msg_name))
+                logging.debug("Found the message {}".format(msg_name))
                 if msg.xpath(".//field"):
                     for entry in msg.xpath(".//field"):
                         entry_name = entry.get("name")
                         entry_value = entry.get("type")
                         entry_desc = entry.text
-                        fields.append(
-                            {
-                                "name": entry_name,
-                                "type": entry_value,
-                                "desc": entry_desc,
-                            }
-                        )
+                        entry_enum = entry.get("enum", None)
+                        enum_vals = None
+                        if entry_enum:
+                            enum_vals = get_enum(root, entry_enum)
+                        field_entry = {
+                            "name": entry_name,
+                            "type": entry_value,
+                            "desc": entry_desc,
+                        }
+                        if enum_vals:
+                            field_entry["enum_vals"] = enum_vals
+                        fields.append(field_entry)
                 elif msg.xpath(".//param"):
                     for param in msg.xpath(".//param"):
                         param_name = param.get("label")
@@ -542,17 +578,21 @@ class FuzzConfig:
         self.fuzzer_dtw_threshold = (
             args.dtw_threshold
             if args.dtw_threshold
-            else self.config.get("dtw_threshold", 100.00)
+            else self.config.get("dtw_threshold", 50.00)
         )
         self.sim_ready = False
         self.fuzz_interval = self.config.get(
             "fuzz_interval", 0.5
         )  # Send a fuzzed message every 0.5 seconds
+        self.msg_freq = None
         self.fuzz_msgs = []
 
         # Initialize fuzzer
         self.fuzzer_param_file = None
         self.setup()
+        if self.msg_freq:
+            print("Setting the fuzzing interval to match message frequency")
+            self.fuzz_interval = self.msg_freq
 
     def periodic_send(self, frequency, xml_msg, default_values):
         logger.info(f"Starting periodic send for {xml_msg} every {frequency} seconds")
@@ -582,7 +622,7 @@ class FuzzConfig:
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
             "dtw_threshold": 0.0,
-            "first_bug": 0.0,
+            "potential_crashes": 0.0,
         }
 
         # Get the peripheral mapping for the selected peripheral
@@ -631,8 +671,9 @@ class FuzzConfig:
                         "default_msg", {}
                     )
                     logger.info(
-                        f"Default message for {msg_freq}: {self.default_msg[msg_idx]}"
+                        f"Default message sent at {msg_freq}: {self.default_msg[msg_idx]}"
                     )
+                    self.msg_freq = msg_freq
                 except KeyError:
                     logger.error(
                         "Can't find default msg for frequency, Not spawning threads"
@@ -801,9 +842,6 @@ class FuzzConfig:
         logger.info(
             "Total time taken: {:.2f} seconds".format(time.time() - self.start_time)
         )
-        logger.info(
-            "First bug detected: {:.2f} seconds".format(self.fuzzer_stats["first_bug"])
-        )
         logger.info("-" * 30)
 
     def cleanup_sim(self):
@@ -857,7 +895,7 @@ class FuzzConfig:
         )
 
     def oracle(self):
-        distance, _path = self.calculate_dtw(self.golden_rc_vals, self.rcou_vals)
+        distance, _ = self.calculate_dtw(self.golden_rc_vals, self.rcou_vals)
         logger.info(f"DTW distance calculated: {distance} | {self.get_stats_summary()}")
         min_fuzz_threshold = (
             self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
@@ -866,12 +904,12 @@ class FuzzConfig:
             self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
         )
         if (distance < min_fuzz_threshold) or (distance > max_fuzz_threshold):
-            logger.warning(
+            logger.info(
                 f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
             )
-            if self.fuzzer_stats["first_bug"] == 0.0:
-                self.fuzzer_stats["first_bug"] = time.time() - self.start_time
+            self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis
+        # TODO Save to the local dir
         input_file = tempfile.mkstemp(
             suffix=".txt", prefix="pgfuzz-inputs", dir="/tmp"
         )[1]
@@ -921,6 +959,15 @@ class FuzzConfig:
                 elif "obstacle_id" in field["name"]:
                     obstacle_id = 65535
                     field_values.append(obstacle_id)
+                # If we have enum values, pick a random one
+                elif "enum_vals" in field:
+                    field_values.append(int(random.choice(field["enum_vals"])))
+                elif "time" in field["name"]:
+                    current_time = round(
+                        (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
+                    )
+                    field_values.append(current_time)
+                # Else use the generate_field_value function
                 else:
                     field_values.append(generate_field_value(field["type"]))
             # Send the fuzzed message
@@ -1077,6 +1124,7 @@ if __name__ == "__main__":
                     "msgs": cfg.fuzzer_stats["messages_sent"],
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
                     "dtw": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+                    "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
 
