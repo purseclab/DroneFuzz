@@ -43,6 +43,29 @@ def parse_xml_file(file_path):
     return root
 
 
+def get_enum(root, enum_name):
+    """
+    Find and return a list of enum values for the given enum name.
+    Returns a dictionary with entry names as keys and their values and descriptions.
+    """
+    enum_elements = root.xpath(f"//enum[@name='{enum_name}']")
+    if not enum_elements:
+        print(f"Enum '{enum_name}' not found")
+        return None
+
+    enum_values = []
+    for enum in enum_elements:
+        for entry in enum.xpath(".//entry"):
+            name = entry.get("name")
+            value = entry.get("value")
+            # description = entry.xpath("./description")
+            # desc_text = description[0].text if description else "No description"
+            # enum_values[name] = {"value": value}
+            enum_values.append(value)
+
+    return enum_values
+
+
 def print_messages(root, filter):
     msg_elements = root.xpath("//messages/message")
     msg_elements += root.xpath("//entry")
@@ -56,7 +79,15 @@ def print_messages(root, filter):
                     for field in msg.xpath(".//field"):
                         field_name = field.get("name")
                         field_type = field.get("type")
-                        print(f"  Field: {field_name}, Type: {field_type}")
+                        field_enum = field.get("enum", None)
+                        print(
+                            f"  Field: {field_name}, Type: {field_type} Enum: {field_enum}"
+                        )
+                        if field_enum:
+                            enum_values = get_enum(root, field_enum)
+                            if enum_values:
+                                print(f"Enum values for {field_enum}:")
+                                print(f"  {enum_values}")
                 elif msg.xpath(".//param"):
                     for param in msg.xpath(".//param"):
                         param_name = param.get("label")
@@ -77,8 +108,61 @@ def print_messages(root, filter):
 def main():
     main_file = "xmls/ardupilotmega.xml"
     root = parse_xml_file(main_file)
-    filter = ["MAV_CMD_DO_MOUNT_CONTROL"]
-    print_messages(root, filter)
+    filter_list = ["MAV_CMD_DO_MOUNT_CONTROL","OBSTACLE_DISTANCE_3D"]
+    print_messages(root, filter_list)
+
+    # Example of using load_xml_messages
+    # messages = load_xml_messages(main_file, filter_list)
+    # if messages:
+    #     print("\nLoaded message details:")
+    #     for msg in messages:
+    #         print(f"Message: {msg['msg_name']} (ID: {msg['msg_id']})")
+    #         for field in msg["fields"]:
+    #             print(f"  Field: {field['name']}, Type: {field['type']}")
+    #             if "enum_values" in field:
+    #                 print(f"    Enum values for {field['enum']}:")
+    #                 print(f"      {field['enum_values']}")
+
+
+def load_xml_messages(file_path: str, filter_list: list) -> list:
+    """
+    Load and parse XML messages, returning a list of message definitions.
+    Each message includes its fields and any enum values for those fields.
+    """
+    root = parse_xml_file(file_path)
+    messages = []
+
+    msg_elements = root.xpath("//messages/message")
+    msg_elements += root.xpath("//entry")
+
+    for msg in msg_elements:
+        msg_name = msg.get("name")
+        if msg_name in filter_list:
+            msg_id = msg.get("id")
+            message_info = {"msg_name": msg_name, "msg_id": msg_id, "fields": []}
+
+            if msg.xpath(".//field"):
+                for field in msg.xpath(".//field"):
+                    field_name = field.get("name")
+                    field_type = field.get("type")
+                    field_enum = field.get("enum")
+
+                    field_info = {
+                        "name": field_name,
+                        "type": field_type,
+                    }
+
+                    if field_enum:
+                        enum_values = get_enum(root, field_enum)
+                        if enum_values:
+                            field_info["enum"] = field_enum
+                            field_info["enum_values"] = enum_values
+
+                    message_info["fields"].append(field_info)
+
+            messages.append(message_info)
+
+    return messages
 
 
 if __name__ == "__main__":
