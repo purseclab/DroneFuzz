@@ -38,7 +38,7 @@ sensors:
 
   AP_Gimbal:
     parameters:
-      MNT_TYPE: 4
+      MNT1_TYPE: 4
     msg_type:
       - MAV_CMD_DO_MOUNT_CONTROL
     frequency: [-1]
