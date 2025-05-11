@@ -171,8 +171,22 @@ class TCPConn:
                         self._monitor_flags(msg)
                     if msg.get_type() == "COMMAND_ACK":
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
-                            logger.error(f"Command failed: {msg}")
-                            self.shutdown_requested = True
+                            # Only create an error if the command was a arming/land/takeoff/auto
+                            # Upload mission for rest of the commands just warn
+                            if msg.command in [
+                                mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
+                                mavutil.mavlink.MAV_CMD_NAV_LAND,
+                                mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+                                mavutil.mavlink.MAV_CMD_MISSION_START,
+                            ]:
+                                logger.error(
+                                    f"Command failed: {msg.command} with result: {msg.result}"
+                                )
+                                self.internal_error = True
+                                self.shutdown_requested = True
+                            logger.warning(
+                                f"Command failed: {msg.command} with result: {msg.result}"
+                            )
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
                         drone_loc_state = {}
