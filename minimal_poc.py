@@ -1155,7 +1155,7 @@ if __name__ == "__main__":
                 cfg.cleanup_and_exit()
                 exit(0)
             else:
-                cfg.send_mission()
+                cfg.send_mission(fuzzing=False)
 
             cfg.cleanup_sim()
             update_calib_tqdm_postfix()
