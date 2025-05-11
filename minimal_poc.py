@@ -45,7 +45,7 @@ def setup_logging():
 
     # Create file handler for all logs
     file_handler = logging.FileHandler(log_filename)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
 
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
@@ -166,7 +166,7 @@ class TCPConn:
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
-                        # print(msg.text)
+                        logger.debug(msg.text)
                         # Crazy check because pymavlink lock doesn't work
                         self._monitor_flags(msg)
                     if msg.get_type() == "COMMAND_ACK":
@@ -1180,7 +1180,6 @@ if __name__ == "__main__":
             tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
             cfg.run_sim()
 
-            logger.info("Waiting for drone to be ready with GPS lock...")
             tqdm.write("Waiting for drone GPS lock...")
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested: 
                 time.sleep(1)
