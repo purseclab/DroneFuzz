@@ -910,12 +910,13 @@ class FuzzConfig:
     def oracle(self):
         combined_distance = 0.0
         for golden_rc_vals in self.golden_rc_vals:
-            combined_distance, _ = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
+            distance, _ = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
             logger.info(
-                f"DTW distance calculated: {combined_distance} len: {len(self.golden_rc_vals)}"
+                f"DTW distance calculated: {distance} len: {len(self.golden_rc_vals)}"
             )
-            combined_distance += combined_distance
+            combined_distance += distance
         distance = (combined_distance / len(self.golden_rc_vals))
+        logger.debug("Final DTW distance calculated: {}".format(distance))
         min_fuzz_threshold = (
             self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
         )
