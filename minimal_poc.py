@@ -900,6 +900,7 @@ class FuzzConfig:
             logger.info(
                 f"DTW distance calculated: {combined_distance} len: {len(self.golden_rc_vals)}"
             )
+            combined_distance += combined_distance
         distance = (combined_distance / len(self.golden_rc_vals))
         min_fuzz_threshold = (
             self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
@@ -909,7 +910,7 @@ class FuzzConfig:
         )
         if (distance < min_fuzz_threshold) or (distance > max_fuzz_threshold):
             logger.info(
-                f"DTW distance {distance} exceeds threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected!"
+                f"DTW distance {distance} exceeds or is way below threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected! at simulation {self.fuzzer_stats['simulations_completed']}"
             )
             self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis

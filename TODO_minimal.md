@@ -33,14 +33,19 @@
 
 ## TODO
 
-- TODO Remove clean duplication ???
+
 - TODO Figure out a way to duplicate results, how can we re-run the generate messages?
   - IN progress -> Can do that with the generated log message?
 - TODO Fix to a generic mission that does everything
   - Can use a variant that forcibly changes modes
+- TODO HIGH Figure out why the freaking 2nd mission is not working ATM
 - TODO Add SIM/CFG parameters from PGFUZZ
   - Since we keep track of the time since the simulation start we can effectively set the time for the message
 - TODO Figure out to check all configurations before starting stuff
 - TODO Check if we can read all the files before doing stuff
+- TODO Remove clean duplication ???
+
+
+## Misc Notes
 - Compare with DTW
   - Will have to save the RCOU values as we don't have MAVProxy with us anymore
