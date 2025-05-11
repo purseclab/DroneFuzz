@@ -30,6 +30,8 @@
 - DONE Fix the fuzzing inside auto mode?
 - DONE Send the fuzzing message in the same way as periodic messages
   - Can use the same function as the periodic messages
+- DONE Fix issues with Mount bug
+- DON Fix the mutation of the RF Bug as we find a violation in each run (the distance calculation was wrong)
 
 ## TODO
 
@@ -49,3 +51,6 @@
 ## Misc Notes
 - Compare with DTW
   - Will have to save the RCOU values as we don't have MAVProxy with us anymore
+
+## STACK
+1. Get results and compare?

@@ -958,13 +958,13 @@ class FuzzConfig:
             msg_def = random.choice(self.xml_messages)
             field_values = []
             for field in msg_def["fields"]:
-                if "frame" in field["name"]:
+                """ if "frame" in field["name"]:
                     field_values.append(12)
                 elif "obstacle_id" in field["name"]:
                     obstacle_id = 65535
                     field_values.append(obstacle_id)
-                # If we have enum values, pick a random one
-                elif "enum_vals" in field:
+                 """# If we have enum values, pick a random one
+                if "enum_vals" in field:
                     field_values.append(int(random.choice(field["enum_vals"])))
                 elif "time" in field["name"]:
                     current_time = round(
