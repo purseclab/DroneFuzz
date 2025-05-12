@@ -1163,17 +1163,18 @@ if __name__ == "__main__":
                 cfg.cleanup_and_exit()
                 exit(0)
             else:
-                cfg.send_mission(fuzzing=True)
+                cfg.send_mission()
 
             cfg.cleanup_sim()
             update_calib_tqdm_postfix()
         cfg.fuzzer_stats["dtw_threshold"] = (
-            cfg.fuzzer_stats["dtw_threshold"] / cfg.calibration_rounds
+            cfg.fuzzer_stats["dtw_threshold"] / (cfg.calibration_rounds - 1)
         )
         cfg.calibration_active = False
         logger.info(
             f"The DTW threshold for fuzzing is set to {cfg.fuzzer_stats['dtw_threshold']:.2f}"
         )
+        # cfg.fuzzer_dtw_threshold = 0.15 * cfg.fuzzer_stats["dtw_threshold"]
         # Reset all the stats
         cfg.fuzzer_stats["current_mission_time"] = 0.0
         cfg.fuzzer_stats["simulations_completed"] = 0
@@ -1213,6 +1214,7 @@ if __name__ == "__main__":
                 cfg.send_mission()
 
             cfg.cleanup_sim()
+            logger.debug(f"Finished fuzzing with {cfg.fuzzer_stats['messages_sent']} messages sent")
             pbar.update(1)
             update_tqdm_postfix()
             # except Exception as e:
