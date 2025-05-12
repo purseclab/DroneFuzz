@@ -568,6 +568,7 @@ class FuzzConfig:
 
         # Calibration settings
         self.calibration_active = False
+        self.calibration_vals = None
         self.calibration_rounds = calibration_rounds
 
         # Fuzzing related attributes
@@ -996,6 +997,12 @@ class FuzzConfig:
                 # Else use the generate_field_value function
                 else:
                     field_values.append(generate_field_value(field["type"]))
+            # If we are in calibration mode, just send the same values over for the fields
+            if self.calibration_active:
+                if self.calibration_vals is None:
+                    self.calibration_vals = field_values
+                else:
+                    field_values = self.calibration_vals
             # Send the fuzzed message
             try:
                 self.send_fuzzed_message(
@@ -1149,13 +1156,14 @@ if __name__ == "__main__":
 
             logger.info("Waiting for drone to be ready with GPS lock...")
             while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                time.sleep(3)
+                time.sleep(1)
+                calib_pbar.refresh()  # Keep progress bar visible during waiting
 
             if cfg.shutdown_requested:
                 cfg.cleanup_and_exit()
                 exit(0)
             else:
-                cfg.send_mission(fuzzing=False)
+                cfg.send_mission(fuzzing=True)
 
             cfg.cleanup_sim()
             update_calib_tqdm_postfix()
