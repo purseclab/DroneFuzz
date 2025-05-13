@@ -1155,7 +1155,7 @@ if __name__ == "__main__":
             calib_pbar.set_postfix(
                 {
                     "round": f"{calib_pbar.n + 1}/{cfg.calibration_rounds}",
-                    "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+                    # "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
                 }
             )
@@ -1181,13 +1181,13 @@ if __name__ == "__main__":
 
             cfg.cleanup_sim()
             update_calib_tqdm_postfix()
-        cfg.fuzzer_stats["dtw_threshold"] = cfg.fuzzer_stats["dtw_threshold"] / (
-            cfg.calibration_rounds - 1
-        )
+        # cfg.fuzzer_stats["dtw_threshold"] = cfg.fuzzer_stats["dtw_threshold"] / (
+        #     cfg.calibration_rounds - 1
+        # )
         cfg.calibration_active = False
-        logger.info(
-            f"The DTW threshold for fuzzing is set to {cfg.fuzzer_stats['dtw_threshold']:.2f}"
-        )
+        # logger.info(
+        #     f"The DTW threshold for fuzzing is set to {cfg.fuzzer_stats['dtw_threshold']:.2f}"
+        # )
         # cfg.fuzzer_dtw_threshold = 0.15 * cfg.fuzzer_stats["dtw_threshold"]
         # Reset all the stats
         cfg.fuzzer_stats["current_mission_time"] = 0.0
@@ -1205,7 +1205,9 @@ if __name__ == "__main__":
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                    "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",  # dtw_threshold is now an average
+                    # "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",  # dtw_threshold is now an average
+                    "dtw_min": f"{cfg.min_fuzz_threshold:.1f}",
+                    "dtw_max": f"{cfg.max_fuzz_threshold:.1f}",
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
