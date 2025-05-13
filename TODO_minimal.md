@@ -41,6 +41,9 @@
   - IN progress -> Can do that with the generated log message?
 - TODO Fix to a generic mission that does everything
   - Can use a variant that forcibly changes modes
+  - But then how do we actually do that? We take of a mission and then switch modes?
+    -> Need to carefully craft a mission that makes valid sense 
+- TODO Figure out better naming for the fuzz interval -> It's supposed to denote the frequency or something
 - TODO Figure out why the tqdm thing gets messed up everytime :|
 - TODO Add SIM/CFG parameters from PGFUZZ
   - Since we keep track of the time since the simulation start we can effectively set the time for the message
@@ -48,9 +51,17 @@
 - TODO Check if we can read all the files before doing stuff
 
 
+## Steps to full scale evaluation 
+- TODO Finish up the mapping for all peripherals 
+- TODO Run eval on current dataset of 10 bugs
+- TODO Figure out the ideal testing times based on previous fuzzing papers for drones
+  - 1. RVFuzzer + PGFUzz + sensorFuzz + SwarmFuzz
+  - 2. Then figure out the co-relation from original evals
+
 ## Misc Notes
 - Compare with DTW
   - Will have to save the RCOU values as we don't have MAVProxy with us anymore
 
 ## STACK
+2. TODO Finish up the mapping for all peripherals 
 1. Get results and compare?

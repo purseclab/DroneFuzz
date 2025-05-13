@@ -1,5 +1,68 @@
 # Sensor type mappings with their parameters, message types and frequencies
+# Following the options from the main page?
+# https://ardupilot.org/copter/docs/common-optional-hardware.html
+# TODO: Might be good to have support for the vehicle, some of the sensors don't work for all the vehicles?
 sensors:
+  AP_ADSB:
+    parameters:
+      ADSB_TYPE: 1
+      # AVD_ENABLE: 1 # To actually use the ADSB to do avoidance?
+    msg_type:
+      - ADSB_VEHICLE
+    frequency: [-1]
+
+  # TODO Verification required
+  AP_ARSPD:
+    parameters:
+      ARSPD_ENABLE: 1
+      ADSB_TYPE: 2
+      ARSPD_USE: 1
+    msg_type:
+      - ADSB_VEHICLE
+    frequency: [-1]
+
+  # TODO Verification required
+  # AP_AIS:
+  #   parameters:
+  #     AIS_TYPE: 1
+  #   msg_type:
+
+  Baro_Ext:
+    parameters:
+      ARSPD_USE: 1
+    msg_type:
+      - SCALED_PRESSURE2
+    frequency: [10]
+
+  # Button INPUT
+  # Buzzer
+
+  AP_Gimbal:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - MAV_CMD_DO_MOUNT_CONTROL
+    frequency: [-1]
+
+  AP_Mount:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - MAV_CMD_DO_MOUNT_CONTROL
+    frequency: [-1]
+
+  # Might not work on SITL :|
+  AP_CropSprayer:
+    parameters:
+      SPRAY_ENABLE: 1
+    msg_type:
+      - MAV_CMD_DO_SPRAYER
+    frequency: [-1]
+
+  # ESC?
+  # Ethernet adapter?
+  #
+
   OpticalFlow:
     parameters:
       FLOW_TYPE: 5
@@ -29,19 +92,7 @@ sensors:
     frequency: [25]
     default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
 
-  AP_ADSB:
-    parameters:
-      ADSB_TYPE: 2
-    msg_type:
-      - ADSB_VEHICLE
-    frequency: [-1]
 
-  AP_Gimbal:
-    parameters:
-      MNT_TYPE: 4
-    msg_type:
-      - MAV_CMD_DO_MOUNT_CONTROL
-    frequency: [-1]
 
   GPS:
     parameters:

@@ -7,7 +7,6 @@
 import argparse
 import time
 import re
-from pandas.io.sql import com
 import yaml
 import os
 import random
@@ -42,7 +41,6 @@ def setup_logging():
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
-
     # Create file handler for all logs
     file_handler = logging.FileHandler(log_filename)
     file_handler.setLevel(logging.DEBUG)
@@ -55,7 +53,9 @@ def setup_logging():
     file_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    console_formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    console_formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
 
     # Apply formatters
     file_handler.setFormatter(file_formatter)
@@ -509,13 +509,21 @@ class FuzzConfig:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_file}")
         # Just check if the file contains atleast sitl_bin and ap_dir
-        if not self.config.get("sitl_bin") or not self.config.get("ap_dir") or not self.config.get("peripheral_file"):
+        if (
+            not self.config.get("sitl_bin")
+            or not self.config.get("ap_dir")
+            or not self.config.get("peripheral_file")
+        ):
             raise ValueError(
                 "Atleast SITL binary and peripheral_file are required in the config file."
             )
-        
+
         # Load peripheral mapping from peripheral YAML file
-        self.peripheral_file = args.peripheral_file if args.peripheral_file else self.config.get("peripheral_file")
+        self.peripheral_file = (
+            args.peripheral_file
+            if args.peripheral_file
+            else self.config.get("peripheral_file")
+        )
         self.peripheral_mapping = {}
         if self.peripheral_file and os.path.exists(self.peripheral_file):
             with open(self.peripheral_file, "r") as f:
@@ -583,6 +591,8 @@ class FuzzConfig:
             if args.dtw_threshold
             else self.config.get("dtw_threshold", 100.00)
         )
+        self.min_fuzz_threshold = None
+        self.max_fuzz_threshold = None
         self.sim_ready = False
         self.fuzz_interval = self.config.get(
             "fuzz_interval", 0.5
@@ -625,7 +635,7 @@ class FuzzConfig:
             "messages_sent": 0,
             "last_mission_time": 0.0,
             "current_mission_time": 0.0,
-            "dtw_threshold": 0.0,
+            "dtw_threshold": [],
             "potential_crashes": 0.0,
         }
 
@@ -849,7 +859,7 @@ class FuzzConfig:
         logger.info(
             f"Last mission time: {self.fuzzer_stats['last_mission_time']:.2f} seconds"
         )
-        logger.info(f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}")
+        # logger.info(f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}")
         logger.info(
             "Total time taken: {:.2f} seconds".format(time.time() - self.start_time)
         )
@@ -857,6 +867,13 @@ class FuzzConfig:
             f"Potential crashes detected: {self.fuzzer_stats['potential_crashes']}"
         )
         logger.info("-" * 30)
+
+    def sigma_calc(self):
+        # Get the threshold values for 3 sigma
+        mean = np.mean(self.fuzzer_stats["dtw_threshold"])
+        std_dev = np.std(self.fuzzer_stats["dtw_threshold"])
+        self.min_fuzz_threshold = mean - (3 * std_dev)
+        self.max_fuzz_threshold = mean + (3 * std_dev)
 
     def cleanup_sim(self):
         # Stop fuzzing first
@@ -882,11 +899,11 @@ class FuzzConfig:
                 if self.calibration_active:
                     distance, _path = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
                     logger.info(f"DTW distance calculated: {distance}")
-                    self.fuzzer_stats["dtw_threshold"] = (
-                        self.fuzzer_stats["dtw_threshold"] + distance
-                    )
+                    self.fuzzer_stats["dtw_threshold"].append(distance)
                     self.golden_rc_vals.append(self.rcou_vals)
                 else:
+                    if not self.min_fuzz_threshold:
+                        self.sigma_calc()
                     self.oracle()
             else:
                 self.rcou_vals = self.tcp_conn.cleanup()
@@ -905,7 +922,7 @@ class FuzzConfig:
             f"Sims: {self.fuzzer_stats['simulations_completed']} | "
             f"Msgs: {self.fuzzer_stats['messages_sent']} | "
             f"Last time: {self.fuzzer_stats['last_mission_time']:.2f}s | "
-            f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}"
+            # f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}"
         )
 
     def oracle(self):
@@ -916,15 +933,12 @@ class FuzzConfig:
                 f"DTW distance calculated: {distance} len: {len(self.golden_rc_vals)}"
             )
             combined_distance += distance
-        distance = (combined_distance / len(self.golden_rc_vals))
+        distance = combined_distance / len(self.golden_rc_vals)
         logger.debug("Final DTW distance calculated: {}".format(distance))
-        min_fuzz_threshold = (
-            self.fuzzer_stats["dtw_threshold"] - self.fuzzer_dtw_threshold
+        assert (
+            self.min_fuzz_threshold is not None or self.max_fuzz_threshold is not None
         )
-        max_fuzz_threshold = (
-            self.fuzzer_stats["dtw_threshold"] + self.fuzzer_dtw_threshold
-        )
-        if (distance < min_fuzz_threshold) or (distance > max_fuzz_threshold):
+        if (distance < self.min_fuzz_threshold) or (distance > self.max_fuzz_threshold):
             logger.info(
                 f"DTW distance {distance} exceeds or is way below threshold {self.fuzzer_stats['dtw_threshold']}, potential anomaly detected! at simulation {self.fuzzer_stats['simulations_completed']}"
             )
@@ -974,12 +988,12 @@ class FuzzConfig:
             msg_def = random.choice(self.xml_messages)
             field_values = []
             for field in msg_def["fields"]:
-                """ if "frame" in field["name"]:
+                """if "frame" in field["name"]:
                     field_values.append(12)
                 elif "obstacle_id" in field["name"]:
                     obstacle_id = 65535
                     field_values.append(obstacle_id)
-                 """# If we have enum values, pick a random one
+                """  # If we have enum values, pick a random one
                 if "enum_vals" in field:
                     field_values.append(int(random.choice(field["enum_vals"])))
                 elif "time" in field["name"]:
@@ -1117,7 +1131,7 @@ if __name__ == "__main__":
                 missing_args.append("--peripheral_file")
             if not args.ap_dir:
                 missing_args.append("--ap_dir")
-            
+
             if missing_args:
                 argument_parser.error(
                     "The following arguments are required when --config is not provided: {}".format(
@@ -1167,8 +1181,8 @@ if __name__ == "__main__":
 
             cfg.cleanup_sim()
             update_calib_tqdm_postfix()
-        cfg.fuzzer_stats["dtw_threshold"] = (
-            cfg.fuzzer_stats["dtw_threshold"] / (cfg.calibration_rounds - 1)
+        cfg.fuzzer_stats["dtw_threshold"] = cfg.fuzzer_stats["dtw_threshold"] / (
+            cfg.calibration_rounds - 1
         )
         cfg.calibration_active = False
         logger.info(
@@ -1191,7 +1205,7 @@ if __name__ == "__main__":
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                    "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}", # dtw_threshold is now an average
+                    "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",  # dtw_threshold is now an average
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
@@ -1206,7 +1220,7 @@ if __name__ == "__main__":
             cfg.run_sim()
 
             tqdm.write("Waiting for drone GPS lock...")
-            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested: 
+            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
                 time.sleep(1)
                 pbar.refresh()  # Keep progress bar visible during waiting
 
@@ -1214,7 +1228,9 @@ if __name__ == "__main__":
                 cfg.send_mission()
 
             cfg.cleanup_sim()
-            logger.debug(f"Finished fuzzing with {cfg.fuzzer_stats['messages_sent']} messages sent")
+            logger.debug(
+                f"Finished fuzzing with {cfg.fuzzer_stats['messages_sent']} messages sent"
+            )
             pbar.update(1)
             update_tqdm_postfix()
             # except Exception as e:
