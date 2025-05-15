@@ -15,8 +15,8 @@ import tempfile
 import logging
 import datetime
 from lxml import etree
-from fastdtw import fastdtw
-from scipy.spatial.distance import euclidean
+from dtw import dtw
+from sklearn.preprocessing import StandardScaler
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
@@ -162,7 +162,7 @@ class TCPConn:
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
             try:
-                msg = self.conn.recv_match(blocking=True, timeout=1)
+                msg = self.conn.recv_match(blocking=True)
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
@@ -960,8 +960,17 @@ class FuzzConfig:
         fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
         s1 = np.array([[pkt[f] for f in fields] for pkt in series1])
         s2 = np.array([[pkt[f] for f in fields] for pkt in series2])
-        distance, path = fastdtw(s1, s2, dist=euclidean)
-        return distance, path
+        # distance, path = fastdtw(s1, s2, dist=euclidean)
+        data_standardized_all = StandardScaler().fit_transform(s1)
+        test_data_standardized = StandardScaler().fit_transform(s2)
+        # Compute DTW with Euclidean distance
+        alignments = dtw(
+            data_standardized_all,
+            test_data_standardized,
+            dist_method="euclidean",
+            distance_only=True,
+        )
+        return alignments.distance, alignments.normalizedDistance
 
     def start_fuzzing(self):
         """Start the fuzzing thread."""
