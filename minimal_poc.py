@@ -869,11 +869,11 @@ class FuzzConfig:
         logger.info("-" * 30)
 
     def sigma_calc(self):
-        # Get the threshold values for 3 sigma
+        # Get the threshold values for 2 sigma
         mean = np.mean(self.fuzzer_stats["dtw_threshold"])
         std_dev = np.std(self.fuzzer_stats["dtw_threshold"])
-        self.min_fuzz_threshold = mean - (3 * std_dev)
-        self.max_fuzz_threshold = mean + (3 * std_dev)
+        self.min_fuzz_threshold = mean - (2 * std_dev)
+        self.max_fuzz_threshold = mean + (2 * std_dev)
 
     def cleanup_sim(self):
         # Stop fuzzing first
