@@ -556,6 +556,13 @@ class FuzzConfig:
 
         # Mission control
         self.timeout = self.config.get("timeout", 1000)
+        # MAVLink check for https://mavlink.io/en/guide/routing.html
+        self.target_system = self.config.get("target_system", 255)
+        self.target_component = self.config.get("target_component", 0)
+        logger.debug("Setting the system.target_system to: " + str(self.target_system))
+        logger.debug(
+            "Setting the system.target_component to: " + str(self.target_component)
+        )
         calibration_rounds = (
             args.calibration_rounds
             if args.calibration_rounds
@@ -1053,8 +1060,8 @@ class FuzzConfig:
         except AttributeError:
             # If the message class doesn't exist, use a more generic approach
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
-                0,  # target_system
-                0,  # target_component
+                self.target_system,  # target_system
+                self.target_component,  # target_component
                 int(msg_id),  # command
                 0,  # confirmation
                 *field_values,  # parameters
