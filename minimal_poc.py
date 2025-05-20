@@ -73,6 +73,7 @@ def setup_logging():
 
 mavlink_timeout = 5
 approx_threshold = 0.00005  # Threshold for approximate location matching
+altitude_threshold = 0.1  # Threshold for altitude matching
 
 
 class TCPConn:
@@ -257,7 +258,7 @@ class TCPConn:
         )
         while True:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
-            if loc["rel_alt"] <= approx_threshold:
+            if loc["rel_alt"] <= altitude_threshold:
                 logger.info(
                     f"Drone reached a relative altitude: {loc['rel_alt']} meters"
                 )
@@ -295,12 +296,13 @@ class TCPConn:
             altitude,
         )
         # Check if the drone state is within the altitude range
+        logger.debug("Waiting for location to be within the altitude range")
         while True:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if (
-                altitude - approx_threshold
+                altitude - altitude_threshold
                 <= loc["rel_alt"]
-                <= altitude + approx_threshold
+                <= altitude + altitude_threshold
             ):
                 logger.info(f"Drone has taken off to altitude: {loc['rel_alt']} meters")
                 self.drone_in_air = True
@@ -832,9 +834,10 @@ class FuzzConfig:
 
     def signal_handler(self, _signum, _frame):
         """Handle shutdown signals gracefully"""
-        print("\nShutdown requested...")
-        print("Will terminate after current execution\n")
+        logger.error("\nShutdown requested...")
+        logger.error("Will terminate after current execution\n")
         self.shutdown_requested = True
+        # Figure out a better way to terminate things and exit quickly
 
     def cleanup_and_exit(self):
         """Perform cleanup and print summary before exit"""
