@@ -879,8 +879,12 @@ class FuzzConfig:
         # Get the threshold values for 2 sigma
         mean = np.mean(self.fuzzer_stats["dtw_threshold"])
         std_dev = np.std(self.fuzzer_stats["dtw_threshold"])
+        logger.debug(f"The mean is: {mean} and the std_dev is: {std_dev}")
         self.min_fuzz_threshold = mean - (2 * std_dev)
         self.max_fuzz_threshold = mean + (2 * std_dev)
+        logger.debug(
+            f"The min threshold is: {self.min_fuzz_threshold} max threshold is: {self.max_fuzz_threshold}"
+        )
 
     def cleanup_sim(self):
         # Stop fuzzing first
