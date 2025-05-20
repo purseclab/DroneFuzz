@@ -72,7 +72,7 @@ def setup_logging():
 # Initialize logger
 
 mavlink_timeout = 5
-approx_threshold = 0.1  # Threshold for approximate location matching
+approx_threshold = 0.00005  # Threshold for approximate location matching
 
 
 class TCPConn:
