@@ -911,7 +911,7 @@ class FuzzConfig:
                 prev_rcou_vals = copy.deepcopy(self.rcou_vals)
                 self.rcou_vals = self.tcp_conn.cleanup()
                 if self.calibration_active:
-                    distance, _path = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
+                    _, distance = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
                     logger.info(f"DTW distance calculated: {distance}")
                     self.fuzzer_stats["dtw_threshold"].append(distance)
                     self.golden_rc_vals.append(self.rcou_vals)
@@ -942,7 +942,7 @@ class FuzzConfig:
     def oracle(self):
         combined_distance = 0.0
         for golden_rc_vals in self.golden_rc_vals:
-            distance, _ = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
+            _, distance = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
             logger.info(
                 f"DTW distance calculated: {distance} len: {len(self.golden_rc_vals)}"
             )
@@ -958,6 +958,7 @@ class FuzzConfig:
             )
             # Try to open the LASTLOG.TXT
             log_file_path = os.path.join(self.fuzzer_temp_dir, "/logs/LASTLOG.TXT")
+            # Get the current working directory
             log_content = "N/A"
             try:
                 with open(log_file_path, "r") as log_file:
