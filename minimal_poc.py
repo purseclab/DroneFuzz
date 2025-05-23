@@ -88,6 +88,7 @@ class TCPConn:
         self.mission_msg_queue = Queue()
         self.drone_ready = False  # Drone ready with GPS lock
         self.drone_in_air = False
+        self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # GPS location
         # Connection details
         with open(os.devnull, "w") as fnull:
@@ -159,6 +160,15 @@ class TCPConn:
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
             logger.info("AUTO Mission started, takeoff.")
             self.drone_in_air = True
+        # Handling scenario when we are in air
+        if re.search(r"Mission: 2 WP", msg.text, re.IGNORECASE):
+            logger.debug("Now monitoring RC channels")
+            self.rc_monitor = True
+            self.st_msg_send("LOG RC")
+        elif re.search(r"Mission: \d+ RTL", msg.text, re.IGNORECASE):
+            logger.debug("Not monitoring RC channels")
+            self.rc_monitor = False
+            self.st_msg_send("STOP RC")
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -201,7 +211,7 @@ class TCPConn:
                     if (
                         msg.get_type() == "SERVO_OUTPUT_RAW"
                     ):  # Only when drone is in air
-                        if self.drone_in_air:
+                        if self.rc_monitor:
                             self.rcou_queue.put(msg.to_dict())
                     if msg.get_type() == "MISSION_REQUEST":
                         self.mission_msg_queue.put(msg)
@@ -218,6 +228,12 @@ class TCPConn:
     def msg_send(self):
         msg = mavutil.mavlink.MAVLink_statustext_message()
         return self.conn.mav.send(msg)
+
+    def st_msg_send(self, text):
+        msg = self.conn.mav.statustext_encode(
+            mavutil.mavlink.MAV_SEVERITY_INFO, text.encode()
+        )
+        self.conn.mav.send(msg)
 
     def set_mode(self, mode):
         # Check if the mode exists in the vehicle mapping
@@ -796,6 +812,9 @@ class FuzzConfig:
         if fuzzing:
             self.start_fuzzing()
 
+        self.tcp_conn.rc_monitor = True
+        self.tcp_conn.st_msg_send("LOG RC")
+        # self.tcp_conn.
         self.tcp_conn.go_to_waypoint(-35.3632621, 149.1652374, 50)
         # Go to Point B -35.3626941, 149.166221
         self.tcp_conn.go_to_waypoint(-35.3626941, 149.166221, 50)
@@ -813,6 +832,8 @@ class FuzzConfig:
             self.stop_fuzzing()
 
         # Land
+        self.tcp_conn.rc_monitor = False
+        self.tcp_conn.st_msg_send("STOP RC")
         self.tcp_conn.land()
 
     def send_mission(self, fuzzing=True):
