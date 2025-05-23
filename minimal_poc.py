@@ -961,10 +961,10 @@ class FuzzConfig:
             log_content = "N/A"
             try:
                 with open(log_file_path, "r") as log_file:
-                    log_content = log_file.read()
+                    log_content = int(log_file.read().strip())
             except FileNotFoundError:
                 logger.warning("Can't find LASTLOG.TXT file")
-            logger.debug(f"Please refer to the {log_content:08}.BIN for more details")
+            logger.debug(f"Please refer to the {log_content:08d}.BIN for more details")
             self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis
             input_file = tempfile.mkstemp(
