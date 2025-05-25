@@ -622,6 +622,7 @@ class FuzzConfig:
         self.fuzz_interval = self.config.get(
             "fuzz_interval", 0.5
         )  # Send a fuzzed message every 0.5 seconds
+        logger.debug("The fuzz interval is set to: " + str(self.fuzz_interval))
         self.msg_freq = None
         self.fuzz_msgs = []
 
@@ -848,6 +849,7 @@ class FuzzConfig:
             logger.info("Using standard triangle mission")
             self.standard_guided(fuzzing=fuzzing)
         logger.info("Finished mission")
+        logger.debug(f"Sent {self.fuzzer_stats['messages_sent']} messages")
         self.fuzzer_stats["simulations_completed"] += 1
         self.fuzzer_stats["last_mission_time"] = (
             time.time() - self.fuzzer_stats["current_mission_time"]
@@ -1000,6 +1002,8 @@ class FuzzConfig:
             # Dump all the values inside the fuzz_msgs
             for msg in self.fuzz_msgs:
                 f.write(f"{msg}\n")
+        # Clean up the fuzz_msgs
+        self.fuzz_msgs = []
 
     def calculate_dtw(self, series1, series2):
         """Calculate the DTW distance between two time series."""
@@ -1069,9 +1073,11 @@ class FuzzConfig:
                 else:
                     field_values.append(generate_field_value(field["type"]))
             # If we are in calibration mode, just send the same values over for the fields
+            msg_dict = [msg_def["msg_name"], field_values]
             if self.calibration_active:
                 if self.calibration_vals is None:
                     self.calibration_vals = field_values
+                    self.fuzz_msgs.append(msg_dict)
                 else:
                     field_values = self.calibration_vals
             # Send the fuzzed message
@@ -1079,8 +1085,9 @@ class FuzzConfig:
                 self.send_fuzzed_message(
                     msg_def["msg_name"], msg_def["msg_id"], field_values
                 )
-                msg_dict = [msg_def["msg_name"], field_values]
-                self.fuzz_msgs.append(msg_dict)
+                # To ensure we only save fuzzed message
+                if not self.calibration_active:
+                    self.fuzz_msgs.append(msg_dict)
                 self.fuzzer_stats["messages_sent"] += 1
             except Exception as e:
                 logger.error(f"Error sending fuzzed message: {e}")
