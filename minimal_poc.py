@@ -683,6 +683,11 @@ class FuzzConfig:
         msg_filter = self.peripheral_config.get("msg_type", [])
         logger.info(f"Using message filter: {msg_filter}")
 
+        # Check if we have CMD messages enabled
+        if self.peripheral_config.get("cmd_msgs"):
+            # Add the command messages to the filter
+            msg_filter += self.cmd_params()
+
         # Load XML message definitions if provided
         if self.xml_file and os.path.exists(self.xml_file):
             logger.info(f"Loading MAVLink message definitions from {self.xml_file}")
@@ -701,7 +706,13 @@ class FuzzConfig:
         for msg in selected_msgs:
             # Get the frequency from the same index
             msg_idx = selected_msgs.index(msg)
-            msg_freq = selected_freq[msg_idx] if msg else -1
+            try:
+                msg_freq = selected_freq[msg_idx] if msg else -1
+            except IndexError:
+                logger.warning(
+                    "No corresponding frequency found for the message, assuming None (aka -1)"
+                )
+                msg_freq = -1
             logger.info(f"Message: {msg}, Frequency: {msg_freq}")
             xml_msg = load_xml_messages(self.xml_file, filter=[msg])
             # We will get a list of frequencies and then spawn a thread for each peripheral
@@ -727,6 +738,7 @@ class FuzzConfig:
                 )
                 self.periodic_thread[msg_freq].start()
                 logger.info("Periodic thread started")
+
         # Also if we have a parameter file, create a temporary one and send it to the simulator
         if self.peripheral_config.get("parameters"):
             self.fuzzer_param_file = tempfile.mkstemp(".parm", "pgfuzz", "/tmp")[1]
@@ -738,6 +750,16 @@ class FuzzConfig:
         logger.info(
             f"Creating temporary directory for fuzzed messages: {self.fuzzer_temp_dir}"
         )
+
+    def sim_params(self):
+        """Add the SIM parameters from the PGFUZZ database"""
+        # TODO
+        pass
+
+    def cmd_params(self):
+        """Add the mission parameters from the PGFUZZ database"""
+        cmds = ["MAV_CMD_DO_SET_MODE"]
+        return cmds
 
     def run_sim(self):
         sitl_args = " -S --model + --speedup 1 -I0"
@@ -1081,16 +1103,13 @@ class FuzzConfig:
                 else:
                     field_values = self.calibration_vals
             # Send the fuzzed message
-            try:
-                self.send_fuzzed_message(
-                    msg_def["msg_name"], msg_def["msg_id"], field_values
-                )
-                # To ensure we only save fuzzed message
-                if not self.calibration_active:
-                    self.fuzz_msgs.append(msg_dict)
-                self.fuzzer_stats["messages_sent"] += 1
-            except Exception as e:
-                logger.error(f"Error sending fuzzed message: {e}")
+            self.send_fuzzed_message(
+                msg_def["msg_name"], msg_def["msg_id"], field_values
+            )
+            # To ensure we only save fuzzed message
+            if not self.calibration_active:
+                self.fuzz_msgs.append(msg_dict)
+            self.fuzzer_stats["messages_sent"] += 1
 
             time.sleep(1 / self.fuzz_interval)
 
@@ -1106,7 +1125,9 @@ class FuzzConfig:
             # Send the message
             self.tcp_conn.conn.mav.send(msg)
         except AttributeError:
-            # If the message class doesn't exist, use a more generic approach
+            # If the field_values are not correct in length (7), we add the message with 0s
+            if len(field_values) < 7:
+                field_values += [0] * (7 - len(field_values))
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
                 self.target_system,  # target_system
                 self.target_component,  # target_component
@@ -1116,7 +1137,9 @@ class FuzzConfig:
             )
             self.tcp_conn.conn.mav.send(packed_msg)
         except Exception as e:
-            logger.error(f"Error sending message {msg_name}: {e}")
+            logger.error(
+                f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
+            )
 
 
 # Misc utilities and sanity checks
