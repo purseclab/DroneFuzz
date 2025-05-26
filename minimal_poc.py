@@ -803,9 +803,22 @@ class FuzzConfig:
     def monitor_auto_mission(self):
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
+        random_modes = ["AVOID_ADSB", "LOITER"]  # Can be patched for specific testing
         self.start_fuzzing()
+        mode_ctr = 0
         while self.tcp_conn.drone_in_air:
-            time.sleep(3)
+            mode = random.choice(random_modes)
+            if (
+                mode_ctr < 3 and self.tcp_conn.rc_monitor
+            ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
+                self.tcp_conn.set_mode(mode)
+                logger.debug(f"Changing mode to: {mode}")
+                time.sleep(5)
+                self.tcp_conn.set_mode("AUTO")
+                logger.debug("Reset mode to AUTO")
+                mode_ctr += 1
+            else:
+                time.sleep(3)
         self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
