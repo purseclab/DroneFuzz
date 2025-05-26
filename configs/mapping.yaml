@@ -1,8 +1,30 @@
 # Sensor type mappings with their parameters, message types and frequencies
 # Following the options from the main page?
 # https://ardupilot.org/copter/docs/common-optional-hardware.html
-# TODO: Might be good to have support for the vehicle, some of the sensors don't work for all the vehicles?
 sensors:
+# Case study testing
+  # Rangefinder bug
+  CS1:
+    parameters:
+      PRX_TYPE: 2
+    msg_type:
+      - OBSTACLE_DISTANCE_3D
+    frequency: [25]
+    default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
+  # Mount bug
+  CS2:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - MAV_CMD_DO_MOUNT_CONTROL
+    frequency: [-1]
+  # ADSB bug
+  CS3:
+    parameters:
+    msg_type:
+      - SET_ATTITUDE_TARGET
+    frequency: [-1]
+# Generic
   AP_ADSB:
     parameters:
       ADSB_TYPE: 1
@@ -38,6 +60,7 @@ sensors:
   # Buzzer
 
   AP_Gimbal:
+    # cmd_msgs: True
     parameters:
       MNT_TYPE: 4
     msg_type:

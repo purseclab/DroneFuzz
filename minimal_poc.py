@@ -14,6 +14,7 @@ import signal
 import tempfile
 import logging
 import datetime
+import pickle
 from lxml import etree
 from dtw import dtw
 from sklearn.preprocessing import StandardScaler
@@ -581,11 +582,6 @@ class FuzzConfig:
         logger.debug(
             "Setting the system.target_component to: " + str(self.target_component)
         )
-        calibration_rounds = (
-            args.calibration_rounds
-            if args.calibration_rounds
-            else self.config.get("calibration_rounds", 10)
-        )
 
         # Validate required files
         if file_exists(self.sitl_bin) and file_exists(self.ap_dir):
@@ -601,23 +597,42 @@ class FuzzConfig:
 
         # Calibration settings
         self.calibration_active = False
+        self.calibration_threshold = None
         self.calibration_vals = None
+        calibration_rounds = (
+            args.calibration_rounds
+            if args.calibration_rounds
+            else self.config.get("calibration_rounds", 10)
+        )
         self.calibration_rounds = calibration_rounds
+        # Check if we have calibration values
+        # Should be stored as [min,max]
+        self.calibration_threshold = self.config.get("calibration_threshold") or None
 
         # Fuzzing related attributes
         self.xml_messages = []
         self.rcou_vals = []
-        self.golden_rc_vals = []
         self.start_time = time.time()  # Rough estimate only
         self.fuzzing_active = False
         self.fuzzing_thread = None
-        self.fuzzer_dtw_threshold = (
-            args.dtw_threshold
-            if args.dtw_threshold
-            else self.config.get("dtw_threshold", 100.00)
-        )
-        self.min_fuzz_threshold = None
-        self.max_fuzz_threshold = None
+        if self.calibration_threshold:
+            self.min_fuzz_threshold = self.calibration_threshold[0]
+            self.max_fuzz_threshold = self.calibration_threshold[1]
+            rcou_file_path = os.getcwd() + "/rcou_vals.pkl"
+            try:
+                with open(rcou_file_path, "rb") as f:
+                    self.golden_rc_vals = pickle.load(f)
+            except FileNotFoundError:
+                raise FileNotFoundError(
+                    "RC channel values file not found, using empty list"
+                )
+            assert (
+                self.golden_rc_vals
+            ), "Golden RC values must be provided when re-using calibrations"
+        else:
+            self.min_fuzz_threshold = None
+            self.max_fuzz_threshold = None
+            self.golden_rc_vals = []
         self.sim_ready = False
         self.fuzz_interval = self.config.get(
             "fuzz_interval", 0.5
@@ -674,10 +689,9 @@ class FuzzConfig:
                 f"Using peripheral mapping for {self.peripheral_under_test}: {self.peripheral_config}"
             )
         else:
-            logger.warning(
+            raise Exception(
                 f"No peripheral mapping found for {self.peripheral_under_test}"
             )
-            self.peripheral_config = {}
 
         # Find the filter from the peripheral mapping
         msg_filter = self.peripheral_config.get("msg_type", [])
@@ -931,8 +945,28 @@ class FuzzConfig:
         self.min_fuzz_threshold = mean - (2 * std_dev)
         self.max_fuzz_threshold = mean + (2 * std_dev)
         logger.debug(
-            f"The min threshold is: {self.min_fuzz_threshold} max threshold is: {self.max_fuzz_threshold}"
+            "Final DTW thresholds calculated: min:{} max:{}".format(
+                self.min_fuzz_threshold, self.max_fuzz_threshold
+            )
         )
+        # Save the calibration values for faster reload next time
+        try:
+            with open(self.config_file, "r+") as f:
+                config = yaml.safe_load(f)
+                f.seek(0)
+                # This precision is enough for now
+                config["calibration_threshold"] = [
+                    float(self.min_fuzz_threshold),
+                    float(self.max_fuzz_threshold),
+                ]
+                yaml.dump(config, f)
+                f.truncate()
+        except Exception as e:
+            logger.error(f"Error saving calibration values: {e}")
+        # Save the RC values as pickle file to later use in the current directory
+        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
+        with open(pickle_file, "wb") as f:
+            f.write(pickle.dumps(self.golden_rc_vals))
 
     def cleanup_sim(self):
         # Stop fuzzing first
@@ -993,7 +1027,6 @@ class FuzzConfig:
             )
             combined_distance += distance
         distance = combined_distance / len(self.golden_rc_vals)
-        logger.debug("Final DTW distance calculated: {}".format(distance))
         assert (
             self.min_fuzz_threshold is not None or self.max_fuzz_threshold is not None
         )
@@ -1100,6 +1133,7 @@ class FuzzConfig:
                 if self.calibration_vals is None:
                     self.calibration_vals = field_values
                     self.fuzz_msgs.append(msg_dict)
+                    logger.debug(f"The message for calibration is {msg_dict}")
                 else:
                     field_values = self.calibration_vals
             # Send the fuzzed message
@@ -1229,57 +1263,62 @@ if __name__ == "__main__":
         logger = setup_logging()
         cfg = FuzzConfig(args)
 
-        # Establish the threshold for the fuzzing runs
-        # Run the mission with simulations and default parameters
-        logger.info("\nBeginning calibration")
-        cfg.calibration_active = True
+        if not cfg.calibration_threshold:
+            # Establish the threshold for the fuzzing runs
+            # Run the mission with simulations and default parameters
+            # Check if we already have calibration values
+            logger.info("\nBeginning calibration")
+            cfg.calibration_active = True
 
-        # Create tqdm progress bar for calibration
-        calib_pbar = tqdm(range(cfg.calibration_rounds), desc="Calibration Progress")
-
-        # Function to update calibration tqdm with stats
-        def update_calib_tqdm_postfix():
-            calib_pbar.set_postfix(
-                {
-                    "round": f"{calib_pbar.n + 1}/{cfg.calibration_rounds}",
-                    # "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
-                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                }
+            # Create tqdm progress bar for calibration
+            calib_pbar = tqdm(
+                range(cfg.calibration_rounds), desc="Calibration Progress"
             )
-            # tqdm.write can be used here for important messages if needed
-            # For example: tqdm.write(f"Important calibration update for round {calib_pbar.n + 1}")
 
-        for i in calib_pbar:
-            logger.info(f"Starting calibration round {i+1}/{cfg.calibration_rounds}")
-            # Use tqdm.write for messages that should not interfere with the bar
-            tqdm.write(f"Calibration Round: {i+1}/{cfg.calibration_rounds}")
-            cfg.run_sim()
+            # Function to update calibration tqdm with stats
+            def update_calib_tqdm_postfix():
+                calib_pbar.set_postfix(
+                    {
+                        "round": f"{calib_pbar.n + 1}/{cfg.calibration_rounds}",
+                        # "dtw_sum": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",
+                        "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+                    }
+                )
+                # tqdm.write can be used here for important messages if needed
+                # For example: tqdm.write(f"Important calibration update for round {calib_pbar.n + 1}")
 
-            logger.info("Waiting for drone to be ready with GPS lock...")
-            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
-                time.sleep(1)
-                calib_pbar.refresh()  # Keep progress bar visible during waiting
+            for i in calib_pbar:
+                logger.info(
+                    f"Starting calibration round {i+1}/{cfg.calibration_rounds}"
+                )
+                # Use tqdm.write for messages that should not interfere with the bar
+                tqdm.write(f"Calibration Round: {i+1}/{cfg.calibration_rounds}")
+                cfg.run_sim()
 
-            if cfg.shutdown_requested:
-                cfg.cleanup_and_exit()
-                exit(0)
-            else:
-                cfg.send_mission()
+                logger.info("Waiting for drone to be ready with GPS lock...")
+                while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+                    time.sleep(1)
+                    calib_pbar.refresh()  # Keep progress bar visible during waiting
 
-            cfg.cleanup_sim()
-            update_calib_tqdm_postfix()
-        # cfg.fuzzer_stats["dtw_threshold"] = cfg.fuzzer_stats["dtw_threshold"] / (
-        #     cfg.calibration_rounds - 1
-        # )
-        cfg.calibration_active = False
-        # logger.info(
-        #     f"The DTW threshold for fuzzing is set to {cfg.fuzzer_stats['dtw_threshold']:.2f}"
-        # )
-        # cfg.fuzzer_dtw_threshold = 0.15 * cfg.fuzzer_stats["dtw_threshold"]
-        # Reset all the stats
-        cfg.fuzzer_stats["current_mission_time"] = 0.0
-        cfg.fuzzer_stats["simulations_completed"] = 0
-        cfg.fuzzer_stats["messages_sent"] = 0
+                if cfg.shutdown_requested:
+                    cfg.cleanup_and_exit()
+                    exit(0)
+                else:
+                    cfg.send_mission()
+
+                cfg.cleanup_sim()
+                update_calib_tqdm_postfix()
+
+            # cfg.fuzzer_stats["dtw_threshold"] = cfg.fuzzer_stats["dtw_threshold"] / (
+            #     cfg.calibration_rounds - 1
+            # )
+            cfg.calibration_active = False
+            cfg.fuzzer_stats["current_mission_time"] = 0.0
+            cfg.fuzzer_stats["simulations_completed"] = 0
+            cfg.fuzzer_stats["messages_sent"] = 0
+        else:
+            logger.debug("Calibration values already set, skipping calibration")
+
         # Run the simulation with fuzzing
         # Main loop with progress tracking and stats
         fuzzing_iterations = 0
