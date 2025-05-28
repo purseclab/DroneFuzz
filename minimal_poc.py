@@ -1024,9 +1024,11 @@ class FuzzConfig:
             )
         )
         # Save the calibration values for faster reload next time
+        mod_config_file = os.path.join(os.getcwd(), "cal_config.yaml")
+        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
         try:
-            with open(self.config_file, "r+") as f:
-                config = yaml.safe_load(f)
+            with open(mod_config_file, "w+") as f:
+                config = self.config.copy()
                 f.seek(0)
                 # This precision is enough for now
                 config["calibration_threshold"] = [
@@ -1038,7 +1040,6 @@ class FuzzConfig:
         except Exception as e:
             logger.error(f"Error saving calibration values: {e}")
         # Save the RC values as pickle file to later use in the current directory
-        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
         with open(pickle_file, "wb") as f:
             f.write(pickle.dumps(self.golden_rc_vals))
 
