@@ -446,71 +446,105 @@ def include_xml(elem, base_path, processed_files=None):
                 parent.insert(index, child)
 
 
-def load_xml_messages(file_path: str, filter: list) -> list:
-    xml_msg = []
+def load_xml_messages(file_path: str, filter_list: list) -> list:
+    """
+    Parse the XML at file_path, include any referenced XML via include_xml(),
+    and return a list of messages (matching filter_list) as dicts:
+      {
+        "msg_id": ...,
+        "msg_name": ...,
+        "fields": [
+          { "name": ..., "type": ..., "desc": ..., "enum_vals": [...]? },
+          ...
+        ]
+      }
+    """
+    # 1) Parse & include
     parser = etree.XMLParser(remove_blank_text=True)
     tree = etree.parse(file_path, parser)
     root = tree.getroot()
     include_xml(root, os.path.dirname(os.path.abspath(file_path)))
-    # Find the 'msg' element
-    msg_elements = root.xpath("//messages/message")  # Default messages
-    msg_elements += root.xpath(
-        "//entry"
-    )  # Handle the CMD scenarios which exist as enums
-    if msg_elements is not None:
-        for msg in msg_elements:
-            msg_id = msg.get("id") or msg.get("value")
-            msg_name = msg.get("name")
-            # Check if the message name is inside the filter list
-            if msg_name in filter:
-                fields = []
-                logging.debug("Found the message {}".format(msg_name))
-                if msg.xpath(".//field"):
-                    for entry in msg.xpath(".//field"):
-                        entry_name = entry.get("name")
-                        entry_value = entry.get("type")
-                        entry_desc = entry.text
-                        entry_enum = entry.get("enum", None)
-                        enum_vals = None
-                        if entry_enum:
-                            enum_vals = get_enum(root, entry_enum)
-                        field_entry = {
-                            "name": entry_name,
-                            "type": entry_value,
-                            "desc": entry_desc,
-                        }
-                        if enum_vals:
-                            field_entry["enum_vals"] = enum_vals
-                        fields.append(field_entry)
-                elif msg.xpath(".//param"):
-                    for param in msg.xpath(".//param"):
-                        param_name = param.get("label")
-                        if param_name is None:
-                            continue
-                        param_min = param.get("minValue", "float")
-                        param_max = param.get("maxValue", "float")
-                        param_inc = param.get("increment", None)
-                        param_text = param.text
-                        fields.append(
-                            {
-                                "name": param_name,
-                                "type": [param_min, param_max, param_inc],
-                                "desc": param_text,
-                            }
-                        )
-                xml_msg.append(
-                    {"msg_id": msg_id, "msg_name": msg_name, "fields": fields}
+
+    # 2) Prep filter set & enum cache
+    filter_set = set(filter_list)
+    enum_cache = {}
+    messages = []
+
+    # 3) Grab all <message> and <entry> elements
+    msg_elements = root.findall(".//messages/message") + root.findall(".//entry")
+
+    for msg in msg_elements:
+        msg_name = msg.get("name")
+        if msg_name not in filter_set:
+            continue
+
+        msg_id = msg.get("id") or msg.get("value")
+        logging.debug(f"Loading message {msg_name} (id={msg_id})")
+
+        # 4) Collect <field> children up to <extensions/>
+        fields = []
+        saw_field = False
+        for child in msg:
+            if child.tag == "extensions":
+                break
+            if child.tag == "field":
+                saw_field = True
+                name = child.get("name")
+                typ = child.get("type")
+                desc = (child.text or "").strip()
+                enum_name = child.get("enum")
+                entry = {"name": name, "type": typ, "desc": desc}
+
+                # cache & attach enum values if present
+                if enum_name:
+                    if enum_name not in enum_cache:
+                        enum_cache[enum_name] = get_enum(root, enum_name) or []
+                    if enum_cache[enum_name]:
+                        entry["enum_vals"] = enum_cache[enum_name]
+
+                fields.append(entry)
+
+        # 5) If no pre-extension fields, fall back to <param>
+        if not saw_field:
+            for param in msg.findall(".//param"):
+                label = param.get("label")
+                if not label:
+                    continue
+                mn = param.get("minValue", "float")
+                mx = param.get("maxValue", "float")
+                inc = param.get("increment")
+                desc = (param.text or "").strip()
+                fields.append(
+                    {
+                        "name": label,
+                        "type": [mn, mx, inc],
+                        "desc": desc,
+                    }
                 )
 
-    else:
-        print("No msgs found in the XML file.")
+        messages.append({"msg_id": msg_id, "msg_name": msg_name, "fields": fields})
 
-    return xml_msg
+    return messages
 
 
 def generate_field_value(field_type):
     """Generate a random value for a field based on its type."""
-    if field_type.startswith("uint8"):
+    # TODO Figure out how to handle arrays
+    if "[" in field_type:
+        generated_value = []
+        # Extract the base type and array size
+        match = re.search(r"\[(\d+)\]", field_type)
+        if match:
+            field_size = int(match.group(1))
+        else:
+            raise ValueError(
+                f"field_type '{field_type}' does not contain a size in brackets"
+            )
+        field_type = field_type.split("[")[0]
+        for _ in range(field_size):
+            generated_value.append(generate_field_value(field_type))
+        return generated_value
+    elif field_type.startswith("uint8"):
         return random.randint(0, 255)
     elif field_type.startswith("uint16"):
         return random.randint(0, 65535)
@@ -722,7 +756,7 @@ class FuzzConfig:
         # Load XML message definitions if provided
         if self.xml_file and os.path.exists(self.xml_file):
             logger.info(f"Loading MAVLink message definitions from {self.xml_file}")
-            self.xml_messages = load_xml_messages(self.xml_file, filter=msg_filter)
+            self.xml_messages = load_xml_messages(self.xml_file, filter_list=msg_filter)
             logger.info(f"Loaded {len(self.xml_messages)} message definitions")
         # Check if the peripheral mapping has a frequency associated with it
         # If each peripheral has a frequency, spawn a new thread for each peripheral
@@ -745,7 +779,7 @@ class FuzzConfig:
                 )
                 msg_freq = -1
             logger.info(f"Message: {msg}, Frequency: {msg_freq}")
-            xml_msg = load_xml_messages(self.xml_file, filter=[msg])
+            xml_msg = load_xml_messages(self.xml_file, filter_list=[msg])
             # We will get a list of frequencies and then spawn a thread for each peripheral
             if msg_freq != -1 and xml_msg:
                 try:
@@ -1139,31 +1173,25 @@ class FuzzConfig:
         while self.fuzzing_active:
             # Generate random values for each field
             msg_def = random.choice(self.xml_messages)
-            field_values = []
+            field_values = {}
             for field in msg_def["fields"]:
-                """if "frame" in field["name"]:
-                    field_values.append(12)
-                elif "obstacle_id" in field["name"]:
-                    obstacle_id = 65535
-                    field_values.append(obstacle_id)
-                """  # If we have enum values, pick a random one
+                field_name = field["name"]
                 if "enum_vals" in field:
-                    field_values.append(int(random.choice(field["enum_vals"])))
-                elif "time" in field["name"]:
+                    field_values[field_name] = int(random.choice(field["enum_vals"]))
+                elif "time" in field_name:
                     current_time = round(
                         (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                     )
-                    field_values.append(current_time)
+                    field_values[field_name] = current_time
                 elif type(field["type"]) is list:
                     min, max, inc = field["type"]
                     field_value = None
                     if (min == "float") & (max == "float") & (inc is None):
                         # Handling a specific case of params
                         field_value = generate_field_value("float")
-                        field_values.append(field_value)
-                # Else use the generate_field_value function
+                        field_values[field_name] = field_value
                 else:
-                    field_values.append(generate_field_value(field["type"]))
+                    field_values[field_name] = generate_field_value(field["type"])
             # If we are in calibration mode, just send the same values over for the fields
             msg_dict = [msg_def["msg_name"], field_values]
             if self.calibration_active:
@@ -1190,8 +1218,8 @@ class FuzzConfig:
             # Get the message class from mavutil
             msg_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name.lower()}_message")
 
+            msg = msg_class(**field_values)
             # Create the message instance with the fuzzed values
-            msg = msg_class(*field_values)
 
             # Send the message
             self.tcp_conn.conn.mav.send(msg)
