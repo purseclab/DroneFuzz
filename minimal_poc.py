@@ -1231,12 +1231,21 @@ class FuzzConfig:
             # If the field_values are not correct in length (7), we add the message with 0s
             if len(field_values) < 7:
                 field_values += [0] * (7 - len(field_values))
+            # Structure the message to be similar to the LONG_COMMAND message
+            # Which means we rename all the fields to match the 7 params
+            # Should be a dict with keys like param1, param2, etc.
+            val_idx = 0
+            modified_field_values = {}
+            for _, val in enumerate(field_values.values()):
+                val_key = f"param{val_idx + 1}"
+                modified_field_values[val_key] = val
+                val_idx += 1
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
                 self.target_system,  # target_system
                 self.target_component,  # target_component
                 int(msg_id),  # command
                 0,  # confirmation
-                **field_values,  # parameters
+                **modified_field_values,  # parameters
             )
             self.tcp_conn.conn.mav.send(packed_msg)
         except Exception as e:
