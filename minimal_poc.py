@@ -171,10 +171,13 @@ class TCPConn:
             logger.debug("Not monitoring RC channels")
             self.rc_monitor = False
             self.st_msg_send("STOP RC")
-        elif re.search(r"Mission: \d+ Land", msg.text, re.IGNORECASE):
-            logger.debug("Not monitoring RC channels")
-            self.rc_monitor = False
-            self.st_msg_send("STOP RC")
+
+        # NOTE: 2025-05-28T11:38:06-0400: silipwn: This causes is to stop things too early, so we disable for now
+        # elif re.search(r"Mission: \d+ Land", msg.text, re.IGNORECASE):
+        #     logger.debug("Not monitoring RC channels")
+        #     self.rc_monitor = False
+        #     self.st_msg_send("STOP RC")
+
         # If the drone crashed or something
         if re.search(r"hit ground\w*", msg.text, re.IGNORECASE):
             logger.info("Drone hit the ground, shutting down.")
