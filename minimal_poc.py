@@ -874,12 +874,14 @@ class FuzzConfig:
             ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
                 self.tcp_conn.set_mode(mode)
                 logger.debug(f"Changing mode to: {mode}")
-                time.sleep(5)
+                time.sleep(3)
                 self.tcp_conn.set_mode("AUTO")
                 logger.debug("Reset mode to AUTO")
                 mode_ctr += 1
             else:
                 time.sleep(3)
+        while self.tcp_conn.drone_in_air:
+            time.sleep(1)
         self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
