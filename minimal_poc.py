@@ -1102,6 +1102,11 @@ class FuzzConfig:
             )
             combined_distance += distance
         distance = combined_distance / len(self.golden_rc_vals)
+        logger.debug(
+            "The combined distance is: {} for simulation {}".format(
+                distance, self.fuzzer_stats["simulations_completed"]
+            )
+        )
         assert (
             self.min_fuzz_threshold is not None or self.max_fuzz_threshold is not None
         )
