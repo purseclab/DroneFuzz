@@ -90,6 +90,7 @@ class TCPConn:
         self.drone_ready = False  # Drone ready with GPS lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
+        self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
         # GPS location
         # Connection details
         with open(os.devnull, "w") as fnull:
@@ -170,6 +171,20 @@ class TCPConn:
             logger.debug("Not monitoring RC channels")
             self.rc_monitor = False
             self.st_msg_send("STOP RC")
+        elif re.search(r"Mission: \d+ Land", msg.text, re.IGNORECASE):
+            logger.debug("Not monitoring RC channels")
+            self.rc_monitor = False
+            self.st_msg_send("STOP RC")
+        # If the drone crashed or something
+        if re.search(r"hit ground\w*", msg.text, re.IGNORECASE):
+            logger.info("Drone hit the ground, shutting down.")
+            logger.debug("Disabling all flags")
+            # self.internal_error = True
+            # self.shutdown_requested = True
+            self.drone_in_air = False
+            self.rc_monitor = False
+            self.drone_ready = False
+            self.st_msg_send("STOP RC")
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -216,6 +231,8 @@ class TCPConn:
                             self.rcou_queue.put(msg.to_dict())
                     if msg.get_type() == "MISSION_REQUEST":
                         self.mission_msg_queue.put(msg)
+                    if msg.get_type() == "HEARTBEAT":
+                        self.drone_state = msg.system_status
             except Exception as e:
                 logger.error(f"Error in monitor_comms: {e}")
                 self.shutdown_requested = True
@@ -421,7 +438,7 @@ def include_xml(elem, base_path, processed_files=None):
             # Recursively process includes in the included file
             include_xml(include_root, os.path.dirname(filepath), processed_files)
 
-            # Replace the include element with the contents of the included file
+            # Replace the include element with the contents of the inzcluded file
             parent = include.getparent()
             index = parent.index(include)
             parent.remove(include)
@@ -776,8 +793,13 @@ class FuzzConfig:
         return cmds
 
     def run_sim(self):
-        sitl_args = " -S --model + --speedup 1 -I0"
+        sitl_args = ""
+        if self.vehicle == "copter":
+            sitl_args = " -S --model + --speedup 1 -I0"
+        elif self.vehicle == "plane":
+            sitl_args = " -S --model plane --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
+        logger.info(f"Starting SITL with command: {self.sitl_cmd}")
         if self.calibration_active:
             assert (
                 self.fuzzing_active is False
@@ -804,9 +826,11 @@ class FuzzConfig:
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
         random_modes = ["AVOID_ADSB", "LOITER"]  # Can be patched for specific testing
+        while not self.tcp_conn.rc_monitor:
+            time.sleep(1)
         self.start_fuzzing()
         mode_ctr = 0
-        while self.tcp_conn.drone_in_air:
+        while self.tcp_conn.rc_monitor:
             mode = random.choice(random_modes)
             if (
                 mode_ctr < 3 and self.tcp_conn.rc_monitor
@@ -1180,7 +1204,7 @@ class FuzzConfig:
                 self.target_component,  # target_component
                 int(msg_id),  # command
                 0,  # confirmation
-                *field_values,  # parameters
+                **field_values,  # parameters
             )
             self.tcp_conn.conn.mav.send(packed_msg)
         except Exception as e:
