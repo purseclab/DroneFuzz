@@ -52,7 +52,7 @@ def setup_logging():
 
     # Create formatters
     file_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(lineno)d - %(threadName)s - %(levelname)s - %(message)s"
     )
     console_formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -277,6 +277,36 @@ class TCPConn:
             0,
         )
         logger.info("Setting mode to: " + mode)
+
+    def set_param(self, param_id, param_value, param_type="uint8"):
+        """
+        Set a parameter on the MAVLink-connected system.
+
+        Args:
+            param_id (str): The name/ID of the parameter to set.
+            param_value (float or int): The value to set for the parameter.
+            param_type (str, optional): The MAVLink parameter type (default: "uint8").
+
+        Sends a PARAM_SET message to the target system/component with the specified parameter.
+        """
+        enum_types = {
+            "uint8": mavutil.mavlink.MAV_PARAM_TYPE_UINT8,
+            "int8": mavutil.mavlink.MAV_PARAM_TYPE_INT8,
+            "uint16": mavutil.mavlink.MAV_PARAM_TYPE_UINT16,
+            "int16": mavutil.mavlink.MAV_PARAM_TYPE_INT16,
+            "uint32": mavutil.mavlink.MAV_PARAM_TYPE_UINT32,
+            "int32": mavutil.mavlink.MAV_PARAM_TYPE_INT32,
+            "float": mavutil.mavlink.MAV_PARAM_TYPE_REAL32,
+            "double": mavutil.mavlink.MAV_PARAM_TYPE_REAL64,
+        }
+        # TODO Might have to handle the case where have an extended parameter type
+        self.conn.mav.param_set_send(
+            self.conn.target_system,
+            self.conn.target_component,
+            bytes(param_id, "utf-8"),
+            float(param_value),
+            enum_types.get(param_type),
+        )
 
     def land(self):
         """Land the vehicle."""
@@ -793,6 +823,11 @@ class FuzzConfig:
                 f"No peripheral mapping found for {self.peripheral_under_test}"
             )
 
+        # Check if we have additional parameters in the peripheral mapping
+        self.default_parameter_set = self.peripheral_mapping.get("generic_params", {})
+        if not self.default_parameter_set:
+            logger.debug("Don't have any generic parameters to set")
+
         # Find the filter from the peripheral mapping
         msg_filter = self.peripheral_config.get("msg_type", [])
         logger.info(f"Using message filter: {msg_filter}")
@@ -801,6 +836,12 @@ class FuzzConfig:
         if self.peripheral_config.get("cmd_msgs"):
             # Add the command messages to the filter
             msg_filter += self.cmd_params()
+        
+        # Check if we have some default calibration messages
+        self.calibration_msg = self.peripheral_config.get(
+                "calibration_msg", [])
+        if self.peripheral_config.get("calibration_msgs"):
+            logger.debug("Using default calibration messages")
 
         # Load XML message definitions if provided
         if self.xml_file and os.path.exists(self.xml_file):
@@ -875,6 +916,15 @@ class FuzzConfig:
         cmds = ["MAV_CMD_DO_SET_MODE"]
         return cmds
 
+    def random_param_set(self):
+        """Randomly set a parameter set for fuzzing"""
+        selected_param = random.choice(self.default_parameter_set)
+        self.tcp_conn.set_param(
+            param_id=selected_param,
+            param_value=random.randint(0,1),
+        )
+        self.fuzzer_stats["messages_sent"] += 1
+
     def run_sim(self):
         sitl_args = ""
         if self.vehicle == "copter":
@@ -927,6 +977,9 @@ class FuzzConfig:
             else:
                 time.sleep(3)
         while self.tcp_conn.drone_in_air:
+            # TODO Call the random_param_set
+            if random.random() < 0.1:  # Randomly set a parameter
+                self.random_param_set()
             time.sleep(1)
         self.stop_fuzzing()
 
@@ -1268,10 +1321,24 @@ class FuzzConfig:
                     logger.warning(f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0.")
                     field_values[field_name] = 0
             # If we are in calibration mode, just send the same values over for the fields
+            # TODO: Check if we actually need this as a LIST or DICT?
             msg_dict = [msg_def["msg_name"], field_values]
             if self.calibration_active:
                 if self.calibration_vals is None:
-                    self.calibration_vals = field_values
+                    # Actually check if we have calibration values from the file
+                    if self.calibration_msg:
+                        # Use the first message in the calibration_msg
+                        self.calibration_vals = self.calibration_msg
+                        # Needs to be a dict for sending
+                        if isinstance(self.calibration_vals, list):
+                            # Convert list to dict with keys from msg_def fields
+                            field_names = [f["name"] for f in msg_def["fields"]]
+                            self.calibration_vals = dict(
+                                zip(field_names, self.calibration_vals)
+                            )
+                        field_values = self.calibration_vals
+                    else:
+                        self.calibration_vals = field_values
                     self.fuzz_msgs.append(msg_dict)
                     logger.debug(f"The message for calibration is {msg_dict}")
                 else:
