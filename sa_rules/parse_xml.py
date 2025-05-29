@@ -66,49 +66,81 @@ def get_enum(root, enum_name):
     return enum_values
 
 
-def print_messages(root, filter):
-    msg_elements = root.xpath("//messages/message")
-    msg_elements += root.xpath("//entry")
-    if msg_elements:
-        print("Messages found in XML:")
-        for msg in msg_elements:
-            msg_name = msg.get("name")
-            if msg_name in filter:
-                print(f"Message: {msg_name}")
-                if msg.xpath(".//field"):
-                    for field in msg.xpath(".//field"):
-                        field_name = field.get("name")
-                        field_type = field.get("type")
-                        field_enum = field.get("enum", None)
-                        print(
-                            f"  Field: {field_name}, Type: {field_type} Enum: {field_enum}"
-                        )
-                        if field_enum:
-                            enum_values = get_enum(root, field_enum)
-                            if enum_values:
-                                print(f"Enum values for {field_enum}:")
-                                print(f"  {enum_values}")
-                elif msg.xpath(".//param"):
-                    for param in msg.xpath(".//param"):
-                        param_name = param.get("label")
-                        if param_name is None:
-                            continue
-                        param_min = param.get("minValue", "float")
-                        param_max = param.get("maxValue", "float")
-                        param_inc = param.get("increment", None)
-                        param_text = param.text
-                        print(
-                            f"  Param: {param_name} Desc: {param_text} Range: {param_min}, {param_max}, {param_inc}"
-                        )
-                print()
-    else:
+def print_messages(root, filter_list):
+    filter_set = set(filter_list)
+    enum_cache = {}
+
+    msg_elements = root.findall(".//messages/message") + root.findall(".//entry")
+    if not msg_elements:
         print("No messages found in the XML file.")
+        return
+
+    output = ["Messages found in XML:"]
+
+    for msg in msg_elements:
+        name = msg.get("name")
+        if name not in filter_set:
+            continue
+
+        output.append(f"Message: {name}")
+
+        # collect only <field> children that come before the <extensions> tag
+        fields = []
+        for child in msg:
+            if child.tag == "extensions":
+                break
+            if child.tag == "field":
+                fields.append(child)
+
+        if fields:
+            for fld in fields:
+                fld_name = fld.get("name")
+                fld_type = fld.get("type")
+                fld_enum = fld.get("enum")
+                output.append(
+                    f"  Field: {fld_name}, Type: {fld_type}, Enum: {fld_enum}"
+                )
+
+                if fld_enum:
+                    if fld_enum not in enum_cache:
+                        enum_cache[fld_enum] = get_enum(root, fld_enum) or []
+                    vals = enum_cache[fld_enum]
+                    if vals:
+                        output.append(f"Enum values for {fld_enum}:")
+                        output.append(f"  {vals}")
+        else:
+            # no pre-extension fields; fall back to params
+            params = msg.findall(".//param")
+            for prm in params:
+                label = prm.get("label")
+                if not label:
+                    continue
+                # Check if there's a enum attribute
+                if prm.get("enum"):
+                    enum_name = prm.get("enum")
+                    # Get the values for the enum
+                    enum_values = get_enum(root, enum_name)
+                    mn = min(enum_values) if enum_values else "N/A"
+                    mx = max(enum_values) if enum_values else "N/A"
+                    inc = prm.get("increment", "N/A")
+                    desc = (prm.text or "").strip(".")
+                    desc += " and is ENUM of type " + enum_name
+                else:
+                    mn = prm.get("minValue", "float")
+                    mx = prm.get("maxValue", "float")
+                    inc = prm.get("increment")
+                    desc = (prm.text or "").strip()
+                output.append(f"  Param: {label} Desc: {desc} Range: {mn}, {mx}, {inc}")
+
+        output.append("")
+
+    print("\n".join(output))
 
 
 def main():
-    main_file = "xmls/ardupilotmega.xml"
+    main_file = "../xmls/common.xml"
     root = parse_xml_file(main_file)
-    filter_list = ["MAV_CMD_DO_MOUNT_CONTROL","OBSTACLE_DISTANCE_3D"]
+    filter_list = ["MAV_CMD_DO_MOUNT_CONTROL"]
     print_messages(root, filter_list)
 
     # Example of using load_xml_messages
