@@ -17,6 +17,7 @@ sensors:
     msg_type:
       - MAV_CMD_DO_MOUNT_CONTROL
     frequency: [-1]
+    calibration_msg: [0,0,0,0,0,0,2]
   # Mount bug (incorrect yaw)
   CS3:
     parameters:
@@ -30,6 +31,12 @@ sensors:
     msg_type:
       - SET_ATTITUDE_TARGET
     frequency: [-1]
+  # GPS YAW
+  CS5:
+    parameters:
+    msg_type:
+      - PARAM_SET
+    default_msg: [0, 0, b'SIM_GPS_DISABLE', 0, 1]
 # Generic
   AP_ADSB:
     parameters:
@@ -167,3 +174,6 @@ sensors:
       - OSD_PARAM_SHOW_CONFIG_REPLY
       - OSD_PARAM_CONFIG
     frequency: [-1, -1, -1, -1]
+
+generic_params:
+  - SIM_GPS_DISABLE
