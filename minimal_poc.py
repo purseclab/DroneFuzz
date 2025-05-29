@@ -513,17 +513,63 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                 label = param.get("label")
                 if not label:
                     continue
-                mn = param.get("minValue", "float")
-                mx = param.get("maxValue", "float")
-                inc = param.get("increment")
-                desc = (param.text or "").strip()
-                fields.append(
-                    {
-                        "name": label,
-                        "type": [mn, mx, inc],
-                        "desc": desc,
-                    }
-                )
+
+                entry = {"name": label}
+                desc_text = (param.text or "").strip().strip(".")
+
+                if param.get("enum"):
+                    enum_name = param.get("enum")
+                    # Ensure get_enum returns list of values. These are typically numeric strings.
+                    enum_values_str = get_enum(root, enum_name)
+
+                    entry["desc"] = f"{desc_text} (Enum: {enum_name})"
+                    if enum_values_str:
+                        try:
+                            # Convert enum values to int, as they are typically numeric in MAVLink
+                            entry["enum_vals"] = [int(ev) for ev in enum_values_str]
+                            entry["type"] = "enum"  # Unified type for enums
+                        except ValueError:
+                            logger.warning(
+                                f"Enum '{enum_name}' for param '{label}' contains non-integer values. Storing as strings."
+                            )
+                            entry["enum_vals"] = (
+                                enum_values_str  # Store as strings if not all int
+                            )
+                            entry["type"] = (
+                                "enum_str"  # Indicate string enum if necessary
+                            )
+                    else:
+                        entry["desc"] += " - Enum not found or empty"
+                        entry["type"] = "unknown_enum_param"  # Or handle as error
+                else:
+                    # Handle range-based params (typically float for MAVLink params)
+                    mn_str = param.get("minValue")
+                    mx_str = param.get("maxValue")
+                    # inc_str = param.get("increment") # Increment not directly used by random.uniform
+                    units = param.get("units", "")
+
+                    entry["desc"] = desc_text
+                    if units:
+                        entry["desc"] += f" (Units: {units})"
+
+                    try:
+                        # Params are often floats. Use defaults if min/max are not specified.
+                        entry["range_min"] = (
+                            float(mn_str) if mn_str is not None else -10.0
+                        )  # Wider default range
+                        entry["range_max"] = (
+                            float(mx_str) if mx_str is not None else 10.0
+                        )
+                        entry["type"] = "param_range_float"
+                    except (ValueError, TypeError):
+                        logger.warning(
+                            f"Could not parse minValue/maxValue for param '{label}' as float. Using default range."
+                        )
+                        entry["range_min"] = -10.0
+                        entry["range_max"] = 10.0
+                        entry["type"] = "param_range_float"  # Default to float range
+
+                fields.append(entry)
 
         messages.append({"msg_id": msg_id, "msg_name": msg_name, "fields": fields})
 
@@ -1184,25 +1230,43 @@ class FuzzConfig:
         while self.fuzzing_active:
             # Generate random values for each field
             msg_def = random.choice(self.xml_messages)
+            # logger.debug(f"Selected message definition for fuzzing: {msg_def}")
             field_values = {}
             for field in msg_def["fields"]:
                 field_name = field["name"]
-                if "enum_vals" in field:
-                    field_values[field_name] = int(random.choice(field["enum_vals"]))
-                elif "time" in field_name:
+                field_type = field.get("type") # Get type safely
+
+                if "time" in field_name: # Check for "time" in field_name first
                     current_time = round(
                         (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                     )
                     field_values[field_name] = current_time
-                elif type(field["type"]) is list:
-                    min, max, inc = field["type"]
-                    field_value = None
-                    if (min == "float") & (max == "float") & (inc is None):
-                        # Handling a specific case of params
-                        field_value = generate_field_value("float")
-                        field_values[field_name] = field_value
+                elif "enum_vals" in field:
+                    chosen_enum_value = random.choice(field["enum_vals"])
+                    if isinstance(chosen_enum_value, str):
+                        # Attempt conversion if MAVLink type is numeric
+                        if field_type and (field_type.startswith(("uint", "int", "float", "double")) or field_type == "char"):
+                            try:
+                                if "float" in field_type or "double" in field_type:
+                                    field_values[field_name] = float(chosen_enum_value)
+                                else:
+                                    field_values[field_name] = int(chosen_enum_value)
+                            except ValueError:
+                                logger.warning(f"Could not convert enum string '{chosen_enum_value}' to numeric for field '{field_name}' (type: {field_type}). Using 0 as fallback.")
+                                field_values[field_name] = 0
+                        else: # Type is likely string based (e.g. char[], string, enum_str) or unknown
+                            field_values[field_name] = chosen_enum_value
+                    else: # Value from enum_vals is already a number (e.g. int from type="enum")
+                        field_values[field_name] = chosen_enum_value
+                elif field_type == "param_range_float":
+                    min_val = field.get("range_min", -10.0)
+                    max_val = field.get("range_max", 10.0)
+                    field_values[field_name] = random.uniform(min_val, max_val)
+                elif field_type: # Fallback for other standard MAVLink types
+                    field_values[field_name] = generate_field_value(field_type)
                 else:
-                    field_values[field_name] = generate_field_value(field["type"])
+                    logger.warning(f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0.")
+                    field_values[field_name] = 0
             # If we are in calibration mode, just send the same values over for the fields
             msg_dict = [msg_def["msg_name"], field_values]
             if self.calibration_active:
