@@ -9,6 +9,7 @@ import time
 import re
 import yaml
 import os
+import sys
 import random
 import signal
 import tempfile
@@ -30,12 +31,13 @@ from queue import Queue
 import threading
 import copy
 
-
 # Setup logging
-def setup_logging():
+def setup_logging(file_dir=None):
     """Setup logging with timestamp in filename"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"pgfuzz_{timestamp}.log"
+    if file_dir:
+        log_filename = os.path.join(file_dir, log_filename)
 
     # Create logger
     logger = logging.getLogger("pgfuzz")
@@ -773,6 +775,13 @@ class FuzzConfig:
 
         # Initialize fuzzer
         self.fuzzer_param_file = None
+        assert args.fuzzer_temp_dir, "Temporary directory must be provided"
+        self.fuzzer_temp_dir = args.fuzzer_temp_dir
+        self.fuzzer_temp_input_dir = self.fuzzer_temp_dir + "/input"
+        # Create the temporary input directory if it doesn't exist
+        if not os.path.exists(self.fuzzer_temp_input_dir):
+            os.makedirs(self.fuzzer_temp_input_dir)
+            logger.info(f"Created temporary input directory: {self.fuzzer_temp_input_dir}")
         self.setup()
         if self.msg_freq:
             logger.info("Setting the fuzzing interval to match message frequency")
@@ -947,6 +956,7 @@ class FuzzConfig:
                 stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
+                cwd=self.fuzzer_temp_dir,
             )
             self.fuzzer_stats["current_mission_time"] = time.time()
             self.tcp_conn = TCPConn()
@@ -1216,7 +1226,7 @@ class FuzzConfig:
                 f"DTW distance {distance} exceeds {self.min_fuzz_threshold} or is way below threshold {self.max_fuzz_threshold}, potential anomaly detected! at simulation {self.fuzzer_stats['simulations_completed']}"
             )
             # Try to open the LASTLOG.TXT
-            log_file_path = os.path.join(os.getcwd(), "logs/LASTLOG.TXT")
+            log_file_path = os.path.join(self.fuzzer_temp_dir, "logs/LASTLOG.TXT")
             log_content = "N/A"
             try:
                 with open(log_file_path, "r") as log_file:
@@ -1226,15 +1236,15 @@ class FuzzConfig:
             logger.debug(f"Please refer to the {log_content:08d}.BIN for more details")
             self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis
-            input_file = tempfile.mkstemp(
-                suffix=".txt", prefix="inputs-anomalous-", dir=self.fuzzer_temp_dir
-            )[1]
+            fd, input_file = tempfile.mkstemp(
+                suffix=".txt", prefix="inputs-anomalous-", dir=self.fuzzer_temp_input_dir
+            )
         else:
-            input_file = tempfile.mkstemp(
-                suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_dir
-            )[1]
-        logger.info(f"Saving inputs to {input_file}")
-        with open(input_file, "w") as f:
+            fd, input_file = tempfile.mkstemp(
+                suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_input_dir
+            )
+        logger.info("Saving inputs to %s",input_file)
+        with os.fdopen(fd, "w") as f:
             # Dump all the values inside the fuzz_msgs
             for msg in self.fuzz_msgs:
                 f.write(f"{msg}\n")
@@ -1348,6 +1358,8 @@ class FuzzConfig:
             self.send_fuzzed_message(
                 msg_def["msg_name"], msg_def["msg_id"], field_values
             )
+            # Prepend the current time to the list for later analysis
+            msg_dict.insert(0, time.time()-self.fuzzer_stats["current_mission_time"])
             # To ensure we only save fuzzed message
             if not self.calibration_active:
                 self.fuzz_msgs.append(msg_dict)
@@ -1476,8 +1488,11 @@ if __name__ == "__main__":
                         ", ".join(missing_args)
                     )
                 )
-
-        logger = setup_logging()
+        # Create a temporary folder for the fuzzed messages locally in the same directory that we are running
+        fuzzer_temp_dir = tempfile.mkdtemp("pgfuzz", "fuzzing_data", os.getcwd())
+        logger = setup_logging(fuzzer_temp_dir)
+        # Add the fuzzer temp dir to args for later use
+        args.fuzzer_temp_dir = fuzzer_temp_dir
         cfg = FuzzConfig(args)
 
         if not cfg.calibration_threshold:
