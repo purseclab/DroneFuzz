@@ -977,9 +977,9 @@ class FuzzConfig:
             else:
                 time.sleep(3)
         while self.tcp_conn.drone_in_air:
-            # TODO Call the random_param_set
-            if random.random() < 0.1:  # Randomly set a parameter
-                self.random_param_set()
+            if self.default_parameter_set:
+                if random.random() < 0.1:  # Randomly set a parameter
+                    self.random_param_set()
             time.sleep(1)
         self.stop_fuzzing()
 
@@ -1339,6 +1339,7 @@ class FuzzConfig:
                         field_values = self.calibration_vals
                     else:
                         self.calibration_vals = field_values
+                    msg_dict = [msg_def["msg_name"], field_values]
                     self.fuzz_msgs.append(msg_dict)
                     logger.debug(f"The message for calibration is {msg_dict}")
                 else:
