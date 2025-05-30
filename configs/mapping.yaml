@@ -35,8 +35,6 @@ sensors:
   CS5:
     parameters:
     msg_type:
-      - PARAM_SET
-    default_msg: [0, 0, b'SIM_GPS_DISABLE', 0, 1]
 # Generic
   AP_ADSB:
     parameters:
@@ -127,8 +125,6 @@ sensors:
       - OBSTACLE_DISTANCE_3D
     frequency: [25]
     default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
-
-
 
   GPS:
     parameters:

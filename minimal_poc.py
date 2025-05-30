@@ -853,7 +853,7 @@ class FuzzConfig:
             logger.debug("Using default calibration messages")
 
         # Load XML message definitions if provided
-        if self.xml_file and os.path.exists(self.xml_file):
+        if self.xml_file and os.path.exists(self.xml_file) and msg_filter:
             logger.info(f"Loading MAVLink message definitions from {self.xml_file}")
             self.xml_messages = load_xml_messages(self.xml_file, filter_list=msg_filter)
             logger.info(f"Loaded {len(self.xml_messages)} message definitions")
@@ -867,6 +867,11 @@ class FuzzConfig:
         selected_freq = self.peripheral_config.get("frequency", [])
         logger.info(f"Selected messages for fuzzing: {selected_msgs}")
         logger.info(f"Selected frequencies for fuzzing: {selected_freq}")
+        if not selected_msgs:
+            logger.warning(
+                "No messages selected for fuzzing, please check the peripheral mapping"
+            )
+            return
         for msg in selected_msgs:
             # Get the frequency from the same index
             msg_idx = selected_msgs.index(msg)
@@ -909,11 +914,6 @@ class FuzzConfig:
             with open(self.fuzzer_param_file, "w") as f:
                 for parameter, values in self.peripheral_config["parameters"].items():
                     f.write(f"{parameter} {values}\n")
-        # Create a temporary folder for the fuzzed messages locally in the same directory that we are running
-        self.fuzzer_temp_dir = tempfile.mkdtemp("pgfuzz", "fuzzing_data", os.getcwd())
-        logger.info(
-            f"Creating temporary directory for fuzzed messages: {self.fuzzer_temp_dir}"
-        )
 
     def sim_params(self):
         """Add the SIM parameters from the PGFUZZ database"""
@@ -928,9 +928,20 @@ class FuzzConfig:
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing"""
         selected_param = random.choice(self.default_parameter_set)
+        random_val = random.randint(0,1)
         self.tcp_conn.set_param(
             param_id=selected_param,
-            param_value=random.randint(0,1),
+            param_value=random_val,
+        )
+        self.fuzz_msgs.append(
+           [ 
+               time.time() - self.fuzzer_stats["current_mission_time"],
+               "PARAM_SET",
+                {
+                    "param_id": selected_param,
+                    "param_value": random_val,
+                }
+           ]
         )
         self.fuzzer_stats["messages_sent"] += 1
 
@@ -987,7 +998,7 @@ class FuzzConfig:
             else:
                 time.sleep(3)
         while self.tcp_conn.drone_in_air:
-            if self.default_parameter_set:
+            if self.default_parameter_set and not self.calibration_active: # Ensure we don't set parameters while calibrating
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
             time.sleep(1)
