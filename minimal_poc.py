@@ -682,6 +682,11 @@ class FuzzConfig:
                 self.peripheral_mapping = yaml.safe_load(f)
                 logger.info(f"Loaded peripheral mapping from {self.peripheral_file}")
 
+        # Allow configuring the modes via config
+        # Current fallbacks are ['GUIDED', 'AUTO'], I think these are the most common
+        self.supported_modes = (self.config.get("supported_modes") or ['GUIDED','AUTO']) 
+        
+
         # Setup files - command line args override yaml config
         self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin")
         self.ap_dir = (
@@ -994,14 +999,13 @@ class FuzzConfig:
     def monitor_auto_mission(self):
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
-        random_modes = ["AUTO","LOITER"]  # Can be patched for specific testing
         while not self.tcp_conn.rc_monitor:
             time.sleep(1)
         self.start_fuzzing()
         mode_ctr = 0
         prev_state = None
         while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
-            mode = random.choice(random_modes)
+            mode = random.choice(self.supported_modes)
             if (
                 mode_ctr < 3 and random.random() < 0.5  # Randomly set a mode
             ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
