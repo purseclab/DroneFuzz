@@ -1001,6 +1001,7 @@ class FuzzConfig:
             elif mode_ctr >= 3 and prev_state != "AUTO":
                 logger.debug("Reached mode change limit, not changing mode anymore")
                 self.tcp_conn.set_mode("AUTO")
+                prev_state = "AUTO"
                 logger.debug("Resetting Setting mode to AUTO")
             if self.default_parameter_set and not self.calibration_active: # Ensure we don't set parameters while calibrating
                 if random.random() < 0.1:  # Randomly set a parameter
