@@ -949,9 +949,9 @@ class FuzzConfig:
     def run_sim(self):
         sitl_args = ""
         if self.vehicle == "copter":
-            sitl_args = " -S --model + --speedup 1 -I0"
+            sitl_args = " -S --model + -w --speedup 1 -I0"
         elif self.vehicle == "plane":
-            sitl_args = " -S --model plane --speedup 1 -I0"
+            sitl_args = " -S --model plane -w --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
         logger.info(f"Starting SITL with command: {self.sitl_cmd}")
         if self.calibration_active:
