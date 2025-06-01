@@ -811,6 +811,9 @@ class FuzzConfig:
                 time.sleep(1 / frequency)
 
     def setup(self):
+        
+        # Setup the random seed for reproducibility
+        random.seed(42)
         self.fuzzer_stats = {
             "simulations_completed": 0,
             "messages_sent": 0,
