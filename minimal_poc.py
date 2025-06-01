@@ -814,6 +814,7 @@ class FuzzConfig:
         
         # Setup the random seed for reproducibility
         random.seed(42)
+
         self.fuzzer_stats = {
             "simulations_completed": 0,
             "messages_sent": 0,
@@ -835,6 +836,16 @@ class FuzzConfig:
             raise Exception(
                 f"No peripheral mapping found for {self.peripheral_under_test}"
             )
+
+        # Get the directory for the script and check the git log for the version
+        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        fuzzer_commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'],cwd=self.script_dir).strip().decode('utf-8')      
+        src_commit_hash = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'], cwd=self.ap_dir
+        ).strip().decode('utf-8')
+
+        logger.debug(f"Fuzzer commit hash: {fuzzer_commit_hash}")
+        logger.debug(f"Source Under Testing commit hash: {src_commit_hash}")
 
         # Check if we have additional parameters in the peripheral mapping
         self.default_parameter_set = self.peripheral_mapping.get("generic_params", {})
