@@ -72,6 +72,7 @@ def setup_logging(file_dir=None):
     return logger
 
 
+
 # Initialize logger
 
 mavlink_timeout = 5
@@ -979,29 +980,29 @@ class FuzzConfig:
     def monitor_auto_mission(self):
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
-        random_modes = ["AVOID_ADSB", "LOITER"]  # Can be patched for specific testing
+        random_modes = ["AUTO","LOITER"]  # Can be patched for specific testing
         while not self.tcp_conn.rc_monitor:
             time.sleep(1)
         self.start_fuzzing()
         mode_ctr = 0
-        while self.tcp_conn.rc_monitor:
+        prev_state = None
+        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
             mode = random.choice(random_modes)
             if (
-                mode_ctr < 3 and self.tcp_conn.rc_monitor
+                mode_ctr < 3 and random.random() < 0.5  # Randomly set a mode
             ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
                 self.tcp_conn.set_mode(mode)
                 logger.debug(f"Changing mode to: {mode}")
-                time.sleep(3)
-                self.tcp_conn.set_mode("AUTO")
-                logger.debug("Reset mode to AUTO")
                 mode_ctr += 1
-            else:
-                time.sleep(3)
-        while self.tcp_conn.drone_in_air:
+                prev_state = mode
+            elif mode_ctr >= 3 and prev_state != "AUTO":
+                logger.debug("Reached mode change limit, not changing mode anymore")
+                self.tcp_conn.set_mode("AUTO")
+                logger.debug("Resetting Setting mode to AUTO")
             if self.default_parameter_set and not self.calibration_active: # Ensure we don't set parameters while calibrating
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
-            time.sleep(1)
+            time.sleep(3)
         self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
