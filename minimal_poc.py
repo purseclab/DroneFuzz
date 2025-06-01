@@ -588,18 +588,18 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                     try:
                         # Params are often floats. Use defaults if min/max are not specified.
                         entry["range_min"] = (
-                            float(mn_str) if mn_str is not None else -10.0
+                            float(mn_str) if mn_str is not None else 0.0
                         )  # Wider default range
                         entry["range_max"] = (
-                            float(mx_str) if mx_str is not None else 10.0
+                            float(mx_str) if mx_str is not None else 360.0
                         )
                         entry["type"] = "param_range_float"
                     except (ValueError, TypeError):
                         logger.warning(
                             f"Could not parse minValue/maxValue for param '{label}' as float. Using default range."
                         )
-                        entry["range_min"] = -10.0
-                        entry["range_max"] = 10.0
+                        entry["range_min"] = 0.0
+                        entry["range_max"] = 360.0
                         entry["type"] = "param_range_float"  # Default to float range
 
                 fields.append(entry)
@@ -611,7 +611,6 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
 
 def generate_field_value(field_type):
     """Generate a random value for a field based on its type."""
-    # TODO Figure out how to handle arrays
     if "[" in field_type:
         generated_value = []
         # Extract the base type and array size
@@ -639,7 +638,7 @@ def generate_field_value(field_type):
     elif field_type.startswith("int32"):
         return random.randint(-2147483648, 2147483647)
     elif field_type.startswith("float"):
-        return random.uniform(-100, 100)
+        return random.uniform(-10,10)
     elif field_type.startswith("char"):
         return random.randint(0, 255)
     else:
@@ -1022,6 +1021,8 @@ class FuzzConfig:
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
             time.sleep(3)
+        while self.tcp_conn.drone_in_air:
+            time.sleep(1)
         self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
