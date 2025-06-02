@@ -1293,13 +1293,24 @@ class FuzzConfig:
         fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
         s1 = np.array([[pkt[f] for f in fields] for pkt in series1])
         s2 = np.array([[pkt[f] for f in fields] for pkt in series2])
-        # distance, path = fastdtw(s1, s2, dist=euclidean)
-        data_standardized_all = StandardScaler().fit_transform(s1)
-        test_data_standardized = StandardScaler().fit_transform(s2)
+        num_channels = s1.shape[1]
+        series1_normalized = np.zeros_like(s1)
+        series2_normalized = np.zeros_like(s2)
+
+        for i in range(num_channels):
+            # Normalize channel i of Series 1
+            chan1_mean = np.mean(s1[:, i])
+            chan1_std = np.std(s1[:, i])
+            series1_normalized[:, i] = (s1[:, i] - chan1_mean) / (chan1_std + 1e-8)
+
+            # Normalize channel i of Series 2
+            chan2_mean = np.mean(s2[:, i])
+            chan2_std = np.std(s2[:, i])
+            series2_normalized[:, i] = (s2[:, i] - chan2_mean) / (chan2_std + 1e-8)
         # Compute DTW with Euclidean distance
         alignments = dtw(
-            data_standardized_all,
-            test_data_standardized,
+            series1_normalized,
+            series2_normalized,
             dist_method="euclidean",
             distance_only=True,
         )
