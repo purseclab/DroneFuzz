@@ -645,8 +645,8 @@ def generate_field_value(field_type):
 class FuzzConfig:
     def __init__(self, args):
         # Register signal handlers
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
+        # signal.signal(signal.SIGINT, self.signal_handler)
+        # signal.signal(signal.SIGTERM, self.signal_handler)
         self.shutdown_requested = False
 
         # Load configuration from config YAML file first
@@ -1416,8 +1416,8 @@ class FuzzConfig:
             # Get the message class from mavutil
             msg_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name.lower()}_message")
 
-            msg = msg_class(**field_values)
             # Create the message instance with the fuzzed values
+            msg = msg_class(**field_values)
 
             # Send the message
             self.tcp_conn.conn.mav.send(msg)
