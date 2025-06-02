@@ -851,8 +851,7 @@ class FuzzConfig:
             .strip()
             .decode("utf-8")
         )
-
-        logger.debug(f"Source Under Testing commit hash: {src_commit_hash}")
+        logger.debug("Source Under Testing commit hash %s",src_commit_hash)
 
         # Check if we have additional parameters in the peripheral mapping
         self.default_parameter_set = self.peripheral_mapping.get("generic_params", {})
@@ -949,7 +948,11 @@ class FuzzConfig:
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing"""
         selected_param = random.choice(self.default_parameter_set)
-        random_val = random.randint(0, 1)
+        # Check if the value ends in DISABLE or ENABLE, then we set it 0 or 1
+        if re.match(r".*ABLE$", selected_param):
+            random_val = random.randint(0, 1)
+        else:
+            random_val = generate_field_value("int8") # Default to int8 for now
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
@@ -1005,7 +1008,7 @@ class FuzzConfig:
         self.start_fuzzing()
         mode_ctr = 0
         prev_state = None
-        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
+        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air and not self.calibration_active:
             mode = random.choice(self.supported_modes)
             if (
                 mode_ctr < 3 and random.random() < 0.5  # Randomly set a mode
@@ -1159,6 +1162,19 @@ class FuzzConfig:
         logger.info("-" * 30)
 
     def sigma_calc(self):
+        # Calculate the DTW thresholds based on the golden RC values
+        # Compare each value with the other values 
+        cmp_idx = 0
+        for main_idx, golden_rc_vals in enumerate(self.golden_rc_vals):
+            for idx, rcou_vals in enumerate(self.golden_rc_vals):
+                if main_idx == idx:
+                    continue
+                logger.debug("Comparing golden RC values: {} with {}".format(
+                    main_idx, idx))
+                cmp_idx += 1
+                _, distance = self.calculate_dtw(golden_rc_vals, rcou_vals)
+                self.fuzzer_stats["dtw_threshold"].append(distance)
+        logger.debug("Did {} comparisons".format(cmp_idx))
         # Get the threshold values for 2 sigma
         mean = np.mean(self.fuzzer_stats["dtw_threshold"])
         std_dev = np.std(self.fuzzer_stats["dtw_threshold"])
@@ -1209,12 +1225,8 @@ class FuzzConfig:
             if self.shutdown_requested:
                 self.tcp_conn.cleanup()
             elif self.rcou_vals:
-                prev_rcou_vals = copy.deepcopy(self.rcou_vals)
                 self.rcou_vals = self.tcp_conn.cleanup()
                 if self.calibration_active:
-                    _, distance = self.calculate_dtw(prev_rcou_vals, self.rcou_vals)
-                    logger.info(f"DTW distance calculated: {distance}")
-                    self.fuzzer_stats["dtw_threshold"].append(distance)
                     self.golden_rc_vals.append(self.rcou_vals)
                 else:
                     if not self.min_fuzz_threshold:
