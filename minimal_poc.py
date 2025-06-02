@@ -28,6 +28,7 @@ from queue import Queue
 import threading
 import copy
 
+
 # Setup logging
 def setup_logging(file_dir=None):
     """Setup logging with timestamp in filename"""
@@ -67,7 +68,6 @@ def setup_logging(file_dir=None):
 
     print(f"Logging initialized. Log file: {log_filename}")
     return logger
-
 
 
 # Initialize logger
@@ -635,7 +635,7 @@ def generate_field_value(field_type):
     elif field_type.startswith("int32"):
         return random.randint(-2147483648, 2147483647)
     elif field_type.startswith("float"):
-        return random.uniform(-10,10)
+        return random.uniform(-10, 10)
     elif field_type.startswith("char"):
         return random.randint(0, 255)
     else:
@@ -680,8 +680,7 @@ class FuzzConfig:
 
         # Allow configuring the modes via config
         # Current fallbacks are ['GUIDED', 'AUTO'], I think these are the most common
-        self.supported_modes = (self.config.get("supported_modes") or ['GUIDED','AUTO']) 
-        
+        self.supported_modes = self.config.get("supported_modes") or ["GUIDED", "AUTO"]
 
         # Setup files - command line args override yaml config
         self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin")
@@ -783,7 +782,9 @@ class FuzzConfig:
         # Create the temporary input directory if it doesn't exist
         if not os.path.exists(self.fuzzer_temp_input_dir):
             os.makedirs(self.fuzzer_temp_input_dir)
-            logger.info(f"Created temporary input directory: {self.fuzzer_temp_input_dir}")
+            logger.info(
+                f"Created temporary input directory: {self.fuzzer_temp_input_dir}"
+            )
         self.setup()
         if self.msg_freq:
             logger.info("Setting the fuzzing interval to match message frequency")
@@ -817,7 +818,7 @@ class FuzzConfig:
                 time.sleep(1 / frequency)
 
     def setup(self):
-        
+
         # Setup the random seed for reproducibility
         random.seed(42)
 
@@ -845,9 +846,11 @@ class FuzzConfig:
 
         # Get the directory for the script and check the git log for the version
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        src_commit_hash = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'], cwd=self.ap_dir
-        ).strip().decode('utf-8')
+        src_commit_hash = (
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.ap_dir)
+            .strip()
+            .decode("utf-8")
+        )
 
         logger.debug(f"Source Under Testing commit hash: {src_commit_hash}")
 
@@ -864,10 +867,9 @@ class FuzzConfig:
         if self.peripheral_config.get("cmd_msgs"):
             # Add the command messages to the filter
             msg_filter += self.cmd_params()
-        
+
         # Check if we have some default calibration messages
-        self.calibration_msg = self.peripheral_config.get(
-                "calibration_msg", [])
+        self.calibration_msg = self.peripheral_config.get("calibration_msg", [])
         if self.peripheral_config.get("calibration_msgs"):
             logger.debug("Using default calibration messages")
 
@@ -947,20 +949,20 @@ class FuzzConfig:
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing"""
         selected_param = random.choice(self.default_parameter_set)
-        random_val = random.randint(0,1)
+        random_val = random.randint(0, 1)
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
         )
         self.fuzz_msgs.append(
-           [ 
-               time.time() - self.fuzzer_stats["current_mission_time"],
-               "PARAM_SET",
+            [
+                time.time() - self.fuzzer_stats["current_mission_time"],
+                "PARAM_SET",
                 {
                     "param_id": selected_param,
                     "param_value": random_val,
-                }
-           ]
+                },
+            ]
         )
         self.fuzzer_stats["messages_sent"] += 1
 
@@ -1017,7 +1019,9 @@ class FuzzConfig:
                 self.tcp_conn.set_mode("AUTO")
                 prev_state = "AUTO"
                 logger.debug("Resetting Setting mode to AUTO")
-            if self.default_parameter_set and not self.calibration_active: # Ensure we don't set parameters while calibrating
+            if (
+                self.default_parameter_set and not self.calibration_active
+            ):  # Ensure we don't set parameters while calibrating
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
             time.sleep(3)
@@ -1269,13 +1273,15 @@ class FuzzConfig:
             self.fuzzer_stats["potential_crashes"] += 1
             # Save inputs for later analysis
             fd, input_file = tempfile.mkstemp(
-                suffix=".txt", prefix="inputs-anomalous-", dir=self.fuzzer_temp_input_dir
+                suffix=".txt",
+                prefix="inputs-anomalous-",
+                dir=self.fuzzer_temp_input_dir,
             )
         else:
             fd, input_file = tempfile.mkstemp(
                 suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_input_dir
             )
-        logger.info("Saving inputs to %s",input_file)
+        logger.info("Saving inputs to %s", input_file)
         with os.fdopen(fd, "w") as f:
             # Dump all the values inside the fuzz_msgs
             for msg in self.fuzz_msgs:
@@ -1340,9 +1346,9 @@ class FuzzConfig:
             field_values = {}
             for field in msg_def["fields"]:
                 field_name = field["name"]
-                field_type = field.get("type") # Get type safely
+                field_type = field.get("type")  # Get type safely
 
-                if "time" in field_name: # Check for "time" in field_name first
+                if "time" in field_name:  # Check for "time" in field_name first
                     current_time = round(
                         (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                     )
@@ -1351,27 +1357,34 @@ class FuzzConfig:
                     chosen_enum_value = random.choice(field["enum_vals"])
                     if isinstance(chosen_enum_value, str):
                         # Attempt conversion if MAVLink type is numeric
-                        if field_type and (field_type.startswith(("uint", "int", "float", "double")) or field_type == "char"):
+                        if field_type and (
+                            field_type.startswith(("uint", "int", "float", "double"))
+                            or field_type == "char"
+                        ):
                             try:
                                 if "float" in field_type or "double" in field_type:
                                     field_values[field_name] = float(chosen_enum_value)
                                 else:
                                     field_values[field_name] = int(chosen_enum_value)
                             except ValueError:
-                                logger.warning(f"Could not convert enum string '{chosen_enum_value}' to numeric for field '{field_name}' (type: {field_type}). Using 0 as fallback.")
+                                logger.warning(
+                                    f"Could not convert enum string '{chosen_enum_value}' to numeric for field '{field_name}' (type: {field_type}). Using 0 as fallback."
+                                )
                                 field_values[field_name] = 0
-                        else: # Type is likely string based (e.g. char[], string, enum_str) or unknown
+                        else:  # Type is likely string based (e.g. char[], string, enum_str) or unknown
                             field_values[field_name] = chosen_enum_value
-                    else: # Value from enum_vals is already a number (e.g. int from type="enum")
+                    else:  # Value from enum_vals is already a number (e.g. int from type="enum")
                         field_values[field_name] = chosen_enum_value
                 elif field_type == "param_range_float":
                     min_val = field.get("range_min", -10.0)
                     max_val = field.get("range_max", 10.0)
                     field_values[field_name] = random.uniform(min_val, max_val)
-                elif field_type: # Fallback for other standard MAVLink types
+                elif field_type:  # Fallback for other standard MAVLink types
                     field_values[field_name] = generate_field_value(field_type)
                 else:
-                    logger.warning(f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0.")
+                    logger.warning(
+                        f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0."
+                    )
                     field_values[field_name] = 0
             # If we are in calibration mode, just send the same values over for the fields
             # TODO: Check if we actually need this as a LIST or DICT?
@@ -1402,7 +1415,7 @@ class FuzzConfig:
                 msg_def["msg_name"], msg_def["msg_id"], field_values
             )
             # Prepend the current time to the list for later analysis
-            msg_dict.insert(0, time.time()-self.fuzzer_stats["current_mission_time"])
+            msg_dict.insert(0, time.time() - self.fuzzer_stats["current_mission_time"])
             # To ensure we only save fuzzed message
             if not self.calibration_active:
                 self.fuzz_msgs.append(msg_dict)
