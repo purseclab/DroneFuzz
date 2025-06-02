@@ -805,8 +805,13 @@ class FuzzConfig:
                             (time.time() - self.fuzzer_stats["current_mission_time"])
                             * 1000
                         )
+                    # Convert default values to a dict
+                    default_values_dict = {
+                        field["name"]: default_values[i]
+                        for i, field in enumerate(xml_msg["fields"])
+                    }
                     self.send_fuzzed_message(
-                        xml_msg["msg_name"], xml_msg["msg_id"], default_values
+                        xml_msg["msg_name"], xml_msg["msg_id"], default_values_dict
                     )
                 except Exception as e:
                     logger.error(f"Error sending message: {e}")
