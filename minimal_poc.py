@@ -843,12 +843,10 @@ class FuzzConfig:
 
         # Get the directory for the script and check the git log for the version
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        fuzzer_commit_hash = subprocess.check_output(['git', 'rev-parse', 'HEAD'],cwd=self.script_dir).strip().decode('utf-8')      
         src_commit_hash = subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'], cwd=self.ap_dir
         ).strip().decode('utf-8')
 
-        logger.debug(f"Fuzzer commit hash: {fuzzer_commit_hash}")
         logger.debug(f"Source Under Testing commit hash: {src_commit_hash}")
 
         # Check if we have additional parameters in the peripheral mapping
