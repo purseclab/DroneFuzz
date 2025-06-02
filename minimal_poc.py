@@ -9,16 +9,13 @@ import time
 import re
 import yaml
 import os
-import sys
 import random
-import signal
 import tempfile
 import logging
 import datetime
 import pickle
 from lxml import etree
 from dtw import dtw
-from sklearn.preprocessing import StandardScaler
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
