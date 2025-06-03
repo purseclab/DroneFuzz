@@ -845,7 +845,6 @@ class FuzzConfig:
             )
 
         # Get the directory for the script and check the git log for the version
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
         src_commit_hash = (
             subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.ap_dir)
             .strip()
@@ -1359,13 +1358,7 @@ class FuzzConfig:
             for field in msg_def["fields"]:
                 field_name = field["name"]
                 field_type = field.get("type")  # Get type safely
-
-                if "time" in field_name:  # Check for "time" in field_name first
-                    current_time = round(
-                        (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
-                    )
-                    field_values[field_name] = current_time
-                elif "enum_vals" in field:
+                if "enum_vals" in field:
                     chosen_enum_value = random.choice(field["enum_vals"])
                     if isinstance(chosen_enum_value, str):
                         # Attempt conversion if MAVLink type is numeric
@@ -1435,17 +1428,26 @@ class FuzzConfig:
 
             time.sleep(1 / self.fuzz_interval)
 
+
     def send_fuzzed_message(self, msg_name, msg_id, field_values):
         """Send a fuzzed message using the MAVLink connection."""
+        # Check if we have a field name that contains "time"
+        for field_name in field_values.keys():
+            if "time" in field_name:
+                logger.debug(f"Replacing {field_name} with current time")
+                current_time = round(
+                    (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
+                )
+                field_values[field_name] = current_time
+                break
         try:
             # Get the message class from mavutil
-            msg_class = getattr(mavutil.mavlink, f"MAVLink_{msg_name.lower()}_message")
+            msg_class = getattr(self.tcp_conn.conn.mav, f"{msg_name.lower()}_send")
 
-            # Create the message instance with the fuzzed values
-            msg = msg_class(**field_values)
-
+            # Create the message send with the fuzzed values
             # Send the message
-            self.tcp_conn.conn.mav.send(msg)
+            msg_class(**field_values)
+            
         except AttributeError:
             # If the field_values are not correct in length (7), we add the message with 0s
             if len(field_values) < 7:
