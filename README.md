@@ -1,5 +1,3 @@
-# PGFuzzPlusPlus
+# DroneFuzz++
 
-New fuzzing framework to test UAV peripherals
-
-To be populated
+New fuzzing framework to test UAVs from inputs

@@ -33,12 +33,12 @@ import copy
 def setup_logging(file_dir=None):
     """Setup logging with timestamp in filename"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    log_filename = f"pgfuzz_{timestamp}.log"
+    log_filename = f"dronefuzz_{timestamp}.log"
     if file_dir:
         log_filename = os.path.join(file_dir, log_filename)
 
     # Create logger
-    logger = logging.getLogger("pgfuzz")
+    logger = logging.getLogger("dronefuzz")
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
@@ -929,7 +929,7 @@ class FuzzConfig:
 
         # Also if we have a parameter file, create a temporary one and send it to the simulator
         if self.peripheral_config.get("parameters"):
-            self.fuzzer_param_file = tempfile.mkstemp(".parm", "pgfuzz", "/tmp")[1]
+            self.fuzzer_param_file = tempfile.mkstemp(".parm", "dronefuzz", "/tmp")[1]
             with open(self.fuzzer_param_file, "w") as f:
                 for parameter, values in self.peripheral_config["parameters"].items():
                     f.write(f"{parameter} {values}\n")
@@ -1488,7 +1488,7 @@ if __name__ == "__main__":
     cfg = None
     try:
         argument_parser = argparse.ArgumentParser(
-            description="PGFUZZ++ - A fuzzer for ArduPilot peripherals"
+            description="DroneFuzz++ - A fuzzer for ArduPilot"
         )
         argument_parser.add_argument(
             "--bin", type=str, help="Path to the SITL binary", required=False
@@ -1559,7 +1559,7 @@ if __name__ == "__main__":
                     )
                 )
         # Create a temporary folder for the fuzzed messages locally in the same directory that we are running
-        fuzzer_temp_dir = tempfile.mkdtemp("pgfuzz", "fuzzing_data", os.getcwd())
+        fuzzer_temp_dir = tempfile.mkdtemp("dronefuzz", "fuzzing_data", os.getcwd())
         logger = setup_logging(fuzzer_temp_dir)
         # Add the fuzzer temp dir to args for later use
         args.fuzzer_temp_dir = fuzzer_temp_dir
