@@ -709,7 +709,7 @@ class FuzzConfig:
         # Mission control
         self.timeout = self.config.get("timeout", 1000)
         # MAVLink check for https://mavlink.io/en/guide/routing.html
-        self.target_system = self.config.get("target_system", 255)
+        self.target_system = self.config.get("target_system", 0)
         self.target_component = self.config.get("target_component", 0)
         logger.debug("Setting the system.target_system to: " + str(self.target_system))
         logger.debug(
