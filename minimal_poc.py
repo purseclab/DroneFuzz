@@ -1333,7 +1333,9 @@ class FuzzConfig:
     def start_fuzzing(self):
         """Start the fuzzing thread."""
         if not self.xml_messages:
-            logger.warning("No XML message definitions loaded. Cannot start fuzzing.")
+            logger.warning(
+                "No XML message definitions loaded. Cannot start peripheral fuzzing."
+            )
             return
 
         self.fuzzing_active = True
