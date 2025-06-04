@@ -214,7 +214,7 @@ class TCPConn:
                                 )
                                 self.internal_error = True
                                 self.shutdown_requested = True
-                            logger.warning(
+                            logger.debug(
                                 f"Command failed: {msg.command} with result: {msg.result}"
                             )
                     if msg.get_type() == "GLOBAL_POSITION_INT":
@@ -795,14 +795,6 @@ class FuzzConfig:
         while True:
             if not self.fuzzing_active and self.sim_ready:
                 try:
-                    # Check if the default values have time
-                    # Replace with current time
-                    if "time" in default_values:
-                        time_idx = default_values.index("time")
-                        default_values[time_idx] = round(
-                            (time.time() - self.fuzzer_stats["current_mission_time"])
-                            * 1000
-                        )
                     # Convert default values to a dict
                     default_values_dict = {
                         field["name"]: default_values[i]
@@ -1215,14 +1207,17 @@ class FuzzConfig:
         if self.fuzzing_active:
             self.stop_fuzzing()
 
+        # Actually we start one and keep it running ideally
         # Stop the periodic threads
-        if self.periodic_thread:
-            for thread in self.periodic_thread.values():
-                thread.join(timeout=2)
-            logger.info("Periodic threads stopped")
+        # if self.periodic_thread:
+        #     for thread in self.periodic_thread.values():
+        #         thread.join()
+        #     logger.info("Periodic threads stopped")
 
         # Reset the time
         self.fuzzer_stats["current_mission_time"] = 0.0
+        # Reset state
+        self.sim_ready = False
 
         # Then cleanup TCP connection
         if self.tcp_conn:
@@ -1398,7 +1393,6 @@ class FuzzConfig:
                     field_values[field_name] = 0
             # If we are in calibration mode, just send the same values over for the fields
             # TODO: Check if we actually need this as a LIST or DICT?
-            msg_dict = [msg_def["msg_name"], field_values]
             if self.calibration_active:
                 if self.calibration_vals is None:
                     # Actually check if we have calibration values from the file
@@ -1415,17 +1409,12 @@ class FuzzConfig:
                         field_values = self.calibration_vals
                     else:
                         self.calibration_vals = field_values
-                    msg_dict = [msg_def["msg_name"], field_values]
-                    self.fuzz_msgs.append(msg_dict)
-                    logger.debug(f"The message for calibration is {msg_dict}")
                 else:
                     field_values = self.calibration_vals
             # Send the fuzzed message
-            self.send_fuzzed_message(
+            msg_dict = self.send_fuzzed_message(
                 msg_def["msg_name"], msg_def["msg_id"], field_values
             )
-            # Prepend the current time to the list for later analysis
-            msg_dict.insert(0, time.time() - self.fuzzer_stats["current_mission_time"])
             # To ensure we only save fuzzed message
             if not self.calibration_active:
                 self.fuzz_msgs.append(msg_dict)
@@ -1437,29 +1426,22 @@ class FuzzConfig:
         # Hueristic replacer for all fields
         for field_name in field_values.keys():
             # Check if we have a field name that contains "time"
-            if "time" in field_name:
-                logger.debug(f"Replacing {field_name} with current time")
+            if "time_boot_ms" in field_name:
                 current_time = round(
                     (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                 )
                 field_values[field_name] = current_time
             if "target_system" in field_name:
-                logger.debug(
-                    f"Replacing {field_name} with target system {self.target_system}"
-                )
                 field_values[field_name] = self.target_system
             if "target_component" in field_name:
-                logger.debug(
-                    f"Replacing {field_name} with target component {self.target_component}"
-                )
                 field_values[field_name] = self.target_component
             # Hardcoded stuff, please remove when doing final eval
-            # CS1 
+            # CS1
             if "sensor_type" in field_name:
                 field_values[field_name] = 0
             if "frame" in field_name:
                 field_values[field_name] = 12
-            if 'q' in field_name:
+            if "q" in field_name:
                 # Replace quaternion with a random value
                 # TODO: Please verify if this assumption is correct
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
@@ -1473,8 +1455,9 @@ class FuzzConfig:
 
             # Create the message send with the fuzzed values
             # Send the message
+            msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
             msg_class(**field_values)
-            return [msg_name, field_values]
+            return [msg_time, msg_name, field_values]
 
         except AttributeError:
             # If the field_values are not correct in length (7), we add the message with 0s
@@ -1496,8 +1479,9 @@ class FuzzConfig:
                 0,  # confirmation
                 **modified_field_values,  # parameters
             )
+            msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
             self.tcp_conn.conn.mav.send(packed_msg)
-            return [msg_name, modified_field_values]
+            return [msg_time, msg_name, modified_field_values]
         except Exception as e:
             logger.error(
                 f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
