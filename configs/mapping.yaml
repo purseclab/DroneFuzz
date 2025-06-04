@@ -10,14 +10,30 @@ sensors:
     msg_type:
       - OBSTACLE_DISTANCE_3D
     frequency: [25]
+    # <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp (time since system boot).</field>
+    # <field type="uint8_t" name="sensor_type" enum="MAV_DISTANCE_SENSOR">Class id of the distance sensor type.</field>
+    # <field type="uint8_t" name="frame" enum="MAV_FRAME">Coordinate frame of reference.</field>
+    # <field type="uint16_t" name="obstacle_id" instance="true"> Unique ID given to each obstacle so that its movement can be tracked. Use UINT16_MAX if object ID is unknown or cannot be determined.</field>
+    # <field type="float" name="x" units="m"> X position of the obstacle.</field>
+    # <field type="float" name="y" units="m"> Y position of the obstacle.</field>
+    # <field type="float" name="z" units="m"> Z position of the obstacle.</field>
+    # <field type="float" name="min_distance" units="m">Minimum distance the sensor can measure.</field>
+    # <field type="float" name="max_distance" units="m">Maximum distance the sensor can measure.</field>
     default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
   # Mount bug (no mount value)
   CS2:
     parameters:
     msg_type:
       - MAV_CMD_DO_MOUNT_CONTROL
+    # <param index="1" label="Pitch">pitch depending on mount mode (degrees or degrees/second depending on pitch input).</param>
+    # <param index="2" label="Roll">roll depending on mount mode (degrees or degrees/second depending on roll input).</param>
+    # <param index="3" label="Yaw">yaw depending on mount mode (degrees or degrees/second depending on yaw input).</param>
+    # <param index="4" label="Altitude" units="m">altitude depending on mount mode.</param>
+    # <param index="5" label="Latitude">latitude, set if appropriate mount mode.</param>
+    # <param index="6" label="Longitude">longitude, set if appropriate mount mode.</param>
+    # <param index="7" label="Mode" enum="MAV_MOUNT_MODE">Mount mode.</param>
+ 
     frequency: [-1]
-    calibration_msg: [0,0,0,0,0,0,2]
   # Mount bug (incorrect yaw)
   CS3:
     parameters:
@@ -25,16 +41,39 @@ sensors:
     msg_type:
       - MAV_CMD_DO_MOUNT_CONTROL
     frequency: [-1]
+    calibration_msg: [0,0,0,0,0,0,2]
   # ADSB bug
   CS4:
     parameters:
     msg_type:
       - SET_ATTITUDE_TARGET
+    # <field type="uint32_t" name="time_boot_ms" units="ms">Timestamp (time since system boot).</field>
+    # <field type="uint8_t" name="target_system">System ID</field>
+    # <field type="uint8_t" name="target_component">Component ID</field>
+    # <field type="uint8_t" name="type_mask" enum="ATTITUDE_TARGET_TYPEMASK" display="bitmask">Bitmap to indicate which dimensions should be ignored by the vehicle.</field>
+    # <field type="float[4]" name="q">Attitude quaternion (w, x, y, z order, zero-rotation is 1, 0, 0, 0) from MAV_FRAME_LOCAL_NED to MAV_FRAME_BODY_FRD</field>
+    # <field type="float" name="body_roll_rate" units="rad/s">Body roll rate</field>
+    # <field type="float" name="body_pitch_rate" units="rad/s">Body pitch rate</field>
+    # <field type="float" name="body_yaw_rate" units="rad/s">Body yaw rate</field>
+    # <field type="float" name="thrust">Collective thrust, normalized to 0 .. 1 (-1 .. 1 for vehicles capable of reverse trust)</field>
     frequency: [-1]
+    calibration_msg: [time,0,0,0,[0,0,0,0],0,0,0,0]
   # GPS YAW
   CS5:
     parameters:
     msg_type:
+  # Notch filter
+  CS6:
+    parameters:
+    INS_HNTCH_ENABLE: 1,
+    INS_HNTCH_FREQ: 120,
+    INS_HNTCH_REF: 1.0,
+    INS_HNTCH_HMNCS: 3,  # First and second harmonic
+    INS_HNTCH_ATT: 50,
+    INS_HNTCH_BW: 40,
+    INS_HNTCH_MODE: 0,  # Static notch
+    msg_type:
+
 # Generic
   AP_ADSB:
     parameters:
@@ -172,4 +211,14 @@ sensors:
     frequency: [-1, -1, -1, -1]
 
 generic_params:
-  - SIM_GPS_DISABLE
+  # Only to be enable for CS5/CS6 cases
+  # - SIM_GPS_DISABLE
+  # - AHRS_EKF_TYPE
+  # - INS_LOG_BAT_MASK
+  # - INS_LOG_BAT_OPT
+  # - INS_GYRO_FILTER
+  # - SIM_VIB_FREQ_X
+  # - SIM_VIB_FREQ_Y
+  # - SIM_VIB_FREQ_Z
+  # - SIM_VIB_MOT_MULT
+  # - SIM_GYR1_RND
