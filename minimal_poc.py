@@ -850,7 +850,7 @@ class FuzzConfig:
             .strip()
             .decode("utf-8")
         )
-        logger.debug("Source Under Testing commit hash %s",src_commit_hash)
+        logger.debug("Source Under Testing commit hash %s", src_commit_hash)
 
         # Check if we have additional parameters in the peripheral mapping
         self.default_parameter_set = self.peripheral_mapping.get("generic_params", {})
@@ -951,7 +951,7 @@ class FuzzConfig:
         if re.match(r".*ABLE$", selected_param):
             random_val = random.randint(0, 1)
         else:
-            random_val = generate_field_value("int8") # Default to int8 for now
+            random_val = generate_field_value("int8")  # Default to int8 for now
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
@@ -1007,7 +1007,11 @@ class FuzzConfig:
         self.start_fuzzing()
         mode_ctr = 0
         prev_state = None
-        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air and not self.calibration_active:
+        while (
+            self.tcp_conn.rc_monitor
+            and self.tcp_conn.drone_in_air
+            and not self.calibration_active
+        ):
             mode = random.choice(self.supported_modes)
             if (
                 mode_ctr < 3 and random.random() < 0.5  # Randomly set a mode
@@ -1162,14 +1166,15 @@ class FuzzConfig:
 
     def sigma_calc(self):
         # Calculate the DTW thresholds based on the golden RC values
-        # Compare each value with the other values 
+        # Compare each value with the other values
         cmp_idx = 0
         for main_idx, golden_rc_vals in enumerate(self.golden_rc_vals):
             for idx, rcou_vals in enumerate(self.golden_rc_vals):
                 if main_idx == idx:
                     continue
-                logger.debug("Comparing golden RC values: {} with {}".format(
-                    main_idx, idx))
+                logger.debug(
+                    "Comparing golden RC values: {} with {}".format(main_idx, idx)
+                )
                 cmp_idx += 1
                 _, distance = self.calculate_dtw(golden_rc_vals, rcou_vals)
                 self.fuzzer_stats["dtw_threshold"].append(distance)
@@ -1428,18 +1433,40 @@ class FuzzConfig:
 
             time.sleep(1 / self.fuzz_interval)
 
-
-    def send_fuzzed_message(self, msg_name, msg_id, field_values):
-        """Send a fuzzed message using the MAVLink connection."""
-        # Check if we have a field name that contains "time"
+    def hueristics(self, field_values):
+        # Hueristic replacer for all fields
         for field_name in field_values.keys():
+            # Check if we have a field name that contains "time"
             if "time" in field_name:
                 logger.debug(f"Replacing {field_name} with current time")
                 current_time = round(
                     (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                 )
                 field_values[field_name] = current_time
-                break
+            if "target_system" in field_name:
+                logger.debug(
+                    f"Replacing {field_name} with target system {self.target_system}"
+                )
+                field_values[field_name] = self.target_system
+            if "target_component" in field_name:
+                logger.debug(
+                    f"Replacing {field_name} with target component {self.target_component}"
+                )
+                field_values[field_name] = self.target_component
+            # Hardcoded stuff, please remove when doing final eval
+            # CS1 
+            if "sensor_type" in field_name:
+                field_values[field_name] = 0
+            if "frame" in field_name:
+                field_values[field_name] = 12
+            if 'q' in field_name:
+                # Replace quaternion with a random value
+                # TODO: Please verify if this assumption is correct
+                field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
+
+    def send_fuzzed_message(self, msg_name, msg_id, field_values):
+        """Send a fuzzed message using the MAVLink connection."""
+        self.hueristics(field_values)
         try:
             # Get the message class from mavutil
             msg_class = getattr(self.tcp_conn.conn.mav, f"{msg_name.lower()}_send")
@@ -1447,7 +1474,8 @@ class FuzzConfig:
             # Create the message send with the fuzzed values
             # Send the message
             msg_class(**field_values)
-            
+            return [msg_name, field_values]
+
         except AttributeError:
             # If the field_values are not correct in length (7), we add the message with 0s
             if len(field_values) < 7:
@@ -1469,10 +1497,12 @@ class FuzzConfig:
                 **modified_field_values,  # parameters
             )
             self.tcp_conn.conn.mav.send(packed_msg)
+            return [msg_name, modified_field_values]
         except Exception as e:
             logger.error(
                 f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
             )
+            return []
 
 
 # Misc utilities and sanity checks
