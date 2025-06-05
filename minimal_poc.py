@@ -999,14 +999,10 @@ class FuzzConfig:
         self.start_fuzzing()
         mode_ctr = 0
         prev_state = None
-        while (
-            self.tcp_conn.rc_monitor
-            and self.tcp_conn.drone_in_air
-            and not self.calibration_active
-        ):
+        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
             mode = random.choice(self.supported_modes)
             if (
-                mode_ctr < 3 and random.random() < 0.5  # Randomly set a mode
+                mode_ctr < 3  # Randomly set a mode
             ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
                 self.tcp_conn.set_mode(mode)
                 logger.debug(f"Changing mode to: {mode}")
@@ -1352,7 +1348,7 @@ class FuzzConfig:
 
     def fuzz_loop(self):
         """Main fuzzing loop that runs in a separate thread."""
-        while self.fuzzing_active:
+        while self.fuzzing_active and self.tcp_conn.drone_in_air:
             # Generate random values for each field
             msg_def = random.choice(self.xml_messages)
             # logger.debug(f"Selected message definition for fuzzing: {msg_def}")
