@@ -950,6 +950,9 @@ class FuzzConfig:
 
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing"""
+        if not self.default_parameter_set:
+            logger.warning("No default parameters set for fuzzing")
+            return
         selected_param = random.choice(self.default_parameter_set)
         # Check if the value ends in DISABLE or ENABLE, then we set it 0 or 1
         if re.match(r".*ABLE$", selected_param):
