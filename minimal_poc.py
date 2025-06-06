@@ -134,6 +134,18 @@ class TCPConn:
         self.conn.mav.rc_channels_override_send(
             self.conn.target_system, self.conn.target_component, 0, 0, 0, 0, 0, 0, 0, 0
         )
+    
+    def reboot(self):
+        """Reboot the vehicle by sending a command to reboot."""
+        self.conn.mav.command_long_send(
+            self.conn.target_system,
+            self.conn.target_component,
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            0,  # Confirmation
+            0,  # Reboot type (0 = reboot, 1 = shutdown)
+            0, 0, 0, 0, 0, 0
+        )
+        logger.info("Reboot command sent to the vehicle.")
 
     def send_heartbeat(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -986,6 +998,8 @@ class FuzzConfig:
             )
             self.fuzzer_stats["current_mission_time"] = time.time()
             self.tcp_conn = TCPConn()
+            # Reboot to ensure we have reloaded the parmaeters
+            self.tcp_conn.reboot()
             self.sim_ready = True
         except Exception as e:
             # this would just kill the entire script, so need to handle it gracefully
