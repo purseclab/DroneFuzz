@@ -82,7 +82,7 @@ class TCPConn:
         # Python inits
         self.shutdown_requested = False
         self.connected = threading.Event()
-        self.connected.set()
+        self.connected.clear()
         self.msg_queue = Queue()
         self.loc_queue = Queue()
         self.rcou_queue = Queue()
@@ -90,20 +90,23 @@ class TCPConn:
         self.drone_ready = False  # Drone ready with GPS lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
+        self.internal_error = False
         self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
-        # GPS location
         # Connection details
         with open(os.devnull, "w") as fnull:
             with redirect_stdout(fnull):
                 self.conn = mavutil.mavlink_connection("tcp:localhost:5760")
         self.conn.wait_heartbeat()
-        self.internal_error = False
+        self.connected.set()
+
+    def setup_threads(self):
+        self.conn.wait_heartbeat()
         self.location_waiting = threading.Condition()
         # Start a thread to keep sending heartbeats
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
         # Start a thread to monitor communications
-        threading.Thread(target=self.monitor_comms, daemon=True).start()
         self.setup_streams()
+        threading.Thread(target=self.monitor_comms, daemon=True).start()
 
     def setup_streams(self):
         self.conn.mav.request_data_stream_send(
@@ -113,6 +116,8 @@ class TCPConn:
             4,  # Rate in Hz
             1,  # Start/Stop (1=start, 0=stop)
         )
+        # Add checks to make sure we get the data
+        self.conn.recv_match(blocking=True)
 
     # TODO: Maybe make this modular
     def apply_throttle(self, throttle_pwm=1500, duration=1.0):
@@ -134,18 +139,39 @@ class TCPConn:
         self.conn.mav.rc_channels_override_send(
             self.conn.target_system, self.conn.target_component, 0, 0, 0, 0, 0, 0, 0, 0
         )
-    
-    def reboot(self):
+
+    def wait_for_connection(self):
+        # Check if we reconnected and received a heartbeat
+        try:
+            self.conn.wait_heartbeat()
+            self.connected.set()
+            logger.info("Connected to the vehicle and received heartbeat.")
+        except Exception as e:
+            raise ConnectionError("Failed to connect to the vehicle: " + str(e))
+
+    def reboot_and_wait_for_ack(self):
         """Reboot the vehicle by sending a command to reboot."""
+        # Based on the code from the pymavlink documentation
+        # We only need the normal reboot, don't care about the bootloader reboot
+        param2 = 1  # To ensure we reboot normally (the autopilot only)
         self.conn.mav.command_long_send(
             self.conn.target_system,
             self.conn.target_component,
             mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
-            0,  # Confirmation
-            0,  # Reboot type (0 = reboot, 1 = shutdown)
-            0, 0, 0, 0, 0, 0
+            1,  # Confirmation
+            param2,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         )
         logger.info("Reboot command sent to the vehicle.")
+        # Wait for the COMMAND_ACK message to confirm the reboot
+        msg = self.conn.recv_match(type="COMMAND_ACK", blocking=True)
+        if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+            logger.info("Reboot command acknowledged by the vehicle.")
 
     def send_heartbeat(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -226,6 +252,9 @@ class TCPConn:
                                 )
                                 self.internal_error = True
                                 self.shutdown_requested = True
+                                raise Exception(
+                                    "Failed to execute command: " + str(msg.command)
+                                )
                             logger.debug(
                                 f"Command failed: {msg.command} with result: {msg.result}"
                             )
@@ -417,25 +446,26 @@ class TCPConn:
                 logger.info(f"Reached waypoint: lat={loc['lat']}, lon={loc['lon']}")
                 break
 
-    def cleanup(self):
-        self.shutdown_requested = True
-        rcou_list = []
-        logger.info(f"{self.msg_queue.qsize()} messages in the queue")
-        while not self.rcou_queue.empty():
-            rcou_list.append(self.rcou_queue.get())
-        self.connected.clear()
-        time.sleep(0.5)  # Give some time for the threads to finish
-        # Clear all the queues
-        while not self.msg_queue.empty():
-            self.msg_queue.get()
-        while not self.loc_queue.empty():
-            self.loc_queue.get()
+    def cleanup(self, shutdown=True):
+        if shutdown:
+            self.shutdown_requested = shutdown
+            rcou_list = []
+            logger.info(f"{self.msg_queue.qsize()} messages in the queue")
+            while not self.rcou_queue.empty():
+                rcou_list.append(self.rcou_queue.get())
+            time.sleep(0.5)  # Give some time for the threads to finish
+            # Clear all the queues
+            while not self.msg_queue.empty():
+                self.msg_queue.get()
+            while not self.loc_queue.empty():
+                self.loc_queue.get()
+            if rcou_list:
+                logger.info(f"Received {len(rcou_list)} RC channel updates.")
+            return rcou_list
         if self.conn:
             self.conn.close()
             logger.info("TCP connection closed.")
-        if rcou_list:
-            logger.info(f"Received {len(rcou_list)} RC channel updates.")
-        return rcou_list
+        self.connected.clear()
 
 
 def get_enum(root, enum_name):
@@ -992,17 +1022,21 @@ class FuzzConfig:
         try:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
-                # Temporarily commented out to debug
+                # Comment out to debug the original binary
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
                 cwd=self.fuzzer_temp_dir,
             )
+            init_conn = TCPConn()
+            # Reboot to ensure we have reloaded the parameters
+            init_conn.reboot_and_wait_for_ack()
+            time.sleep(2)  # Give some time for the reboot to complete
+            init_conn.cleanup(shutdown=False)
             self.fuzzer_stats["current_mission_time"] = time.time()
             self.tcp_conn = TCPConn()
-            # Reboot to ensure we have reloaded the parmaeters
-            self.tcp_conn.reboot()
+            self.tcp_conn.setup_threads()
             self.sim_ready = True
         except Exception as e:
             # this would just kill the entire script, so need to handle it gracefully
@@ -1030,9 +1064,6 @@ class FuzzConfig:
                 self.tcp_conn.set_mode("AUTO")
                 prev_state = "AUTO"
                 logger.debug("Resetting Setting mode to AUTO")
-            if (
-                self.default_parameter_set and not self.calibration_active
-            ):  # Ensure we don't set parameters while calibrating
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
             time.sleep(3)
@@ -1092,9 +1123,8 @@ class FuzzConfig:
         self.tcp_conn.set_mode(mode)
         # Run a while loop for 10 seconds
         for _ in range(10):
-            if not self.calibration_active:
-                if random.random() < 0.1:  # Randomly set a parameter
-                    self.random_param_set()
+            if random.random() < 0.1:  # Randomly set a parameter
+                self.random_param_set()
             time.sleep(1)
         self.tcp_conn.set_mode("GUIDED")
         # -35.362839699999995, 149.1646279,
@@ -1604,7 +1634,7 @@ if __name__ == "__main__":
             # Establish the threshold for the fuzzing runs
             # Run the mission with simulations and default parameters
             # Check if we already have calibration values
-            logger.info("\nBeginning calibration")
+            logger.info("Beginning calibration")
             cfg.calibration_active = True
 
             # Create tqdm progress bar for calibration
@@ -1633,9 +1663,9 @@ if __name__ == "__main__":
                 cfg.run_sim()
 
                 logger.info("Waiting for drone to be ready with GPS lock...")
-                while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+                while cfg.tcp_conn.drone_ready is False and not cfg.shutdown_requested:
                     time.sleep(1)
-                    calib_pbar.refresh()  # Keep progress bar visible during waiting
+                    update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
 
                 if cfg.shutdown_requested:
                     cfg.cleanup_and_exit()
@@ -1678,7 +1708,7 @@ if __name__ == "__main__":
             # if cfg.fuzzer_stats['potential_crashes'] > 0:
             #     tqdm.write(f"Potential crash detected! Count: {cfg.fuzzer_stats['potential_crashes']}")
 
-        while not cfg.shutdown_requested:
+        while not cfg.shutdown_requested and cfg.tcp_conn.shutdown_requested:
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
             tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
