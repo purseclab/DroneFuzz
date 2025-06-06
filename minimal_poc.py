@@ -1085,8 +1085,14 @@ class FuzzConfig:
         # Go to Point B -35.3626941, 149.166221
         self.tcp_conn.go_to_waypoint(-35.3626941, 149.166221, 50)
         # Loiter for a while
-        self.tcp_conn.set_mode("LOITER")
-        time.sleep(10)  # This becomes a blocking sleep, so we get stuck here :|
+        mode = random.choice(self.supported_modes)
+        self.tcp_conn.set_mode(mode)
+        # Run a while loop for 10 seconds
+        for _ in range(10):
+            if not self.calibration_active:
+                if random.random() < 0.1:  # Randomly set a parameter
+                    self.random_param_set()
+            time.sleep(1)
         self.tcp_conn.set_mode("GUIDED")
         # -35.362839699999995, 149.1646279,
         self.tcp_conn.go_to_waypoint(-35.362839699999995, 149.1646279, 50)
