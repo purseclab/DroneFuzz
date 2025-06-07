@@ -218,13 +218,7 @@ sensors:
 
 generic_params:
   # Only to be enable for CS5/CS6 cases
-  # - SIM_GPS_DISABLE
-  # - AHRS_EKF_TYPE
-  # - INS_LOG_BAT_MASK
-  # - INS_LOG_BAT_OPT
-  # - INS_GYRO_FILTER
-  - SIM_VIB_FREQ_X
-  - SIM_VIB_FREQ_Y
-  - SIM_VIB_FREQ_Z
-  - SIM_VIB_MOT_MULT
-  # - SIM_GYR1_RND
+  # - SIM_VIB_FREQ_X
+  # - SIM_VIB_FREQ_Y
+  # - SIM_VIB_FREQ_Z
+  # - SIM_VIB_MOT_MULT
