@@ -1064,8 +1064,8 @@ class FuzzConfig:
                 self.tcp_conn.set_mode("AUTO")
                 prev_state = "AUTO"
                 logger.debug("Resetting Setting mode to AUTO")
-                if random.random() < 0.1:  # Randomly set a parameter
-                    self.random_param_set()
+            if random.random() < 0.1:  # Randomly set a parameter
+                self.random_param_set()
             time.sleep(3)
         while self.tcp_conn.drone_in_air:
             time.sleep(1)
@@ -1708,7 +1708,7 @@ if __name__ == "__main__":
             # if cfg.fuzzer_stats['potential_crashes'] > 0:
             #     tqdm.write(f"Potential crash detected! Count: {cfg.fuzzer_stats['potential_crashes']}")
 
-        while not cfg.shutdown_requested and cfg.tcp_conn.shutdown_requested:
+        while not cfg.shutdown_requested:
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
             tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
