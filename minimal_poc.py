@@ -988,7 +988,7 @@ class FuzzConfig:
         if re.match(r".*ABLE$", selected_param):
             random_val = random.randint(0, 1)
         else:
-            random_val = generate_field_value("int8")  # Default to int8 for now
+            random_val = generate_field_value("uint8")  # Default to int8 for now
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
@@ -1123,7 +1123,7 @@ class FuzzConfig:
         self.tcp_conn.set_mode(mode)
         # Run a while loop for 10 seconds
         for _ in range(10):
-            if random.random() < 0.1:  # Randomly set a parameter
+            if random.uniform(0, 1) > 0.5:  # Randomly set a parameter
                 self.random_param_set()
             time.sleep(1)
         self.tcp_conn.set_mode("GUIDED")
