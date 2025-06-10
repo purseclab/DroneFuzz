@@ -35,63 +35,30 @@ def extract_sim_data(bin_file):
     vehicle_conn = mavutil.mavlink_connection(bin_file)
     sim_data = []
     rcou_data = []
-    status_data = []
+    rc_log_flag = False
 
     # First pass: collect all messages
     while True:
-        msg = vehicle_conn.recv_match(type=["SIM", "RCOU", "STATUSTEXT"], blocking=True)
+        msg = vehicle_conn.recv_match(type=["SIM", "RCOU", "MSG"], blocking=True)
         if msg is None:
             break
         else:
-            if msg.get_type() == "SIM":
+        # Trim the data based on statustext messages
+        # If we have "LOG RC" message, start collecting RCOU data
+        # And we get "STOP RC" message, stop collecting RCOU data
+            if msg.get_type() == "MSG":
+                if "LOG RC" in msg.Message:
+                    rc_log_flag = True
+                    print("Found LOG RC message, starting RCOU collection...")
+                elif "STOP RC" in msg.Message:
+                    rc_log_flag = False
+                    print("Found STOP RC message, stopping RCOU collection...")
+            elif rc_log_flag and msg.get_type() == "SIM":
                 sim_data.append(msg.to_dict())
-            elif msg.get_type() == "RCOU":
+            elif rc_log_flag and msg.get_type() == "RCOU":
                 rcou_data.append(msg.to_dict())
-            elif msg.get_type() == "STATUSTEXT":
-                status_data.append(msg.to_dict())
 
     # Find takeoff and disarm indices
-    takeoff_index = 0
-    disarm_index = len(sim_data) - 1
-
-    if status_data:
-        # Look for takeoff and disarm messages
-        for i, status in enumerate(status_data):
-            text = status.get("text", "")
-            if "Takeoff" in text or "takeoff" in text:
-                # Find the closest SIM message after this status
-                status_time = status.get("time_boot_ms", 0)
-                for j, sim in enumerate(sim_data):
-                    if sim.get("time_boot_ms", 0) >= status_time:
-                        takeoff_index = j
-                        print(f"Found takeoff at index {takeoff_index}")
-                        break
-
-            if "Disarmed" in text or "disarmed" in text or "DISARMED" in text:
-                # Find the closest SIM message before this status
-                status_time = status.get("time_boot_ms", 0)
-                for j in range(len(sim_data) - 1, -1, -1):
-                    if sim_data[j].get("time_boot_ms", 0) <= status_time:
-                        disarm_index = j
-                        print(f"Found disarm at index {disarm_index}")
-                        break
-
-    # Trim the data based on takeoff and disarm indices
-    if takeoff_index < disarm_index:
-        print(f"Trimming data from {takeoff_index} to {disarm_index}")
-        sim_data = sim_data[takeoff_index : disarm_index + 1]
-
-        # Also trim RCOU data to match the same time range
-        if sim_data and rcou_data:
-            start_time = sim_data[0].get("time_boot_ms", 0)
-            end_time = sim_data[-1].get("time_boot_ms", 0)
-
-            rcou_data = [
-                rcou
-                for rcou in rcou_data
-                if start_time <= rcou.get("time_boot_ms", 0) <= end_time
-            ]
-
     return sim_data, rcou_data
 
 
@@ -128,15 +95,20 @@ def calculate_dtw_distance(series1, series2, fields=["Roll", "Pitch", "Yaw", "Al
         return None
 
     # Standardize the data
-    data_standardized_1 = StandardScaler().fit_transform(s1)
-    data_standardized_2 = StandardScaler().fit_transform(s2)
+    s1_mean = np.mean(s1, axis=0)
+    s1_std = np.std(s1, axis=0)
+    # Add a small epsilon to avoid division by zero if std is 0
+    s1_normalized = (s1 - s1_mean) / (s1_std + 1e-8)
+    s2_mean = np.mean(s2, axis=0)
+    s2_std = np.std(s2, axis=0)
+    # Add a small epsilon to avoid division by zero if std is 0
+    s2_normalized = (s2 - s2_mean) / (s2_std + 1e-8)
 
     # Compute DTW with Euclidean distance
     alignment = dtw(
-        data_standardized_1,
-        data_standardized_2,
+        s1_normalized,
+        s2_normalized,
         dist_method="euclidean",
-        distance_only=True,
     )
 
     return alignment.normalizedDistance
