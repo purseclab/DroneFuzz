@@ -686,6 +686,11 @@ def generate_field_value(field_type):
 
 class FuzzConfig:
     def __init__(self, args):
+        """Initialize the FuzzConfig object with the provided arguments.
+
+        Args:
+            args: Command-line arguments or configuration settings.
+        """
         # Register signal handlers
         # signal.signal(signal.SIGINT, self.signal_handler)
         # signal.signal(signal.SIGTERM, self.signal_handler)
@@ -833,6 +838,13 @@ class FuzzConfig:
             self.fuzz_interval = self.msg_freq
 
     def periodic_send(self, frequency, xml_msg, default_values):
+        """Send periodic messages based on the specified frequency.
+
+        Args:
+            frequency: Frequency at which messages should be sent.
+            xml_msg: XML message definition.
+            default_values: Default values for the message fields.
+        """
         logger.info(f"Starting periodic send for {xml_msg} every {frequency} seconds")
         while True:
             if not self.fuzzing_active and self.sim_ready:
@@ -852,7 +864,7 @@ class FuzzConfig:
                 time.sleep(1 / frequency)
 
     def setup(self):
-
+        """Setup the fuzzing configuration and initialize parameters."""
         # Setup the random seed for reproducibility
         random.seed(42)
 
@@ -969,17 +981,21 @@ class FuzzConfig:
                     f.write(f"{parameter} {values}\n")
 
     def sim_params(self):
-        """Add the SIM parameters from the PGFUZZ database"""
+        """Add the SIM parameters from the PGFUZZ database."""
         # TODO
         pass
 
     def cmd_params(self):
-        """Add the mission parameters from the PGFUZZ database"""
+        """Add the mission parameters from the PGFUZZ database.
+
+        Returns:
+            List of command parameters.
+        """
         cmds = ["MAV_CMD_DO_SET_MODE"]
         return cmds
 
     def random_param_set(self):
-        """Randomly set a parameter set for fuzzing"""
+        """Randomly set a parameter set for fuzzing."""
         if not self.default_parameter_set:
             logger.warning("No default parameters set for fuzzing")
             return
@@ -1006,6 +1022,7 @@ class FuzzConfig:
         self.fuzzer_stats["messages_sent"] += 1
 
     def run_sim(self):
+        """Run the SITL simulation with the specified vehicle and parameters."""
         sitl_args = ""
         if self.vehicle == "copter":
             sitl_args = " -S --model + -w --speedup 1 -I0"
@@ -1043,6 +1060,7 @@ class FuzzConfig:
             logger.error(f"Error starting simulation: {e}")
 
     def monitor_auto_mission(self):
+        """Monitor the drone during an automatic mission."""
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
         while not self.tcp_conn.rc_monitor:
@@ -1072,11 +1090,10 @@ class FuzzConfig:
         self.stop_fuzzing()
 
     def upload_auto_mission(self, mission_file):
-        """
-        Upload a mission from a waypoint file using MAVProxy's waypoint module
+        """Upload a mission from a waypoint file using MAVProxy's waypoint module.
 
         Args:
-            mission_file: Path to the mission file (.waypoints format)
+            mission_file: Path to the mission file (.waypoints format).
         """
         waypoints = mavwp.MAVWPLoader()
         _ = waypoints.load(mission_file.strip('"'))
@@ -1103,6 +1120,11 @@ class FuzzConfig:
                 logger.error(f"Error in mission upload: {e}")
 
     def standard_guided(self, fuzzing=True):
+        """Perform a standard guided mission.
+
+        Args:
+            fuzzing: Whether to enable fuzzing during the mission.
+        """
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
         # Monitor
@@ -1142,6 +1164,11 @@ class FuzzConfig:
         self.tcp_conn.land()
 
     def send_mission(self, fuzzing=True):
+        """Send a mission to the drone.
+
+        Args:
+            fuzzing: Whether to enable fuzzing during the mission.
+        """
         if self.auto_mission_enabled:
             self.upload_auto_mission(mission_file=self.auto_mission_path)
             # ARM to AUTO and then
@@ -1160,14 +1187,19 @@ class FuzzConfig:
         )
 
     def signal_handler(self, _signum, _frame):
-        """Handle shutdown signals gracefully"""
+        """Handle shutdown signals gracefully.
+
+        Args:
+            _signum: Signal number.
+            _frame: Current stack frame.
+        """
         logger.error("\nShutdown requested...")
         logger.error("Will terminate after current execution\n")
         self.shutdown_requested = True
         # Figure out a better way to terminate things and exit quickly
 
     def cleanup_and_exit(self):
-        """Perform cleanup and print summary before exit"""
+        """Perform cleanup and print summary before exit."""
         logger.info("\nPerforming cleanup...")
 
         # Stop fuzzing first
@@ -1206,6 +1238,7 @@ class FuzzConfig:
         logger.info("-" * 30)
 
     def sigma_calc(self):
+        """Calculate the DTW thresholds based on the golden RC values."""
         # Calculate the DTW thresholds based on the golden RC values
         # Compare each value with the other values
         cmp_idx = 0
@@ -1252,6 +1285,7 @@ class FuzzConfig:
             f.write(pickle.dumps(self.golden_rc_vals))
 
     def cleanup_sim(self):
+        """Cleanup the simulation and reset states."""
         # Stop fuzzing first
         if self.fuzzing_active:
             self.stop_fuzzing()
@@ -1292,7 +1326,11 @@ class FuzzConfig:
         # TODO Check if we actually have a SITL binary running
 
     def get_stats_summary(self):
-        """Return a formatted string with current fuzzing stats"""
+        """Return a formatted string with current fuzzing stats.
+
+        Returns:
+            Formatted string with fuzzing statistics.
+        """
         return (
             f"Sims: {self.fuzzer_stats['simulations_completed']} | "
             f"Msgs: {self.fuzzer_stats['messages_sent']} | "
@@ -1301,6 +1339,7 @@ class FuzzConfig:
         )
 
     def oracle(self):
+        """Perform anomaly detection using DTW distance calculations."""
         combined_distance = 0.0
         for golden_rc_vals in self.golden_rc_vals:
             _, distance = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
@@ -1350,7 +1389,15 @@ class FuzzConfig:
         self.fuzz_msgs = []
 
     def calculate_dtw(self, series1, series2):
-        """Calculate the DTW distance between two time series."""
+        """Calculate the DTW distance between two time series.
+
+        Args:
+            series1: First time series.
+            series2: Second time series.
+
+        Returns:
+            Tuple containing the DTW distance and normalized distance.
+        """
         # We get a list of dictionaries, so we need to convert them to numpy arrays
         # Assuming series1 and series2 are lists of dictionaries with keys "chan1_raw","chan2_raw", etc.
         fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
@@ -1409,6 +1456,7 @@ class FuzzConfig:
             for field in msg_def["fields"]:
                 field_name = field["name"]
                 field_type = field.get("type")  # Get type safely
+                # Check if the field is enum
                 if "enum_vals" in field:
                     chosen_enum_value = random.choice(field["enum_vals"])
                     if isinstance(chosen_enum_value, str):
@@ -1474,6 +1522,11 @@ class FuzzConfig:
             time.sleep(1 / self.fuzz_interval)
 
     def hueristics(self, field_values):
+        """Apply heuristic replacements for specific fields.
+
+        Args:
+            field_values: Dictionary of field values to modify.
+        """
         # Hueristic replacer for all fields
         for field_name in field_values.keys():
             # Check if we have a field name that contains "time"
@@ -1498,7 +1551,16 @@ class FuzzConfig:
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
 
     def send_fuzzed_message(self, msg_name, msg_id, field_values):
-        """Send a fuzzed message using the MAVLink connection."""
+        """Send a fuzzed message using the MAVLink connection.
+
+        Args:
+            msg_name: Name of the message.
+            msg_id: ID of the message.
+            field_values: Dictionary of field values for the message.
+
+        Returns:
+            List containing the message time, name, and field values.
+        """
         self.hueristics(field_values)
         try:
             # Get the message class from mavutil
