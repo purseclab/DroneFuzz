@@ -89,20 +89,23 @@ def calculate_dtw_distance(series1, series2, fields=["Roll", "Pitch", "Yaw", "Al
     # Convert to numpy arrays for efficient computation
     s1 = np.array([series1[field] for field in fields if field in series1]).T
     s2 = np.array([series2[field] for field in fields if field in series2]).T
+    channels = s1.shape[1]
+    s1_normalized = np.zeros_like(s1)
+    s2_normalized = np.zeros_like(s2)
+
 
     # Check if we have data to compare
     if s1.size == 0 or s2.size == 0:
         return None
-
     # Standardize the data
-    s1_mean = np.mean(s1, axis=0)
-    s1_std = np.std(s1, axis=0)
-    # Add a small epsilon to avoid division by zero if std is 0
-    s1_normalized = (s1 - s1_mean) / (s1_std + 1e-8)
-    s2_mean = np.mean(s2, axis=0)
-    s2_std = np.std(s2, axis=0)
-    # Add a small epsilon to avoid division by zero if std is 0
-    s2_normalized = (s2 - s2_mean) / (s2_std + 1e-8)
+    # Compute mean and std for each field
+    for i in range(channels):
+        chan_mean = np.mean(s1[:,i], axis=0)
+        chan_std = np.std(s1[:,i], axis=0)
+        s1_normalized[:,i] = (s1[:,i] - chan_mean) / (chan_std + 1e-8)
+        chan_mean = np.mean(s2[:,i], axis=0)
+        chan_std = np.std(s2[:,i], axis=0)
+        s2_normalized[:,i] = (s2[:,i] - chan_mean) / (chan_std + 1e-8)
 
     # Compute DTW with Euclidean distance
     alignment = dtw(
