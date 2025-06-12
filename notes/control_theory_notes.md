@@ -1,0 +1,26 @@
+- Using C-P Reach tool
+	- Docker container issues
+		- Naming issues for the folder in COPY
+		- Not sure why we have the streamlit -> Assuming for other teamings for the container stuff
+			- Doesn't contain the `home.py` required
+		- Running the tool directly from the cli -> `c_p_reach`
+			- It internally directly calls the multicopter and injects gyro noise
+	- Plotting the copter rover tool
+		- As mentioned very specific to gyro noise
+	- What are they actually doing here?
+		- Are there relevant resources to refer?
+		- What are the inner and outer loops mentioned? (Verify once with Aero folks)
+			- Outer loop is 
+				- Position control
+				- Attitude control
+				- Velocity control
+			- Inner Loop
+				- Rate Control (for angular control)
+			- In relation with Ardupilot's version of codebase, there are only
+	- What does the PID controller actually doing? (Just curious explore on your terms)
+	- Adapting cp-reach for the current fuzzing approach
+		- Ardupilot SITL probably has default model stored [here](https://github.com/ArduPilot/ardupilot/blob/master/libraries/SITL/SIM_Frame.h#L82)
+		- Maybe we can write a simple converter to convert the SDF -> JSON
+			- I guess this is what I think AP did differently and everyone hates them for that now
+		- And the other thing to decide is if we actually need to figure out if this would scale for a large system
+		- So, what we can potentially do is to patch or modify these to actually fuzz more?
