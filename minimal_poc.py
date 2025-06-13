@@ -26,7 +26,6 @@ from pymavlink import mavutil, mavwp
 import subprocess
 from queue import Queue
 import threading
-import copy
 
 
 # Setup logging
@@ -567,8 +566,9 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                 name = child.get("name")
                 typ = child.get("type")
                 desc = (child.text or "").strip()
+                units = child.get("units", "")
                 enum_name = child.get("enum")
-                entry = {"name": name, "type": typ, "desc": desc}
+                entry = {"name": name, "type": typ, "desc": desc, "units": units}
 
                 # cache & attach enum values if present
                 if enum_name:
@@ -648,8 +648,18 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
     return messages
 
 
-def generate_field_value(field_type):
-    """Generate a random value for a field based on its type."""
+def generate_field_value(
+    field_type, field_desc=None, field_units=None, field_range=[None, None, None]
+):
+    """
+    Generate a random value for a field based on its type.
+    The idea is to be able to actually parse the field_description
+    and generate more relevant inputs
+
+    Returns:
+        Values to use inside the message
+    """
+    # First recurse if need be
     if "[" in field_type:
         generated_value = []
         # Extract the base type and array size
@@ -662,26 +672,106 @@ def generate_field_value(field_type):
             )
         field_type = field_type.split("[")[0]
         for _ in range(field_size):
-            generated_value.append(generate_field_value(field_type))
+            generated_value.append(
+                generate_field_value(field_type, field_desc, field_units, field_range)
+            )
         return generated_value
-    elif field_type.startswith("uint8"):
-        return random.randint(0, 255)
-    elif field_type.startswith("uint16"):
-        return random.randint(0, 65535)
-    elif field_type.startswith("uint32"):
-        return random.randint(0, 4294967295)
-    elif field_type.startswith("int8"):
-        return random.randint(-128, 127)
-    elif field_type.startswith("int16"):
-        return random.randint(-32768, 32767)
-    elif field_type.startswith("int32"):
-        return random.randint(-2147483648, 2147483647)
-    elif field_type.startswith("float"):
-        return random.uniform(-10, 10)
-    elif field_type.startswith("char"):
-        return random.randint(0, 255)
+    # Let's now check the description and units
+    # unit_lookup = {
+    #     "A": [],
+    #     "bytes": [],
+    #     "cA": [],
+    #     "cdeg": [],
+    #     "cdegC": [],
+    #     "cV": [],
+    #     "d%": [],
+    #     "deg": [],
+    #     "degC": [],
+    #     "degE7": [],
+    #     "deg/s": [],
+    #     "ds": [],
+    #     "m": [],
+    #     "mAh": [],
+    #     "mgauss": [],
+    #     "mm": [],
+    #     "m/s": [],
+    #     "ms": [],
+    #     "m/s/s": [],
+    #     "mV": [],
+    #     "Pa": [],
+    #     "rad": [],
+    #     "rad/s": [],
+    #     "rpm": [],
+    #     "s": [],
+    #     "us": [],
+    #     "V": [],
+    #     "%": [],
+    #     "Ah": [],
+    #     "bits/s": [],
+    #     "bytes/s": [],
+    #     "c%": [],
+    #     "cdeg/s": [],
+    #     "cm": [],
+    #     "cm^2": [],
+    #     "cm^3": [],
+    #     "cm^3/min": [],
+    #     "cm/s": [],
+    #     "cs": [],
+    #     "dam": [],
+    #     "dB": [],
+    #     "deg/2": [],
+    #     "degE5": [],
+    #     "dm": [],
+    #     "dm/s": [],
+    #     "dpix": [],
+    #     "g": [],
+    #     "gauss": [],
+    #     "hJ": [],
+    #     "hPa": [],
+    #     "Hz": [],
+    #     "kg": [],
+    #     "KiB/s": [],
+    #     "kPa": [],
+    #     "mG": [],
+    #     "MiB": [],
+    #     "MiB/s": [],
+    #     "mrad/s": [],
+    #     "m/s*5": [],
+    #     "ns": [],
+    #     "pix": [],
+    #     "W": [],
+    #     "mbar": [],
+    #     "mm/s": [],
+    # }
+    # Check if we have a valid range for the values
+    if field_range[0] is not None and field_range[1] is not None:
+        if field_type in ["float", "double"]:
+            return random.uniform(field_range[0], field_range[1])
+        elif field_range[2] is not None:
+            # NOTE: Always only generates integer
+            return random.randrange(field_range[0], field_range[1], field_range[2])
+        else:
+            return random.randint(field_range[0], field_range[1])
     else:
-        return 0
+        # Now check if we have min/max values
+        if field_type.startswith("uint8"):
+            return random.randint(0, 255)
+        elif field_type.startswith("uint16"):
+            return random.randint(0, 65535)
+        elif field_type.startswith("uint32"):
+            return random.randint(0, 4294967295)
+        elif field_type.startswith("int8"):
+            return random.randint(-128, 127)
+        elif field_type.startswith("int16"):
+            return random.randint(-32768, 32767)
+        elif field_type.startswith("int32"):
+            return random.randint(-2147483648, 2147483647)
+        elif field_type.startswith("float"):
+            return random.uniform(-10, 10)
+        elif field_type.startswith("char"):
+            return random.randint(0, 255)
+        else:
+            return 0
 
 
 class FuzzConfig:
@@ -1004,7 +1094,9 @@ class FuzzConfig:
         if re.match(r".*ABLE$", selected_param):
             random_val = random.randint(0, 1)
         else:
-            random_val = generate_field_value("uint8")  # Default to int8 for now
+            random_val = generate_field_value(
+                field_type="uint8"
+            )  # Default to int8 for now
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
@@ -1451,11 +1543,15 @@ class FuzzConfig:
         while self.fuzzing_active and self.tcp_conn.drone_in_air:
             # Generate random values for each field
             msg_def = random.choice(self.xml_messages)
-            # logger.debug(f"Selected message definition for fuzzing: {msg_def}")
             field_values = {}
             for field in msg_def["fields"]:
                 field_name = field["name"]
                 field_type = field.get("type")  # Get type safely
+                field_desc = field.get("desc", None)
+                field_units = field.get("units", None)
+                field_max = field.get("maxValue", None)
+                field_min = field.get("minValue", None)
+                field_itr = field.get("increment", None)
                 # Check if the field is enum
                 if "enum_vals" in field:
                     chosen_enum_value = random.choice(field["enum_vals"])
@@ -1484,7 +1580,12 @@ class FuzzConfig:
                     max_val = field.get("range_max", 10.0)
                     field_values[field_name] = random.uniform(min_val, max_val)
                 elif field_type:  # Fallback for other standard MAVLink types
-                    field_values[field_name] = generate_field_value(field_type)
+                    field_values[field_name] = generate_field_value(
+                        field_type,
+                        field_desc=field_desc,
+                        field_units=field_units,
+                        field_range=[field_min, field_max, field_itr],
+                    )
                 else:
                     logger.warning(
                         f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0."
@@ -1527,7 +1628,7 @@ class FuzzConfig:
         Args:
             field_values: Dictionary of field values to modify.
         """
-        # Hueristic replacer for all fields
+        # Heuristic replacer for some common fields
         for field_name in field_values.keys():
             # Check if we have a field name that contains "time"
             if "time_boot_ms" in field_name:
