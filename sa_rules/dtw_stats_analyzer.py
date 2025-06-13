@@ -118,7 +118,7 @@ def calculate_dtw_distance(series1, series2, fields=["Roll", "Pitch", "Yaw", "Al
 
 
 def analyze_files(
-    files, sim_fields=["Q1", "Q2", "Q3", "Q4"], rcou_channels=range(1, 9)
+    files, sim_fields=["Q1", "Q2", "Q3", "Q4"], rcou_channels=range(1, 4)
 ):
     """Analyze multiple files and calculate DTW distances"""
     # Extract and preprocess data from all files

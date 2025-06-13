@@ -97,8 +97,12 @@ def print_messages(root, filter_list):
                 fld_name = fld.get("name")
                 fld_type = fld.get("type")
                 fld_enum = fld.get("enum")
+                fld_units = fld.get("units", None)
+                fld_desc = (fld.text or "").strip()
+                fld_min = fld.get("minValue", None)
+                fld_max = fld.get("maxValue", None)
                 output.append(
-                    f"  Field: {fld_name}, Type: {fld_type}, Enum: {fld_enum}"
+                    f"  Field: {fld_name}, Type: {fld_type}, Desc: {fld_desc} Units: {fld_units} Enum: {fld_enum} Min: {fld_min}, Max: {fld_max}"
                 )
 
                 if fld_enum:
@@ -124,13 +128,17 @@ def print_messages(root, filter_list):
                     mx = max(enum_values) if enum_values else "N/A"
                     inc = prm.get("increment", "N/A")
                     desc = (prm.text or "").strip(".")
+                    units = prm.get("units", None)
                     desc += " and is ENUM of type " + enum_name
                 else:
                     mn = prm.get("minValue", "float")
                     mx = prm.get("maxValue", "float")
                     inc = prm.get("increment")
                     desc = (prm.text or "").strip()
-                output.append(f"  Param: {label} Desc: {desc} Range: {mn}, {mx}, {inc}")
+                    units = prm.get("units", None)
+                output.append(
+                    f"  Param: {label} Desc: {desc} Range: {mn}, {mx}, {inc} Units: {units}"
+                )
 
         output.append("")
 
@@ -140,7 +148,12 @@ def print_messages(root, filter_list):
 def main():
     main_file = "../xmls/common.xml"
     root = parse_xml_file(main_file)
-    filter_list = ["MAV_CMD_DO_MOUNT_CONTROL"]
+    filter_list = [
+        "MAV_CMD_DO_MOUNT_CONTROL",
+        "SET_ATTITUDE_TARGET",
+        "MAV_CMD_NAV_DELAY",
+        "ESC_STATUS",
+    ]
     print_messages(root, filter_list)
 
     # Example of using load_xml_messages

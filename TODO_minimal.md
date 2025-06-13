@@ -34,21 +34,21 @@
 - DONE Fix the mutation of the RF Bug as we find a violation in each run (the distance calculation was wrong)
 - DONE HIGH Figure out why the freaking 2nd mission is not working ATM
 - DONE Error out only if the command is Mission/Mode/Arm request, else can be just a warning
+- DONE Add SIM/CFG parameters from PGFUZZ
+  - Since we keep track of the time since the simulation start we can effectively set the time for the message
+- DONE Figure out to check all configurations before starting stuff
+- DONE Check if we can read all the files before doing stuff
+- DONE Fix to a generic mission that does everything
+  - Can use a variant that forcibly changes modes
+  - But then how do we actually do that? We take of a mission and then switch modes?
+    -> Need to carefully craft a mission that makes valid sense 
 
 ## TODO
 
 - TODO Figure out a way to duplicate results, how can we re-run the generate messages?
   - IN progress -> Can do that with the generated log message?
-- TODO Fix to a generic mission that does everything
-  - Can use a variant that forcibly changes modes
-  - But then how do we actually do that? We take of a mission and then switch modes?
-    -> Need to carefully craft a mission that makes valid sense 
 - TODO Figure out better naming for the fuzz interval -> It's supposed to denote the frequency or something
 - TODO Figure out why the tqdm thing gets messed up everytime :|
-- TODO Add SIM/CFG parameters from PGFUZZ
-  - Since we keep track of the time since the simulation start we can effectively set the time for the message
-- TODO Figure out to check all configurations before starting stuff
-- TODO Check if we can read all the files before doing stuff
 
 
 ## Steps to full scale evaluation 
