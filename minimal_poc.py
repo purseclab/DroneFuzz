@@ -15,6 +15,8 @@ import logging
 import datetime
 import pickle
 from lxml import etree
+from enum import Enum
+import collections
 from dtw import dtw
 from contextlib import redirect_stdout
 import numpy as np
@@ -774,6 +776,13 @@ def generate_field_value(
             return 0
 
 
+class FuzzState(Enum):
+    Init = 0
+    Bitflip = 1
+    Arithmetic = 2
+    Interest = 3
+
+
 class FuzzConfig:
     def __init__(self, args):
         """Initialize the FuzzConfig object with the provided arguments.
@@ -793,6 +802,9 @@ class FuzzConfig:
             with open(self.config_file, "r") as f:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_file}")
+        self.fuzzer_state = FuzzState.Init
+        self.fuzzer_queue = collections.deque()
+        # Or queue.Queue (if we have multiple producers)
         # Just check if the file contains atleast sitl_bin and ap_dir
         if (
             not self.config.get("sitl_bin")
@@ -1538,61 +1550,75 @@ class FuzzConfig:
             self.fuzzing_thread.join(timeout=2)
             logger.info("Fuzzing thread stopped")
 
+    def init_generate_message(self):
+        """
+        Generate an initial set of messages for fuzzing.
+        """
+        # Generate random values for each field
+        msg_def = random.choice(self.xml_messages)
+
+        field_values = {}
+
+        for field in msg_def["fields"]:
+            field_name = field["name"]
+            field_type = field.get("type")  # Get type safely
+            field_desc = field.get("desc", None)
+            field_units = field.get("units", None)
+            field_max = field.get("maxValue", None)
+            field_min = field.get("minValue", None)
+            field_itr = field.get("increment", None)
+            # Check if the field is enum
+            if "enum_vals" in field:
+                chosen_enum_value = random.choice(field["enum_vals"])
+                if isinstance(chosen_enum_value, str):
+                    # Attempt conversion if MAVLink type is numeric
+                    if field_type and (
+                        field_type.startswith(("uint", "int", "float", "double"))
+                        or field_type == "char"
+                    ):
+                        try:
+                            if "float" in field_type or "double" in field_type:
+                                field_values[field_name] = float(chosen_enum_value)
+                            else:
+                                field_values[field_name] = int(chosen_enum_value)
+                        except ValueError:
+                            logger.warning(
+                                f"Could not convert enum string '{chosen_enum_value}' to numeric for field '{field_name}' (type: {field_type}). Using 0 as fallback."
+                            )
+                            field_values[field_name] = 0
+                    else:  # Type is likely string based (e.g. char[], string, enum_str) or unknown
+                        field_values[field_name] = chosen_enum_value
+                else:  # Value from enum_vals is already a number (e.g. int from type="enum")
+                    field_values[field_name] = chosen_enum_value
+
+            elif field_type == "param_range_float":
+                min_val = field.get("range_min", -10.0)
+                max_val = field.get("range_max", 10.0)
+                field_values[field_name] = random.uniform(min_val, max_val)
+
+            elif field_type:  # Fallback for other standard MAVLink types
+                field_values[field_name] = generate_field_value(
+                    field_type,
+                    field_desc=field_desc,
+                    field_units=field_units,
+                    field_range=[field_min, field_max, field_itr],
+                )
+
+            else:
+                logger.warning(
+                    f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0."
+                )
+                field_values[field_name] = 0
+
+        return msg_def["msg_name"], msg_def["msg_id"], field_values
+
     def fuzz_loop(self):
         """Main fuzzing loop that runs in a separate thread."""
         while self.fuzzing_active and self.tcp_conn.drone_in_air:
-            # Generate random values for each field
-            msg_def = random.choice(self.xml_messages)
-            field_values = {}
-            for field in msg_def["fields"]:
-                field_name = field["name"]
-                field_type = field.get("type")  # Get type safely
-                field_desc = field.get("desc", None)
-                field_units = field.get("units", None)
-                field_max = field.get("maxValue", None)
-                field_min = field.get("minValue", None)
-                field_itr = field.get("increment", None)
-                # Check if the field is enum
-                if "enum_vals" in field:
-                    chosen_enum_value = random.choice(field["enum_vals"])
-                    if isinstance(chosen_enum_value, str):
-                        # Attempt conversion if MAVLink type is numeric
-                        if field_type and (
-                            field_type.startswith(("uint", "int", "float", "double"))
-                            or field_type == "char"
-                        ):
-                            try:
-                                if "float" in field_type or "double" in field_type:
-                                    field_values[field_name] = float(chosen_enum_value)
-                                else:
-                                    field_values[field_name] = int(chosen_enum_value)
-                            except ValueError:
-                                logger.warning(
-                                    f"Could not convert enum string '{chosen_enum_value}' to numeric for field '{field_name}' (type: {field_type}). Using 0 as fallback."
-                                )
-                                field_values[field_name] = 0
-                        else:  # Type is likely string based (e.g. char[], string, enum_str) or unknown
-                            field_values[field_name] = chosen_enum_value
-                    else:  # Value from enum_vals is already a number (e.g. int from type="enum")
-                        field_values[field_name] = chosen_enum_value
-                elif field_type == "param_range_float":
-                    min_val = field.get("range_min", -10.0)
-                    max_val = field.get("range_max", 10.0)
-                    field_values[field_name] = random.uniform(min_val, max_val)
-                elif field_type:  # Fallback for other standard MAVLink types
-                    field_values[field_name] = generate_field_value(
-                        field_type,
-                        field_desc=field_desc,
-                        field_units=field_units,
-                        field_range=[field_min, field_max, field_itr],
-                    )
-                else:
-                    logger.warning(
-                        f"Field '{field_name}' in message '{msg_def['msg_name']}' has no discernible type or unhandled structure. Assigning default value 0."
-                    )
-                    field_values[field_name] = 0
+            if self.fuzzer_state == FuzzState.Init:
+                msg_name, msg_id, field_values = self.init_generate_message()
             # If we are in calibration mode, just send the same values over for the fields
-            # TODO: Check if we actually need this as a LIST or DICT?
+            # TODO Eventually move towards a common state in Fuzzer_State for calibration
             if self.calibration_active:
                 if self.calibration_vals is None:
                     # Actually check if we have calibration values from the file
@@ -1600,6 +1626,8 @@ class FuzzConfig:
                         # Use the first message in the calibration_msg
                         self.calibration_vals = self.calibration_msg
                         # Needs to be a dict for sending
+                        # NOTE: Just select a message for now
+                        msg_def = random.choice(self.xml_messages)
                         if isinstance(self.calibration_vals, list):
                             # Convert list to dict with keys from msg_def fields
                             field_names = [f["name"] for f in msg_def["fields"]]
@@ -1612,12 +1640,13 @@ class FuzzConfig:
                 else:
                     field_values = self.calibration_vals
             # Send the fuzzed message
-            msg_dict = self.send_fuzzed_message(
-                msg_def["msg_name"], msg_def["msg_id"], field_values
-            )
+            msg_dict = self.send_fuzzed_message(msg_name, msg_id, field_values)
             # To ensure we only save fuzzed message
             if not self.calibration_active:
                 self.fuzz_msgs.append(msg_dict)
+                # If we are in the Init mode, we save all the messages
+                if self.fuzzer_state == FuzzState.Init:
+                    self.fuzzer_queue.append(msg_dict)
             self.fuzzer_stats["messages_sent"] += 1
 
             time.sleep(1 / self.fuzz_interval)
@@ -1858,10 +1887,10 @@ if __name__ == "__main__":
         def update_tqdm_postfix():
             pbar.set_postfix(
                 {
+                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
+                    "state": f"{cfg.fuzzer_state}",
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
-                    "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
-                    # "dtw_avg": f"{cfg.fuzzer_stats['dtw_threshold']:.1f}",  # dtw_threshold is now an average
                     "dtw_min": f"{cfg.min_fuzz_threshold:.1f}",
                     "dtw_max": f"{cfg.max_fuzz_threshold:.1f}",
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
