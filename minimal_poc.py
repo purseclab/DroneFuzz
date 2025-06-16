@@ -1677,6 +1677,22 @@ class FuzzConfig:
 
         return msg_def["msg_name"], msg_def["msg_id"], field_values
 
+    def _mutate_bitflip(self, field_values):
+        """
+        Internal helper to perform bitflip mutation on field values.
+        The idea in this mode is actually flip bits based on the Length + Step-over depending upon the field type
+        """
+        # Ideally we'll have a set of 7-8 values depending upon the field type
+        # bits: stepover
+        # Create a new set of field values
+        # TODO: Figure out the actual size of the field
+        size = 8
+        mod_values = field_values.copy()
+        for field_name, value in field_values.items():
+            n = random.randint(0, size)  # Flip a random bit in the byte
+            mod_values[field_name] = value ^ (1 << n)
+        return mod_values
+
     def mutate_msg(self):
         """
         Basically mutate a message from the fuzzer queue
@@ -1689,6 +1705,8 @@ class FuzzConfig:
         msg_id = msg_entry[2]
         field_values = msg_entry[3]
         # TODO Figure how to actually do this haha
+        if self.fuzzer_state == FuzzState.Bitflip:
+            field_values = self._mutate_bitflip(field_values)
         return msg_name, msg_id, field_values
 
     def fuzz_loop(self):
