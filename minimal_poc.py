@@ -16,11 +16,13 @@ import datetime
 import pickle
 from lxml import etree
 from enum import Enum
-import collections
+import heapq
+from dataclasses import dataclass, field
 from dtw import dtw
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
+from typing import Any, Optional
 
 # Set the mavlink version to 2
 os.environ["MAVLINK20"] = "1"
@@ -781,6 +783,20 @@ class FuzzState(Enum):
     Bitflip = 1
     Arithmetic = 2
     Interest = 3
+    # TODO Havoc
+
+
+@dataclass(order=True)
+class PriorityQueueEntry:
+    """An entry in the priority queue, sorted by priority."""
+
+    priority: int
+    data: Any = field(compare=False)
+    metadata: dict = field(default_factory=dict, compare=False)
+
+    def __repr__(self):
+        # A more compact representation for logging
+        return f"Entry(priority={self.priority}, data={self.data!r})"
 
 
 class FuzzConfig:
@@ -803,7 +819,7 @@ class FuzzConfig:
                 self.config = yaml.safe_load(f)
                 logger.info(f"Loaded configuration from {self.config_file}")
         self.fuzzer_state = FuzzState.Init
-        self.fuzzer_queue = collections.deque()
+        self.fuzzer_queue = []
         # Or queue.Queue (if we have multiple producers)
         # Just check if the file contains atleast sitl_bin and ap_dir
         if (
@@ -887,6 +903,8 @@ class FuzzConfig:
             else self.config.get("calibration_rounds", 10)
         )
         self.calibration_rounds = calibration_rounds
+        # 2025-06-14T10:09:17-0400: silipwn: Why are we setting this to 25? For now that's enough
+        self.fuzzer_queue_len = 25
         # Check if we have calibration values
         # Should be stored as [min,max]
         self.calibration_threshold = self.config.get("calibration_threshold") or None
@@ -1081,6 +1099,36 @@ class FuzzConfig:
             with open(self.fuzzer_param_file, "w") as f:
                 for parameter, values in self.peripheral_config["parameters"].items():
                     f.write(f"{parameter} {values}\n")
+
+    # Fuzzer Queue management functions
+    def add_to_fuzz_queue(self, fuzz_msg, score, metadata=None):
+        """
+        Adds a new input to the queue with an associated score.
+        Higher scores are prioritized.
+        """
+        # We use -score because heapq is a min-heap, so a smaller
+        # number has a higher priority. This makes higher scores pop first.
+        priority = -score
+        entry = PriorityQueueEntry(priority=priority, data=fuzz_msg, metadata=metadata)
+        heapq.heappush(self.fuzzer_queue, entry)
+
+    def get_next_in_fuzz_queue(self) -> PriorityQueueEntry:
+        """
+        Gets the highest priority item from the queue.
+        """
+        if not self.fuzzer_queue:
+            raise IndexError("Fuzz queue is empty")
+        # heappop returns the item with the smallest priority (-score)
+        return heapq.heappop(self.fuzzer_queue)
+
+    def sort_fuzz_queue(self):
+        """
+        Returns a fully sorted list of all items in the queue
+        by their original score (highest first).
+        """
+        # The heap itself is not fully sorted, only guaranteed that the first
+        # element is the smallest. sorted() will create a new sorted list.
+        return sorted(self.fuzzer_queue, reverse=True)
 
     def sim_params(self):
         """Add the SIM parameters from the PGFUZZ database."""
@@ -1485,6 +1533,8 @@ class FuzzConfig:
                 suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_input_dir
             )
         logger.info("Saving inputs to %s", input_file)
+        if self.fuzzer_state == FuzzState.Init:
+            self.add_to_fuzz_queue(self.fuzz_msgs, score=distance)
         with os.fdopen(fd, "w") as f:
             # Dump all the values inside the fuzz_msgs
             for msg in self.fuzz_msgs:
@@ -1530,6 +1580,20 @@ class FuzzConfig:
         )
         return alignments.distance, alignments.normalizedDistance
 
+    def manage_fuzzer_state(self):
+        """Helper function to manage fuzzer state transitions.
+        Current state transition are
+            Init -> Bitflip
+            Bitflip -> Arithmetic
+            Arithmetic -> Interest
+        """
+        if (
+            len(self.fuzzer_queue) >= self.fuzzer_queue_len
+            and self.fuzzer_state == FuzzState.Init
+        ):
+            logger.debug("Reached fuzzer queue length, switching to Mutations state")
+            self.fuzzer_state = FuzzState.Bitflip
+
     def start_fuzzing(self):
         """Start the fuzzing thread."""
         if not self.xml_messages:
@@ -1538,6 +1602,7 @@ class FuzzConfig:
             )
             return
 
+        self.manage_fuzzer_state()
         self.fuzzing_active = True
         self.fuzzing_thread = threading.Thread(target=self.fuzz_loop, daemon=True)
         self.fuzzing_thread.start()
@@ -1612,11 +1677,27 @@ class FuzzConfig:
 
         return msg_def["msg_name"], msg_def["msg_id"], field_values
 
+    def mutate_msg(self):
+        """
+        Basically mutate a message from the fuzzer queue
+        Depending upon the fuzzer state, we will do the relevant mutation
+        """
+        # Get a message from the fuzzer queue
+        msg_entry = self.get_next_in_fuzz_queue().data
+        # It should ideally be a list of msgs, that contains the timestamp, msg_name, msg_id and field_values
+        msg_name = msg_entry[1]
+        msg_id = msg_entry[2]
+        field_values = msg_entry[3]
+        # TODO Figure how to actually do this haha
+        return msg_name, msg_id, field_values
+
     def fuzz_loop(self):
         """Main fuzzing loop that runs in a separate thread."""
         while self.fuzzing_active and self.tcp_conn.drone_in_air:
             if self.fuzzer_state == FuzzState.Init:
                 msg_name, msg_id, field_values = self.init_generate_message()
+            if self.fuzzer_state in [FuzzState.Bitflip, FuzzState.Arithmetic]:
+                msg_name, msg_id, field_values = self.mutate_msg()
             # If we are in calibration mode, just send the same values over for the fields
             # TODO Eventually move towards a common state in Fuzzer_State for calibration
             if self.calibration_active:
@@ -1645,8 +1726,9 @@ class FuzzConfig:
             if not self.calibration_active:
                 self.fuzz_msgs.append(msg_dict)
                 # If we are in the Init mode, we save all the messages
-                if self.fuzzer_state == FuzzState.Init:
-                    self.fuzzer_queue.append(msg_dict)
+                # 2025-06-14T10:15:35-0400: silipwn: Maybe better to save after oracle
+                # if self.fuzzer_state == FuzzState.Init:
+                #     self.fuzzer_queue.append(msg_dict)
             self.fuzzer_stats["messages_sent"] += 1
 
             time.sleep(1 / self.fuzz_interval)
@@ -1724,7 +1806,7 @@ class FuzzConfig:
             )
             msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
             self.tcp_conn.conn.mav.send(packed_msg)
-            return [msg_time, msg_name, modified_field_values]
+            return [msg_time, msg_name, msg_id, modified_field_values]
         except Exception as e:
             logger.error(
                 f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
