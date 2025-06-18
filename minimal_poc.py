@@ -298,6 +298,7 @@ class TCPConn:
                     }
                 )
                 logger.info("Connection closed, stopping monitor thread.")
+                exit(0)
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
