@@ -79,6 +79,9 @@ mavlink_timeout = 5
 approx_threshold = 0.00005  # Threshold for approximate location matching
 altitude_threshold = 0.1  # Threshold for altitude matching
 
+# Global error queue
+error_queue = Queue()
+
 
 class TCPConn:
     def __init__(self):
@@ -93,17 +96,21 @@ class TCPConn:
         self.drone_ready = False  # Drone ready with GPS lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
-        self.internal_error = False
+        # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
+        # self.internal_error = False
         self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
         # Connection details
         with open(os.devnull, "w") as fnull:
             with redirect_stdout(fnull):
-                self.conn = mavutil.mavlink_connection("tcp:localhost:5760")
-        self.conn.wait_heartbeat()
-        self.connected.set()
+                self.conn = mavutil.mavlink_connection(
+                    "tcp:localhost:5760", autoreconnect=True, retries=3
+                )
+        self.wait_for_connection()
+        # self.conn.wait_heartbeat()
+        # self.connected.set()
 
     def setup_threads(self):
-        self.conn.wait_heartbeat()
+        # self.conn.wait_heartbeat()
         self.location_waiting = threading.Condition()
         # Start a thread to keep sending heartbeats
         threading.Thread(target=self.send_heartbeat, daemon=True).start()
@@ -253,7 +260,7 @@ class TCPConn:
                                 logger.error(
                                     f"Command failed: {msg.command} with result: {msg.result}"
                                 )
-                                self.internal_error = True
+                                # self.internal_error = True
                                 self.shutdown_requested = True
                                 raise Exception(
                                     "Failed to execute command: " + str(msg.command)
@@ -282,9 +289,14 @@ class TCPConn:
                         self.drone_state = msg.system_status
             except Exception as e:
                 logger.error(f"Error in monitor_comms: {e}")
-                self.shutdown_requested = True
-                if not self.shutdown_requested:
-                    time.sleep(1)  # Wait before retrying
+                error_queue.put(
+                    {
+                        "type": "tcp_connection_error",
+                        "error": str(e),
+                        "component": "monitor_comms",
+                        "timestamp": time.time(),
+                    }
+                )
                 logger.info("Connection closed, stopping monitor thread.")
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
@@ -809,7 +821,7 @@ class FuzzConfig:
         # Register signal handlers
         # signal.signal(signal.SIGINT, self.signal_handler)
         # signal.signal(signal.SIGTERM, self.signal_handler)
-        self.shutdown_requested = False
+        self.fuzzer_shutdown_requested = False  # Handles the entire fuzzer shutdown
 
         # Load configuration from config YAML file first
         self.config_file = args.config if args.config else None
@@ -821,7 +833,7 @@ class FuzzConfig:
         self.fuzzer_state = FuzzState.Init
         self.fuzzer_queue = []
         # Or queue.Queue (if we have multiple producers)
-        # Just check if the file contains atleast sitl_bin and ap_dir
+        # Just check if the file contains at least sitl_bin and ap_dir
         if (
             not self.config.get("sitl_bin")
             or not self.config.get("ap_dir")
@@ -872,7 +884,8 @@ class FuzzConfig:
         )
 
         # Mission control
-        self.timeout = self.config.get("timeout", 1000)
+        # We consider 300 seconds to be a reasonable timeout for the mission
+        self.timeout = self.config.get("timeout", 300)
         # MAVLink check for https://mavlink.io/en/guide/routing.html
         self.target_system = self.config.get("target_system", 0)
         self.target_component = self.config.get("target_component", 0)
@@ -979,7 +992,7 @@ class FuzzConfig:
                     )
                 except Exception as e:
                     logger.error(f"Error sending message: {e}")
-                    self.shutdown_requested = True
+                    self.fuzzer_shutdown_requested = True
 
                 time.sleep(1 / frequency)
 
@@ -1173,6 +1186,43 @@ class FuzzConfig:
         )
         self.fuzzer_stats["messages_sent"] += 1
 
+    def _monitor_sim(self):
+        """Monitor the SITL simulation for messages and events."""
+        # If sim_handle errors out, inform main thread
+        while self.sim_ready:
+            # Monitor the sim_handle and check if we have exited
+            ret_val = self.sim_handle.poll()
+            # Get the signal number
+            if ret_val is not None:
+                if ret_val < 0:
+                    signal_num = -ret_val  # Because this is a negative value
+                    try:
+                        import signal
+
+                        signal_name = signal.Signals(signal_num).name
+                        error = f"SITL simulation exited with signal: {signal_name} ({signal_num})"
+                        error_queue.put(
+                            {
+                                "type": "sitl_terminated_error",
+                                "error": error,
+                                "component": "monitor_sim",
+                                "timestamp": time.time(),
+                            }
+                        )
+                    except ValueError:
+                        # If the signal number is not a valid signal, just log the number
+                        logger.error(
+                            f"SITL simulation exited with signal: {signal_num}"
+                        )
+                elif ret_val > 0:
+                    # If the return value is positive, it means the process exited normally
+                    logger.info(f"SITL simulation exited with return code: {ret_val}")
+                else:
+                    # If the return value is 0, it means the process exited cleanly, let's exit the loop
+                    logger.debug("SITL simulation is exited")
+                    exit(0)
+            time.sleep(1)  # Check every second
+
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
         sitl_args = ""
@@ -1207,6 +1257,10 @@ class FuzzConfig:
             self.tcp_conn = TCPConn()
             self.tcp_conn.setup_threads()
             self.sim_ready = True
+            # Start the monitoring thread
+            self.monitor_thread = threading.Thread(
+                target=self._monitor_sim, daemon=True
+            ).start()
         except Exception as e:
             # this would just kill the entire script, so need to handle it gracefully
             logger.error(f"Error starting simulation: {e}")
@@ -1347,7 +1401,7 @@ class FuzzConfig:
         """
         logger.error("\nShutdown requested...")
         logger.error("Will terminate after current execution\n")
-        self.shutdown_requested = True
+        self.fuzzer_shutdown_requested = True
         # Figure out a better way to terminate things and exit quickly
 
     def cleanup_and_exit(self):
@@ -1456,7 +1510,7 @@ class FuzzConfig:
 
         # Then cleanup TCP connection
         if self.tcp_conn:
-            if self.shutdown_requested:
+            if self.fuzzer_shutdown_requested:
                 self.tcp_conn.cleanup()
             elif self.rcou_vals:
                 self.rcou_vals = self.tcp_conn.cleanup()
@@ -1955,11 +2009,14 @@ if __name__ == "__main__":
                 cfg.run_sim()
 
                 logger.info("Waiting for drone to be ready with GPS lock...")
-                while cfg.tcp_conn.drone_ready is False and not cfg.shutdown_requested:
+                while (
+                    cfg.tcp_conn.drone_ready is False
+                    and not cfg.fuzzer_shutdown_requested
+                ):
                     time.sleep(1)
                     update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
 
-                if cfg.shutdown_requested:
+                if cfg.fuzzer_shutdown_requested:
                     cfg.cleanup_and_exit()
                     exit(0)
                 else:
@@ -1996,22 +2053,45 @@ if __name__ == "__main__":
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
-            # Example of printing an important message during fuzzing
-            # if cfg.fuzzer_stats['potential_crashes'] > 0:
-            #     tqdm.write(f"Potential crash detected! Count: {cfg.fuzzer_stats['potential_crashes']}")
 
-        while not cfg.shutdown_requested:
+        while not cfg.fuzzer_shutdown_requested:
+            # Check if we don't have any errors
+            while not error_queue.empty():
+                error = error_queue.get()
+
+                # Handle TCP connection errors
+                if error.get("type") == "tcp_connection_error":
+                    tqdm.write(
+                        f"TCP connection error: {error['error']}, saving inputs ..."
+                    )
+                if error.get("type") == "sitl_terminated_error":
+                    tqdm.write(
+                        f"SITL crashed error: {error['error']}, saving inputs ..."
+                    )
+                # Save the current message sequence as an anomaly
+                fd, input_file = tempfile.mkstemp(
+                    suffix=".txt",
+                    prefix="inputs-crash-anomaly-",
+                    dir=cfg.fuzzer_temp_input_dir,
+                )
+                with os.fdopen(fd, "w") as f:
+                    # Save current messages that may have triggered the connection issue
+                    for msg in cfg.fuzz_msgs:
+                        f.write(f"{msg}\n")
+                # Count it as a potential crash
+                cfg.fuzzer_stats["potential_crashes"] += 1
+                cfg.cleanup_sim()
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
             tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
             cfg.run_sim()
 
             tqdm.write("Waiting for drone GPS lock...")
-            while not cfg.tcp_conn.drone_ready and not cfg.shutdown_requested:
+            while not cfg.tcp_conn.drone_ready and not cfg.fuzzer_shutdown_requested:
                 time.sleep(1)
                 pbar.refresh()  # Keep progress bar visible during waiting
 
-            if not cfg.shutdown_requested:
+            if not cfg.fuzzer_shutdown_requested:
                 cfg.send_mission()
 
             cfg.cleanup_sim()
