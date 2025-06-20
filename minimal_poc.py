@@ -5,6 +5,7 @@
 # Fuzz some messages based on the XML loading
 # Check the status after the mission finishes
 import argparse
+import struct
 import time
 import re
 import yaml
@@ -81,6 +82,24 @@ altitude_threshold = 0.1  # Threshold for altitude matching
 
 # Global error queue
 error_queue = Queue()
+
+
+# Mutation helpers
+def float_to_bits(f):
+    """Convert float to its bit representation as integer"""
+    return struct.unpack(">I", struct.pack(">f", f))[0]
+
+
+def bits_to_float(bits):
+    """Convert bit representation back to float"""
+    return struct.unpack(">f", struct.pack(">I", bits))[0]
+
+
+def flip_float_bit(f, position):
+    """Flip a specific bit in a float"""
+    bits = float_to_bits(f)
+    flipped_bits = bits ^ (1 << position)
+    return bits_to_float(flipped_bits)
 
 
 class TCPConn:
@@ -1128,12 +1147,24 @@ class FuzzConfig:
 
     def get_next_in_fuzz_queue(self) -> PriorityQueueEntry:
         """
-        Gets the highest priority item from the queue.
+        Gets a copy of highest priority item from the queue.
+        Peeks the item
         """
-        if not self.fuzzer_queue:
-            raise IndexError("Fuzz queue is empty")
         # heappop returns the item with the smallest priority (-score)
-        return heapq.heappop(self.fuzzer_queue)
+        if len(self.fuzzer_queue) > 0:
+            return self.fuzzer_queue[0]  # Peek at the highest priority item
+        else:
+            # Create the required error message for the queue
+            error = "Fuzz queue is empty, cannot get next item"
+            error_queue.put(
+                {
+                    "type": "fuzzer_error",
+                    "error": error,
+                    "component": "mutator",
+                    "timestamp": time.time(),
+                }
+            )
+            return PriorityQueueEntry(priority=0, data=None)
 
     def sort_fuzz_queue(self):
         """
@@ -1275,16 +1306,17 @@ class FuzzConfig:
         self.start_fuzzing()
         mode_ctr = 0
         prev_state = None
+        MAX_MODE_CHANGES = 1
         while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
             mode = random.choice(self.supported_modes)
             if (
-                mode_ctr < 3  # Randomly set a mode
+                mode_ctr < MAX_MODE_CHANGES  # Randomly set a mode
             ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
                 self.tcp_conn.set_mode(mode)
                 logger.debug(f"Changing mode to: {mode}")
                 mode_ctr += 1
                 prev_state = mode
-            elif mode_ctr >= 3 and prev_state != "AUTO":
+            elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
                 logger.debug("Reached mode change limit, not changing mode anymore")
                 self.tcp_conn.set_mode("AUTO")
                 prev_state = "AUTO"
@@ -1590,10 +1622,25 @@ class FuzzConfig:
         logger.info("Saving inputs to %s", input_file)
         if self.fuzzer_state == FuzzState.Init:
             self.add_to_fuzz_queue(self.fuzz_msgs, score=distance)
-        with os.fdopen(fd, "w") as f:
-            # Dump all the values inside the fuzz_msgs
-            for msg in self.fuzz_msgs:
-                f.write(f"{msg}\n")
+        else:
+            # Check if the distance is less than values in queue
+            if self.fuzzer_queue:
+                if distance >= self.fuzzer_queue[0].priority:
+                    logger.info(
+                        "Distance is greater than the first item in the queue, adding to queue"
+                    )
+                    self.add_to_fuzz_queue(self.fuzz_msgs, score=distance)
+
+        try:
+            with os.fdopen(fd, "w") as f:
+                # Dump all the values inside the fuzz_msgs
+                for msg in self.fuzz_msgs:
+                    f.write(f"{msg}\n")
+        except Exception as e:
+            logger.error(f"Error writing to input file {input_file}: {e}")
+            # Close fd if it is opened
+            if fd:
+                os.close(fd)
         # Clean up the fuzz_msgs
         self.fuzz_msgs = []
 
@@ -1648,6 +1695,25 @@ class FuzzConfig:
         ):
             logger.debug("Reached fuzzer queue length, switching to Mutations state")
             self.fuzzer_state = FuzzState.Bitflip
+        elif (len(self.fuzzer_queue) >= self.fuzzer_queue_len) and (
+            self.fuzzer_state == FuzzState.Bitflip
+        ):
+            logger.debug("Reached fuzzer queue length, switching to Arithmetic state")
+            self.fuzzer_state = FuzzState.Arithmetic
+        elif self.fuzzer_state != FuzzState.Init and len(self.fuzzer_queue) == 0:
+            logger.debug("Nothing in the queue, switching to Init state")
+            self.fuzzer_state = FuzzState.Init
+        # Check if we reach the queue length, then we should actually remove lowest priority items
+        if len(self.fuzzer_queue) > self.fuzzer_queue_len:
+            logger.debug(
+                f"Fuzzer queue length exceeded {self.fuzzer_queue_len}, removing lowest priority items"
+            )
+            # Remove the lowest priority items from the queue
+            while len(self.fuzzer_queue) > self.fuzzer_queue_len:
+                heapq.heappop(self.fuzzer_queue)
+            logger.debug(
+                f"Fuzzer queue length is now {len(self.fuzzer_queue)} after cleanup"
+            )
 
     def start_fuzzing(self):
         """Start the fuzzing thread."""
@@ -1740,13 +1806,25 @@ class FuzzConfig:
         # Ideally we'll have a set of 7-8 values depending upon the field type
         # bits: stepover
         # Create a new set of field values
-        # TODO: Figure out the actual size of the field
-        size = 8
+        size = 8  # TODO: Figure out the actual size of the field
         mod_values = field_values.copy()
+        # Handle different field types
         for field_name, value in field_values.items():
-            n = random.randint(0, size)  # Flip a random bit in the byte
-            mod_values[field_name] = value ^ (1 << n)
+            index = random.randint(0, size)  # Flip a random bit in the byte
+            if type(value) is list:
+                value = random.choice(value)  # Select a random value from the list
+                if type(value) is float:
+                    mod_values[field_name] = flip_float_bit(value, index)
+                elif type(value) is int:
+                    mod_values[field_name] = value ^ (1 << index)
         return mod_values
+
+    def _mutate_arithmetic(self, field_values):
+        """
+        Ideally perform arithmetic mutation on field values
+        """
+        # TODO
+        return field_values  # No mutation for now
 
     def mutate_msg(self):
         """
@@ -1754,14 +1832,20 @@ class FuzzConfig:
         Depending upon the fuzzer state, we will do the relevant mutation
         """
         # Get a message from the fuzzer queue
-        msg_entry = self.get_next_in_fuzz_queue().data
+        entry = self.get_next_in_fuzz_queue()
+        msg_list = entry.data
+        if not msg_list:
+            logger.error("No messages in the fuzzer queue to mutate")
+            return None, None, None
         # It should ideally be a list of msgs, that contains the timestamp, msg_name, msg_id and field_values
+        msg_entry = random.choice(msg_list)  # Select a random message from the list
         msg_name = msg_entry[1]
         msg_id = msg_entry[2]
         field_values = msg_entry[3]
-        # TODO Figure how to actually do this haha
         if self.fuzzer_state == FuzzState.Bitflip:
             field_values = self._mutate_bitflip(field_values)
+        if self.fuzzer_state == FuzzState.Arithmetic:
+            field_values = self._mutate_arithmetic(field_values)
         return msg_name, msg_id, field_values
 
     def fuzz_loop(self):
@@ -1769,8 +1853,12 @@ class FuzzConfig:
         while self.fuzzing_active and self.tcp_conn.drone_in_air:
             if self.fuzzer_state == FuzzState.Init:
                 msg_name, msg_id, field_values = self.init_generate_message()
-            if self.fuzzer_state in [FuzzState.Bitflip, FuzzState.Arithmetic]:
+            elif self.fuzzer_state in [FuzzState.Bitflip, FuzzState.Arithmetic]:
                 msg_name, msg_id, field_values = self.mutate_msg()
+                if field_values is None:
+                    # If we don't have a message to mutate, go back to init state
+                    logger.debug("No message to mutate, going back to init state")
+                    msg_name, msg_id, field_values = self.init_generate_message()
             # If we are in calibration mode, just send the same values over for the fields
             # TODO Eventually move towards a common state in Fuzzer_State for calibration
             if self.calibration_active:
@@ -1835,6 +1923,42 @@ class FuzzConfig:
                 # TODO: Please verify if this assumption is correct
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
 
+    def handle_errors(self):
+        # Check if we don't have any errors
+        while not error_queue.empty():
+            error = error_queue.get()
+
+            # Handle TCP connection errors
+            if (
+                error.get("type") == "tcp_connection_error"
+                or error.get("type") == "sitl_terminated_error"
+            ):
+                tqdm.write(
+                    f"SITL crashed | Can't establish connection: {error['error']}, saving inputs ..."
+                )
+                # Save the current message sequence as an anomaly
+                fd, input_file = tempfile.mkstemp(
+                    suffix=".txt",
+                    prefix="inputs-crash-anomaly-",
+                    dir=self.fuzzer_temp_input_dir,
+                )
+                logger.info("Saving inputs to %s", input_file)
+                with os.fdopen(fd, "w") as f:
+                    # Save current messages that may have triggered the connection issue
+                    for msg in self.fuzz_msgs:
+                        f.write(f"{msg}\n")
+                # Count it as a potential crash
+                self.fuzzer_stats["potential_crashes"] += 1
+                self.cleanup_sim()
+            if error.get("type") == "fuzzer_error":
+                logger.error(
+                    "Internal fuzzer error: {0} in component {1}",
+                    error["error"],
+                    error["component"],
+                )
+                logger.error("Not recoverable state, exiting...")
+                exit(1)
+
     def send_fuzzed_message(self, msg_name, msg_id, field_values):
         """Send a fuzzed message using the MAVLink connection.
 
@@ -1844,7 +1968,7 @@ class FuzzConfig:
             field_values: Dictionary of field values for the message.
 
         Returns:
-            List containing the message time, name, and field values.
+            List containing the message time, name, id, and field values.
         """
         self.hueristics(field_values)
         try:
@@ -1855,7 +1979,7 @@ class FuzzConfig:
             # Send the message
             msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
             msg_class(**field_values)
-            return [msg_time, msg_name, field_values]
+            return [msg_time, msg_name, msg_id, field_values]
 
         except AttributeError:
             # If the field_values are not correct in length (7), we add the message with 0s
@@ -2056,46 +2180,27 @@ if __name__ == "__main__":
             )
 
         while not cfg.fuzzer_shutdown_requested:
-            # Check if we don't have any errors
-            while not error_queue.empty():
-                error = error_queue.get()
-
-                # Handle TCP connection errors
-                if error.get("type") == "tcp_connection_error":
-                    tqdm.write(
-                        f"TCP connection error: {error['error']}, saving inputs ..."
-                    )
-                if error.get("type") == "sitl_terminated_error":
-                    tqdm.write(
-                        f"SITL crashed error: {error['error']}, saving inputs ..."
-                    )
-                # Save the current message sequence as an anomaly
-                fd, input_file = tempfile.mkstemp(
-                    suffix=".txt",
-                    prefix="inputs-crash-anomaly-",
-                    dir=cfg.fuzzer_temp_input_dir,
-                )
-                with os.fdopen(fd, "w") as f:
-                    # Save current messages that may have triggered the connection issue
-                    for msg in cfg.fuzz_msgs:
-                        f.write(f"{msg}\n")
-                # Count it as a potential crash
-                cfg.fuzzer_stats["potential_crashes"] += 1
-                cfg.cleanup_sim()
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
             tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
             cfg.run_sim()
 
             tqdm.write("Waiting for drone GPS lock...")
-            while not cfg.tcp_conn.drone_ready and not cfg.fuzzer_shutdown_requested:
+            while (
+                not cfg.tcp_conn.drone_ready
+                and not cfg.fuzzer_shutdown_requested
+                and error_queue.empty()
+            ):
                 time.sleep(1)
                 pbar.refresh()  # Keep progress bar visible during waiting
 
-            if not cfg.fuzzer_shutdown_requested:
-                cfg.send_mission()
+            if not error_queue.empty():
+                cfg.handle_errors()
 
-            cfg.cleanup_sim()
+            elif not cfg.fuzzer_shutdown_requested:
+                cfg.send_mission()
+                cfg.cleanup_sim()
+
             logger.debug(
                 f"Finished fuzzing with {cfg.fuzzer_stats['messages_sent']} messages sent"
             )
