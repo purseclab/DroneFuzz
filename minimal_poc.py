@@ -290,9 +290,15 @@ class TCPConn:
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
                         drone_loc_state = {}
-                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees  # type: ignore
-                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees  # type: ignore
-                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters  # type: ignore
+                        drone_loc_state["lat"] = (
+                            msg.lat / 1e7
+                        )  # Convert to degrees  # type: ignore
+                        drone_loc_state["lon"] = (
+                            msg.lon / 1e7
+                        )  # Convert to degrees  # type: ignore
+                        drone_loc_state["alt"] = (
+                            msg.alt / 1e3
+                        )  # Convert to meters  # type: ignore
                         drone_loc_state["rel_alt"] = (
                             msg.relative_alt / 1e3  # Convert to meters  # type: ignore
                         )
@@ -853,12 +859,8 @@ class FuzzConfig:
         self.fuzzer_state = FuzzState.Init
         self.fuzzer_queue = []
         # Or queue.Queue (if we have multiple producers)
-        # Just check if the file contains at least sitl_bin and ap_dir
-        if (
-            not self.config.get("sitl_bin")
-            or not self.config.get("ap_dir")
-            or not self.config.get("peripheral_file")
-        ):
+        # Just check if the file contains at least ap_dir and peripheral_file
+        if not self.config.get("ap_dir") or not self.config.get("peripheral_file"):
             raise ValueError(
                 "Atleast SITL binary and peripheral_file are required in the config file."
             )
@@ -879,11 +881,29 @@ class FuzzConfig:
         # Current fallbacks are ['GUIDED', 'AUTO'], I think these are the most common
         self.supported_modes = self.config.get("supported_modes") or ["GUIDED", "AUTO"]
 
+        self.vehicle = (
+            args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
+        )
+
         # Setup files - command line args override yaml config
-        self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin")
+        self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin", None)
+
         self.ap_dir = (
             args.ap_dir if args.ap_dir else self.config.get("ap_dir", "/ardupilot")
         )
+        # Handle the case where we don't have a SITL binary
+        if self.sitl_bin is None:
+            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
+            vehicle_bin = f"ardu{self.vehicle}"
+            sitl_bin_path = os.path.join(
+                self.ap_dir, "build", "sitl", "bin", vehicle_bin
+            )
+            if file_exists(sitl_bin_path):
+                self.sitl_bin = sitl_bin_path
+            else:
+                raise FileNotFoundError(
+                    "SITL binary not found. Please provide a valid path."
+                )
         self.xml_file = args.xml if args.xml else self.config.get("xml_file")
 
         # Auto mission configuration
@@ -898,9 +918,6 @@ class FuzzConfig:
         # Variables - command line args override yaml config
         self.peripheral_under_test = (
             args.peripheral if args.peripheral else self.config.get("peripheral")
-        )
-        self.vehicle = (
-            args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
         )
 
         # Mission control
@@ -2016,7 +2033,7 @@ def file_exists(file_o_dir):
     if os.path.exists(file_o_dir):
         return True
     else:
-        logger.error(f"File or directory {file_o_dir} does not exist.")
+        logger.error(f"File or directory {file_o_dir} does not exist.")  # HACK
         raise FileNotFoundError(f"File or directory {file_o_dir} does not exist.")
 
 
