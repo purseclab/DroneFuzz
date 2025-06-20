@@ -123,7 +123,7 @@ class TCPConn:
             with redirect_stdout(fnull):
                 self.conn = mavutil.mavlink_connection(
                     "tcp:localhost:5760", autoreconnect=True, retries=3
-                )
+                )  # type: ignore
         self.wait_for_connection()
         # self.conn.wait_heartbeat()
         # self.connected.set()
@@ -139,22 +139,22 @@ class TCPConn:
 
     def setup_streams(self):
         self.conn.mav.request_data_stream_send(
-            self.conn.target_system,  # target system
-            self.conn.target_component,  # target component
+            self.conn.target_system,  # target system  # type: ignore
+            self.conn.target_component,  # target component  # type: ignore
             mavutil.mavlink.MAV_DATA_STREAM_ALL,  # Stream ID
             4,  # Rate in Hz
             1,  # Start/Stop (1=start, 0=stop)
-        )
+        )  # type: ignore
         # Add checks to make sure we get the data
-        self.conn.recv_match(blocking=True)
+        self.conn.recv_match(blocking=True)  # type: ignore
 
     # TODO: Maybe make this modular
     def apply_throttle(self, throttle_pwm=1500, duration=1.0):
         end_time = time.time() + duration
         while time.time() < end_time:
             self.conn.mav.rc_channels_override_send(
-                self.conn.target_system,
-                self.conn.target_component,
+                self.conn.target_system,  # type: ignore
+                self.conn.target_component,  # type: ignore
                 0,  # chan1
                 0,  # chan2
                 throttle_pwm,  # chan3
@@ -163,16 +163,16 @@ class TCPConn:
                 0,  # chan6
                 0,  # chan7
                 0,  # chan8
-            )
+            )  # type: ignore
             time.sleep(0.1)
         self.conn.mav.rc_channels_override_send(
-            self.conn.target_system, self.conn.target_component, 0, 0, 0, 0, 0, 0, 0, 0
-        )
+            self.conn.target_system, self.conn.target_component, 0, 0, 0, 0, 0, 0, 0, 0  # type: ignore
+        )  # type: ignore
 
     def wait_for_connection(self):
         # Check if we reconnected and received a heartbeat
         try:
-            self.conn.wait_heartbeat()
+            self.conn.wait_heartbeat()  # type: ignore
             self.connected.set()
             logger.info("Connected to the vehicle and received heartbeat.")
         except Exception as e:
@@ -184,8 +184,8 @@ class TCPConn:
         # We only need the normal reboot, don't care about the bootloader reboot
         param2 = 1  # To ensure we reboot normally (the autopilot only)
         self.conn.mav.command_long_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
             1,  # Confirmation
             param2,
@@ -195,11 +195,11 @@ class TCPConn:
             0,
             0,
             0,
-        )
+        )  # type: ignore
         logger.info("Reboot command sent to the vehicle.")
         # Wait for the COMMAND_ACK message to confirm the reboot
-        msg = self.conn.recv_match(type="COMMAND_ACK", blocking=True)
-        if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:
+        msg = self.conn.recv_match(type="COMMAND_ACK", blocking=True)  # type: ignore
+        if msg.result == mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
             logger.info("Reboot command acknowledged by the vehicle.")
 
     def send_heartbeat(self):
@@ -211,7 +211,7 @@ class TCPConn:
                     0,
                     0,
                     0,
-                )
+                )  # type: ignore
                 time.sleep(1)  # Sleep for a second before sending the next heartbeat
             except Exception as e:
                 logger.error(f"Error in send_heartbeat: {e}")
@@ -259,7 +259,7 @@ class TCPConn:
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
             try:
-                msg = self.conn.recv_match(blocking=True)
+                msg = self.conn.recv_match(blocking=True)  # type: ignore
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
@@ -267,7 +267,7 @@ class TCPConn:
                         # Crazy check because pymavlink lock doesn't work
                         self._monitor_flags(msg)
                     if msg.get_type() == "COMMAND_ACK":
-                        if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:
+                        if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
                             # Only create an error if the command was a arming/land/takeoff/auto
                             # Upload mission for rest of the commands just warn
                             if msg.command in [
@@ -290,22 +290,22 @@ class TCPConn:
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
                         drone_loc_state = {}
-                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees
-                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees
-                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters
+                        drone_loc_state["lat"] = msg.lat / 1e7  # Convert to degrees  # type: ignore
+                        drone_loc_state["lon"] = msg.lon / 1e7  # Convert to degrees  # type: ignore
+                        drone_loc_state["alt"] = msg.alt / 1e3  # Convert to meters  # type: ignore
                         drone_loc_state["rel_alt"] = (
-                            msg.relative_alt / 1e3
-                        )  # Convert to meters
+                            msg.relative_alt / 1e3  # Convert to meters  # type: ignore
+                        )
                         self.loc_queue.put(drone_loc_state)
                     if (
-                        msg.get_type() == "SERVO_OUTPUT_RAW"
+                        msg.get_type() == "SERVO_OUTPUT_RAW"  # type: ignore
                     ):  # Only when drone is in air
                         if self.rc_monitor:
                             self.rcou_queue.put(msg.to_dict())
-                    if msg.get_type() == "MISSION_REQUEST":
+                    if msg.get_type() == "MISSION_REQUEST":  # type: ignore
                         self.mission_msg_queue.put(msg)
-                    if msg.get_type() == "HEARTBEAT":
-                        self.drone_state = msg.system_status
+                    if msg.get_type() == "HEARTBEAT":  # type: ignore
+                        self.drone_state = msg.system_status  # type: ignore
             except Exception as e:
                 logger.error(f"Error in monitor_comms: {e}")
                 error_queue.put(
@@ -320,28 +320,28 @@ class TCPConn:
                 exit(0)
 
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
-        return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)
+        return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)  # type: ignore
 
     def msg_send(self):
-        msg = mavutil.mavlink.MAVLink_statustext_message()
-        return self.conn.mav.send(msg)
+        msg = mavutil.mavlink.MAVLink_statustext_message()  # type: ignore
+        return self.conn.mav.send(msg)  # type: ignore
 
     def st_msg_send(self, text):
         msg = self.conn.mav.statustext_encode(
-            mavutil.mavlink.MAV_SEVERITY_INFO, text.encode()
-        )
-        self.conn.mav.send(msg)
+            mavutil.mavlink.MAV_SEVERITY_INFO, text.encode()  # type: ignore
+        )  # type: ignore
+        self.conn.mav.send(msg)  # type: ignore
 
     def set_mode(self, mode):
         # Check if the mode exists in the vehicle mapping
-        mode_mapping = self.conn.mode_mapping()
+        mode_mapping = self.conn.mode_mapping()  # type: ignore
         set_mode = mode_mapping.get(mode, None)
         if not set_mode:
             # TODO Figure out how to properly tear down everything
             logger.error("Error: Invalid mode specified")
         self.conn.mav.command_long_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_DO_SET_MODE,
             0,
             1,  # Base mode: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
@@ -351,7 +351,7 @@ class TCPConn:
             0,
             0,
             0,
-        )
+        )  # type: ignore
         logger.info("Setting mode to: " + mode)
 
     def set_param(self, param_id, param_value, param_type="uint8"):
@@ -377,18 +377,18 @@ class TCPConn:
         }
         # TODO Might have to handle the case where have an extended parameter type
         self.conn.mav.param_set_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             bytes(param_id, "utf-8"),
             float(param_value),
             enum_types.get(param_type),
-        )
+        )  # type: ignore
 
     def land(self):
         """Land the vehicle."""
         self.conn.mav.command_long_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_NAV_LAND,
             0,
             0,
@@ -398,7 +398,7 @@ class TCPConn:
             0,
             0,
             0,
-        )
+        )  # type: ignore
         while True:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if loc["rel_alt"] <= altitude_threshold:
@@ -411,8 +411,8 @@ class TCPConn:
 
     def arm(self):
         self.conn.mav.command_long_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,
             0,
             1,  # 1 to arm
@@ -422,12 +422,12 @@ class TCPConn:
             0,
             0,
             0,
-        )
+        )  # type: ignore
 
     def takeoff(self, altitude):
         self.conn.mav.command_long_send(
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
             0,
             0,
@@ -437,7 +437,7 @@ class TCPConn:
             0,
             0,
             altitude,
-        )
+        )  # type: ignore
         # Check if the drone state is within the altitude range
         logger.debug("Waiting for location to be within the altitude range")
         while True:
@@ -457,8 +457,8 @@ class TCPConn:
         logger.info(f"Navigating to waypoint: lat={lat}, lon={lon}, alt={alt}")
         self.conn.mav.set_position_target_global_int_send(
             0,
-            self.conn.target_system,
-            self.conn.target_component,
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT_INT,
             0b110111111000,  # Bitmask: enable x, y, z
             int(lat * 1e7),  # Latitude in 1e7 degrees
@@ -472,7 +472,7 @@ class TCPConn:
             0,  # x, y, z acceleration
             0,
             0,  # yaw, yaw rate
-        )
+        )  # type: ignore
         while True:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if (lat - approx_threshold <= loc["lat"] <= lat + approx_threshold) and (
@@ -498,7 +498,7 @@ class TCPConn:
                 logger.info(f"Received {len(rcou_list)} RC channel updates.")
             return rcou_list
         if self.conn:
-            self.conn.close()
+            self.conn.close()  # type: ignore
             logger.info("TCP connection closed.")
         self.connected.clear()
 
@@ -1338,10 +1338,10 @@ class FuzzConfig:
         _ = waypoints.load(mission_file.strip('"'))
 
         # Clear any existing mission
-        self.tcp_conn.conn.waypoint_clear_all_send()
+        self.tcp_conn.conn.waypoint_clear_all_send()  # type: ignore
 
         # Send waypoint count
-        self.tcp_conn.conn.waypoint_count_send(waypoints.count())
+        self.tcp_conn.conn.waypoint_count_send(waypoints.count())  # type: ignore
 
         # Respond to mission requests
         for _ in range(waypoints.count()):
@@ -1352,7 +1352,7 @@ class FuzzConfig:
                 logger.info(f"Received MISSION_REQUEST for sequence {msg.seq}")
 
                 # Send the requested waypoint
-                self.tcp_conn.conn.mav.send(waypoints.wp(msg.seq))
+                self.tcp_conn.conn.mav.send(waypoints.wp(msg.seq))  # type: ignore
                 logger.info(f"Sending waypoint {msg.seq}")
 
             except Exception as e:
@@ -1973,12 +1973,12 @@ class FuzzConfig:
         self.hueristics(field_values)
         try:
             # Get the message class from mavutil
-            msg_class = getattr(self.tcp_conn.conn.mav, f"{msg_name.lower()}_send")
+            msg_class = getattr(self.tcp_conn.conn.mav, f"{msg_name.lower()}_send")  # type: ignore
 
             # Create the message send with the fuzzed values
             # Send the message
             msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
-            msg_class(**field_values)
+            msg_class(**field_values)  # type: ignore
             return [msg_time, msg_name, msg_id, field_values]
 
         except AttributeError:
@@ -1995,14 +1995,14 @@ class FuzzConfig:
                 modified_field_values[val_key] = val
                 val_idx += 1
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
-                self.target_system,  # target_system
-                self.target_component,  # target_component
+                self.target_system,  # target_system  # type: ignore
+                self.target_component,  # target_component  # type: ignore
                 int(msg_id),  # command
                 0,  # confirmation
                 **modified_field_values,  # parameters
             )
             msg_time = time.time() - self.fuzzer_stats["current_mission_time"]
-            self.tcp_conn.conn.mav.send(packed_msg)
+            self.tcp_conn.conn.mav.send(packed_msg)  # type: ignore
             return [msg_time, msg_name, msg_id, modified_field_values]
         except Exception as e:
             logger.error(
