@@ -208,14 +208,6 @@ sensors:
       - OSD_PARAM_CONFIG
     frequency: [-1, -1, -1, -1]
 
-  OpenDroneID:
-    msg_type:
-      - OSD_PARAM_SHOW_CONFIG
-      - OSD_PARAM_CONFIG_REPLY
-      - OSD_PARAM_SHOW_CONFIG_REPLY
-      - OSD_PARAM_CONFIG
-    frequency: [-1, -1, -1, -1]
-
   AIS:
     parameters:
       AIS_TYPE : 1
@@ -238,14 +230,58 @@ sensors:
 
   AHRS_EXT:
     parameters:
-      BARO_PROBE_EXT : 4
-      BARO_PRIMARY: 1
+      AHRS_EKF_TYPE: 11
+      EAHRS_TYPE: 1
     msg_type: # Might not just work outside the box
-      - SCALED_PRESSURE
-      - SCALED_PRESSURE2
-      - SCALED_PRESSURE3
+      - AHRS
+      - AHRS2
+      - AHRS3
+    frequency: [-1] # TODO: Check the frequency for health status
+
+  AHRS_EXT:
+    parameters:
+      AHRS_EKF_TYPE: 11
+      EAHRS_TYPE: 1
+    msg_type: # Might not just work outside the box
+      - AHRS
+      - AHRS2
+      - AHRS3
+    frequency: [-1] # TODO: Check the frequency for health status
+
+  BATTERY:
+    parameters: # I don't it requires any specific configuration parameters
+    msg_type: # Might not just work outside the box
+      - BATTERY_STATUS
+      - MAV_CMD_BATTERY_RESET
+      - BATTERY_INFO
     frequency: [-1]
 
+  GENERATOR:
+    parameters:
+      GEN_TYPE: 1
+    msg_type: # Might not just work outside the box
+      - GENERATOR_STATUS
+    frequency: [-1]
+
+  LANDINGGEAR:
+    parameters:
+      LGR_ENABLE: 1
+    msg_type: # Might not just work outside the box
+      - MAV_CMD_AIRFRAME_CONFIGURATION
+    frequency: [-1]
+
+  OPENDRONEID:
+    msg_type: # Might not just work outside the box
+      - OPEN_DRONE_ID_BASIC_ID
+      - OPEN_DRONE_ID_LOCATION
+      - OPEN_DRONE_ID_AUTHENTICATION
+      - OPEN_DRONE_ID_SELF_ID
+      - OPEN_DRONE_ID_SYSTEM
+      - OPEN_DRONE_ID_OPERATOR_ID
+      - OPEN_DRONE_ID_MESSAGE_PACK
+      - OPEN_DRONE_ID_ARM_STATUS
+      - OPEN_DRONE_ID_SYSTEM_UPDATE
+    frequency: [-1]
 
 generic_params:
   # Only to be enable for CS5/CS6 cases
