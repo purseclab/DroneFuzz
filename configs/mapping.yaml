@@ -216,6 +216,37 @@ sensors:
       - OSD_PARAM_CONFIG
     frequency: [-1, -1, -1, -1]
 
+  AIS:
+    parameters:
+      AIS_TYPE : 1
+      SERIAL1_PROTOCOL: 40
+      SERIAL1_BAUD: 38
+      MAV1_ADSB: 5
+    msg_type:
+      - AIS_VESSEL
+    frequency: [-1]
+
+  BARO_EXT:
+    parameters:
+      BARO_PROBE_EXT : 4
+      BARO_PRIMARY: 1
+    msg_type: # Might not just work outside the box
+      - SCALED_PRESSURE
+      - SCALED_PRESSURE2
+      - SCALED_PRESSURE3
+    frequency: [-1]
+
+  AHRS_EXT:
+    parameters:
+      BARO_PROBE_EXT : 4
+      BARO_PRIMARY: 1
+    msg_type: # Might not just work outside the box
+      - SCALED_PRESSURE
+      - SCALED_PRESSURE2
+      - SCALED_PRESSURE3
+    frequency: [-1]
+
+
 generic_params:
   # Only to be enable for CS5/CS6 cases
   # - SIM_VIB_FREQ_X
