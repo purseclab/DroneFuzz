@@ -23,7 +23,7 @@ from dtw import dtw
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 # Set the mavlink version to 2
 os.environ["MAVLINK20"] = "1"
@@ -1279,6 +1279,8 @@ class FuzzConfig:
             sitl_args = " -S --model + -w --speedup 1 -I0"
         elif self.vehicle == "plane":
             sitl_args = " -S --model plane -w --speedup 1 -I0"
+        elif self.vehicle == "rover":
+            sitl_args = " -S --model rover -w --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
         logger.info(f"Starting SITL with command: {self.sitl_cmd}")
         if self.calibration_active:
@@ -1976,8 +1978,8 @@ class FuzzConfig:
                 logger.error("Not recoverable state, exiting...")
                 exit(1)
 
-    def send_fuzzed_message(self, msg_name, msg_id, field_values):
-        """Send a fuzzed message using the MAVLink connection.
+    def send_fuzzed_message(self, msg_name, msg_id, field_values: Dict):
+        """Send a mutated message using the MAVLink connection.
 
         Args:
             msg_name: Name of the message.
@@ -2000,8 +2002,8 @@ class FuzzConfig:
 
         except AttributeError:
             # If the field_values are not correct in length (7), we add the message with 0s
-            if len(field_values) < 7:
-                field_values += [0] * (7 - len(field_values))
+            while len(field_values) < 7:
+                field_values[f"param{len(field_values) + 1}"] = 0
             # Structure the message to be similar to the LONG_COMMAND message
             # Which means we rename all the fields to match the 7 params
             # Should be a dict with keys like param1, param2, etc.
