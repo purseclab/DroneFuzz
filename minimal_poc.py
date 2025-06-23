@@ -229,6 +229,12 @@ class TCPConn:
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
             logger.info("AUTO Mission started, takeoff.")
             self.drone_in_air = True
+            logger.info("AUTO Mission started, takeoff.")
+        if re.search(r"Mission: 1 WP", msg.text, re.IGNORECASE):
+            self.drone_in_air = True
+        if re.search(r".*Mission Complete.*", msg.text, re.IGNORECASE):
+            logger.info("Mission ended, vehicle is disarmed.")
+            self.drone_in_air = False
         # Handling scenario when we are in air
         if re.search(r"Mission: 2 WP", msg.text, re.IGNORECASE):
             logger.debug("Now monitoring RC channels")
@@ -358,6 +364,7 @@ class TCPConn:
             0,
             0,
         )  # type: ignore
+        # self.conn.set_mode(set_mode)
         logger.info("Setting mode to: " + mode)
 
     def set_param(self, param_id, param_value, param_type="uint8"):
@@ -389,6 +396,26 @@ class TCPConn:
             float(param_value),
             enum_types.get(param_type),
         )  # type: ignore
+
+    def show_param(self, param_name, timeout=mavlink_timeout):
+        """
+        Get a parameter on the MAVLink-connected system.
+
+        Args:
+            param_id (str): The name/ID of the parameter to set.
+            param_value (float or int): The value to set for the parameter.
+
+        Sends a PARAM_SHOW message to the target system/component with the specified parameter.
+        """
+        self.conn.mav.param_request_read_send(
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
+            bytes(param_name, "ascii"),
+            -1,
+        )  # type: ignore
+        while True:
+            msg = self.conn.recv_match(type="PARAM_VALUE", blocking=True, timeout=timeout)  # type: ignore
+            return msg
 
     def land(self):
         """Land the vehicle."""
@@ -446,7 +473,9 @@ class TCPConn:
         )  # type: ignore
         # Check if the drone state is within the altitude range
         logger.debug("Waiting for location to be within the altitude range")
-        while True:
+        while (
+            True
+        ):  # TODO: Change this to a case where we can timeout, in worst case scenario
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if (
                 altitude - altitude_threshold
@@ -1289,17 +1318,24 @@ class FuzzConfig:
             ), "Cannot run calibration while fuzzing is active"
         if self.fuzzer_param_file:
             self.sitl_cmd += "," + self.fuzzer_param_file
+        # Handle the case where vehicle is plane and we need to ensure it lands
         try:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
                 # Comment out to debug the original binary
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                # stdout=subprocess.PIPE,
+                # stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
                 cwd=self.fuzzer_temp_dir,
             )
             init_conn = TCPConn()
+            if self.vehicle == "plane":
+                init_conn.set_param(param_id="RTL_AUTOLAND", param_value=2)
+                init_conn.set_param(param_id="EK2_ENABLE", param_value=0)
+                # msg = init_conn.show_param(
+                #     param_name="RTL_AUTOLAND", timeout=mavlink_timeout
+                # )
             # Reboot to ensure we have reloaded the parameters
             init_conn.reboot_and_wait_for_ack()
             time.sleep(2)  # Give some time for the reboot to complete
@@ -2011,7 +2047,9 @@ class FuzzConfig:
             modified_field_values = {}
             for _, val in enumerate(field_values.values()):
                 val_key = f"param{val_idx + 1}"
-                modified_field_values[val_key] = val
+                modified_field_values[val_key] = float(
+                    val
+                )  # To ensure that we always send float values
                 val_idx += 1
             packed_msg = mavutil.mavlink.MAVLink_command_long_message(
                 self.target_system,  # target_system  # type: ignore
