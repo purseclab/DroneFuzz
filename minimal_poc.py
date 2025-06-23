@@ -1323,8 +1323,8 @@ class FuzzConfig:
             self.sim_handle = subprocess.Popen(
                 ["bash", "-c", self.sitl_cmd],
                 # Comment out to debug the original binary
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 shell=False,
                 preexec_fn=os.setsid,
                 cwd=self.fuzzer_temp_dir,
