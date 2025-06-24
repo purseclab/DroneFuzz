@@ -746,6 +746,9 @@ def generate_field_value(
             generated_value.append(
                 generate_field_value(field_type, field_desc, field_units, field_range)
             )
+        if field_type == "char":
+            # Ensure we convert the list of integer into bytes
+            generated_value = bytes(generated_value)
         return generated_value
     # Let's now check the description and units
     # unit_lookup = {
@@ -1973,7 +1976,7 @@ class FuzzConfig:
                 field_values[field_name] = 0
             if "frame" in field_name:
                 field_values[field_name] = 12
-            if "q" in field_name:
+            if field_name == "q":  # Exact match only
                 # Replace quaternion with a random value
                 # TODO: Please verify if this assumption is correct
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
