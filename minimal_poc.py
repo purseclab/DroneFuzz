@@ -219,9 +219,10 @@ class TCPConn:
                     time.sleep(1)
         logger.info("Connection closed, stopping heartbeat thread.")
 
-    def _monitor_flags(self, msg):
-        if "is using GPS" in msg.text:
-            logger.info("Drone is ready with gps_lock")
+    def _monitor_status_text(self, msg):
+        if re.search(r"EKF\d IMU\d is using GPS", msg.text, re.IGNORECASE):
+            # Need this cause we need to wait till EKF is ready with GPS info
+            logger.info("Vehicle is ready with gps_lock")
             self.drone_ready = True
         if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
             logger.info("Mission ended, vehicle is disarmed.")
@@ -257,10 +258,11 @@ class TCPConn:
             logger.debug("Disabling all flags")
             # self.internal_error = True
             # self.shutdown_requested = True
+            self.st_msg_send("STOP RC")
             self.drone_in_air = False
             self.rc_monitor = False
             self.drone_ready = False
-            self.st_msg_send("STOP RC")
+            self.gps_ready = False
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -271,7 +273,7 @@ class TCPConn:
                     if msg.get_type() == "STATUSTEXT":
                         logger.debug(msg.text)
                         # Crazy check because pymavlink lock doesn't work
-                        self._monitor_flags(msg)
+                        self._monitor_status_text(msg)
                     if msg.get_type() == "COMMAND_ACK":
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
                             # Only create an error if the command was a arming/land/takeoff/auto
@@ -1270,8 +1272,12 @@ class FuzzConfig:
     def _monitor_sim(self):
         """Monitor the SITL simulation for messages and events."""
         # If sim_handle errors out, inform main thread
-        while self.sim_ready:
-            # Monitor the sim_handle and check if we have exited
+        # Set the start_time once sim is ready
+        assert self.sim_ready is True, "Simulation must be ready before monitoring"
+        start_time = time.time()
+        # Monitor the sim_handle and check if we have exited
+        # TODO: Eventually also check if went beyond average time
+        while time.time() - start_time < self.timeout:
             ret_val = self.sim_handle.poll()
             # Get the signal number
             if ret_val is not None:
@@ -1333,12 +1339,6 @@ class FuzzConfig:
                 cwd=self.fuzzer_temp_dir,
             )
             init_conn = TCPConn()
-            if self.vehicle == "plane":
-                init_conn.set_param(param_id="RTL_AUTOLAND", param_value=2)
-                init_conn.set_param(param_id="EK2_ENABLE", param_value=0)
-                # msg = init_conn.show_param(
-                #     param_name="RTL_AUTOLAND", timeout=mavlink_timeout
-                # )
             # Reboot to ensure we have reloaded the parameters
             init_conn.reboot_and_wait_for_ack()
             time.sleep(2)  # Give some time for the reboot to complete
@@ -2200,6 +2200,9 @@ if __name__ == "__main__":
                 ):
                     time.sleep(1)
                     update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
+                if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
+                    # Sleep for some more time to ensure the Gyro is consistent
+                    time.sleep(8)
 
                 if cfg.fuzzer_shutdown_requested:
                     cfg.cleanup_and_exit()
@@ -2253,6 +2256,10 @@ if __name__ == "__main__":
             ):
                 time.sleep(1)
                 pbar.refresh()  # Keep progress bar visible during waiting
+
+            if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
+                # Sleep for some more time to ensure the Gyro is consistent
+                time.sleep(8)
 
             if not error_queue.empty():
                 cfg.handle_errors()
