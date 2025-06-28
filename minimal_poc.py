@@ -33,6 +33,11 @@ from queue import Queue
 import threading
 
 
+# Exceptions
+class InternalError(Exception):
+    pass
+
+
 # Setup logging
 def setup_logging(file_dir=None):
     """Setup logging with timestamp in filename"""
@@ -112,7 +117,9 @@ class TCPConn:
         self.loc_queue = Queue()
         self.rcou_queue = Queue()
         self.mission_msg_queue = Queue()
-        self.drone_ready = False  # Drone ready with GPS lock
+        # GPS and Drone Status
+        self.drone_ready = False  # Drone ready
+        self.gps_ready = False  # GPS lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
@@ -1306,9 +1313,23 @@ class FuzzConfig:
                     logger.info(f"SITL simulation exited with return code: {ret_val}")
                 else:
                     # If the return value is 0, it means the process exited cleanly, let's exit the loop
-                    logger.debug("SITL simulation is exited")
+                    logger.debug("SITL simulation exited cleanly")
                     exit(0)
             time.sleep(1)  # Check every second
+        # Else we have timed out
+        logger.info("SITL simulation timed out")
+        error = "SITL timeout error"
+        error_queue.put(
+            {
+                "type": "sitl_timeout_error",
+                "error": error,
+                "component": "monitor_sim",
+                "timestamp": time.time(),
+            }
+        )
+        # Update relevant stats
+        self.fuzzer_stats["current_mission_time"] = time.time() - start_time
+        exit(0)
 
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
@@ -1359,32 +1380,49 @@ class FuzzConfig:
         """Monitor the drone during an automatic mission."""
         # Wait till the drone is in air
         logger.info("Waiting till drone is in air")
-        while not self.tcp_conn.rc_monitor:
-            time.sleep(1)
-        self.start_fuzzing()
-        mode_ctr = 0
-        prev_state = None
-        MAX_MODE_CHANGES = 1
-        while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
-            mode = random.choice(self.supported_modes)
-            if (
-                mode_ctr < MAX_MODE_CHANGES  # Randomly set a mode
-            ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
-                self.tcp_conn.set_mode(mode)
-                logger.debug(f"Changing mode to: {mode}")
-                mode_ctr += 1
-                prev_state = mode
-            elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
-                logger.debug("Reached mode change limit, not changing mode anymore")
-                self.tcp_conn.set_mode("AUTO")
-                prev_state = "AUTO"
-                logger.debug("Resetting Setting mode to AUTO")
-            if random.random() < 0.1:  # Randomly set a parameter
-                self.random_param_set()
-            time.sleep(3)
-        while self.tcp_conn.drone_in_air:
-            time.sleep(1)
-        self.stop_fuzzing()
+        # self.wait_for_condition(lambda: self.tcp_conn.rc_monitor, timeout=60)
+        try:
+            while not self.tcp_conn.rc_monitor:
+                if self.error_sleep(1):
+                    raise InternalError
+            self.start_fuzzing()
+            mode_ctr = 0
+            prev_state = None
+            MAX_MODE_CHANGES = 1
+            # self.wait_for_condition(lambda: self.tcp_conn.drone_in_air and self.tcp_conn.drone_in_air, timeout=60)
+            # BREAKPOINT: 2025-05-26T12:41:06-0400: silipwn: This is where we stop for now, need to figure out how to actually handle this
+            # while self.wait_for_condition(
+            #     lambda: self.tcp_conn.drone_in_air and self.tcp_conn.drone_in_air,
+            #     timeout=60,
+            # ):
+            while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
+                mode = random.choice(self.supported_modes)
+                if (
+                    mode_ctr < MAX_MODE_CHANGES  # Randomly set a mode
+                ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
+                    self.tcp_conn.set_mode(mode)
+                    logger.debug(f"Changing mode to: {mode}")
+                    mode_ctr += 1
+                    prev_state = mode
+                elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
+                    logger.debug("Reached mode change limit, not changing mode anymore")
+                    self.tcp_conn.set_mode("AUTO")
+                    prev_state = "AUTO"
+                    logger.debug("Resetting Setting mode to AUTO")
+                if random.random() < 0.1:  # Randomly set a parameter
+                    self.random_param_set()
+                if self.error_sleep(3):
+                    raise InternalError
+            self.wait_for_condition(lambda: not self.tcp_conn.rc_monitor, timeout=60)
+            while self.tcp_conn.drone_in_air:
+                if self.error_sleep(1):
+                    raise InternalError
+            self.stop_fuzzing()
+        except InternalError:
+            logger.error("Warning detected, stopping fuzzing")
+            if self.fuzzing_active:
+                self.stop_fuzzing()
+            return
 
     def upload_auto_mission(self, mission_file):
         """Upload a mission from a waypoint file using MAVProxy's waypoint module.
@@ -1637,6 +1675,11 @@ class FuzzConfig:
 
     def oracle(self):
         """Perform anomaly detection using DTW distance calculations."""
+        if not self.golden_rc_vals:
+            logger.error(
+                "Don't have any golden RC values to compare, potentially calibration is broken?"
+            )
+            return
         combined_distance = 0.0
         for golden_rc_vals in self.golden_rc_vals:
             _, distance = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
@@ -1981,7 +2024,72 @@ class FuzzConfig:
                 # TODO: Please verify if this assumption is correct
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
 
+    # Smart sleep
+    def error_sleep(self, seconds, period=1):
+        """
+        Basically sleep for seconds while checking with a period for an error
+        Also return True or False, if an error was encountered.
+        """
+        while seconds > 0:
+            time.sleep(period)
+            if not error_queue.empty():
+                self.handle_errors()
+                error_queue.queue.clear()  # Clear the queue after handling
+                return True
+            seconds += period
+        return False
+
+    # Smart wait
+    def wait_for_condition(self, predicate, timeout=30, poll_interval=0.2):
+        """
+        Wait for a condition to be met with a timeout.
+
+        This function repeatedly checks a condition until it becomes true or until a timeout
+        is reached.
+
+        Args:
+            predicate (callable): A function that returns a boolean. The function will return
+                when this predicate returns True.
+            timeout (float, optional): Maximum time in seconds to wait for the condition.
+                Defaults to 30 seconds.
+            poll_interval (float, optional): Time in seconds between checks of the predicate.
+                Defaults to 0.2 seconds.
+
+        Returns:
+            bool: True if the condition was met within the timeout, False otherwise or if
+                an error was encountered.
+
+        Note:
+            This function will return immediately if an error is detected in the error_queue.
+        """
+        waited = 0
+        while not predicate():
+            if not error_queue.empty():
+                self.handle_errors()
+                return False
+            time.sleep(poll_interval)
+            waited += poll_interval
+            if waited >= timeout:
+                logger.error("Timeout waiting for condition.")
+                return False
+        return True
+
     def handle_errors(self):
+        """
+        Handles errors that occur during fuzzing operations.
+
+        This method processes errors from the error queue and takes appropriate actions:
+        - For TCP connection errors, SITL termination errors, or SITL timeout errors:
+            1. Logs the crash
+            2. Saves the current message sequence to a temporary file
+            3. Increments the potential crash counter
+            4. Cleans up the simulation
+        - For internal fuzzer errors:
+            1. Logs the error with component information
+            2. Exits the program with an error code (1) as these are considered unrecoverable
+
+        The method continuously processes all errors in the queue until it's empty.
+        """
         # Check if we don't have any errors
         while not error_queue.empty():
             error = error_queue.get()
@@ -1990,9 +2098,10 @@ class FuzzConfig:
             if (
                 error.get("type") == "tcp_connection_error"
                 or error.get("type") == "sitl_terminated_error"
+                or error.get("type") == "sitl_timeout_error"
             ):
                 tqdm.write(
-                    f"SITL crashed | Can't establish connection: {error['error']}, saving inputs ..."
+                    f"SITL has issues | Can't establish connection: {error['error']}, saving inputs ..."
                 )
                 # Save the current message sequence as an anomaly
                 fd, input_file = tempfile.mkstemp(
