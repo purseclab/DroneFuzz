@@ -81,13 +81,21 @@ sensors:
     msg_type:
 
 # Generic
-  AP_ADSB:
+  ADSB:
     parameters:
       ADSB_TYPE: 1
       # AVD_ENABLE: 1 # To actually use the ADSB to do avoidance?
     msg_type:
       - ADSB_VEHICLE
     frequency: [-1]
+
+  Visual_ODOM:
+    parameters:
+      VISO_TYPE: 1
+    msg_type:
+      - ATT_POS_MOCAP
+    frequency: [30]
+    default_msg: [time, [0,0,0,0], 0, 0, 0]
 
   # TODO Verification required
   AP_ARSPD:
@@ -237,24 +245,6 @@ sensors:
       - AHRS2
       - AHRS3
     frequency: [-1] # TODO: Check the frequency for health status
-
-  AHRS_EXT:
-    parameters:
-      AHRS_EKF_TYPE: 11
-      EAHRS_TYPE: 1
-    msg_type: # Might not just work outside the box
-      - AHRS
-      - AHRS2
-      - AHRS3
-    frequency: [-1] # TODO: Check the frequency for health status
-
-  BATTERY:
-    parameters: # I don't it requires any specific configuration parameters
-    msg_type: # Might not just work outside the box
-      - BATTERY_STATUS
-      - MAV_CMD_BATTERY_RESET
-      - BATTERY_INFO
-    frequency: [-1]
 
   GENERATOR:
     parameters:
