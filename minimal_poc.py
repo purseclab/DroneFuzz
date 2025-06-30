@@ -963,7 +963,7 @@ class FuzzConfig:
 
         # Mission control
         # We consider 300 seconds to be a reasonable timeout for the mission
-        self.timeout = self.config.get("timeout", 300)
+        self.timeout = self.config.get("timeout", 600)  # 10 minutes for now
         # MAVLink check for https://mavlink.io/en/guide/routing.html
         self.target_system = self.config.get("target_system", 0)
         self.target_component = self.config.get("target_component", 0)
@@ -1284,7 +1284,7 @@ class FuzzConfig:
         start_time = time.time()
         # Monitor the sim_handle and check if we have exited
         # TODO: Eventually also check if went beyond average time
-        while time.time() - start_time < self.timeout:
+        while time.time() - start_time < self.timeout and self.sim_ready:
             ret_val = self.sim_handle.poll()
             # Get the signal number
             if ret_val is not None:
@@ -1316,6 +1316,9 @@ class FuzzConfig:
                     logger.debug("SITL simulation exited cleanly")
                     exit(0)
             time.sleep(1)  # Check every second
+        if self.sim_ready is False:
+            # That means we have stopped the simulation
+            exit(0)
         # Else we have timed out
         logger.info("SITL simulation timed out")
         error = "SITL timeout error"
@@ -1418,6 +1421,7 @@ class FuzzConfig:
                 if self.error_sleep(1):
                     raise InternalError
             self.stop_fuzzing()
+            return
         except InternalError:
             logger.error("Warning detected, stopping fuzzing")
             if self.fuzzing_active:
@@ -2009,6 +2013,8 @@ class FuzzConfig:
                     (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                 )
                 field_values[field_name] = current_time
+            if "time_usec" in field_name:
+                field_values[field_name] = int(time.time())
             if "target_system" in field_name:
                 field_values[field_name] = self.target_system
             if "target_component" in field_name:
@@ -2036,7 +2042,7 @@ class FuzzConfig:
                 self.handle_errors()
                 error_queue.queue.clear()  # Clear the queue after handling
                 return True
-            seconds += period
+            seconds -= period
         return False
 
     # Smart wait
