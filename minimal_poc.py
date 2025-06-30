@@ -926,6 +926,9 @@ class FuzzConfig:
             args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
         )
 
+        # Select the model that the oracle uses
+        self.oracle_model = self.config.get("oracle_model", "dtw")
+
         # Setup files - command line args override yaml config
         self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin", None)
 
@@ -1576,7 +1579,7 @@ class FuzzConfig:
         )
         logger.info("-" * 30)
 
-    def sigma_calc(self):
+    def _sigma_calc_dtw(self):
         """Calculate the DTW thresholds based on the golden RC values."""
         # Calculate the DTW thresholds based on the golden RC values
         # Compare each value with the other values
@@ -1605,7 +1608,6 @@ class FuzzConfig:
         )
         # Save the calibration values for faster reload next time
         mod_config_file = os.path.join(os.getcwd(), "cal_config.yaml")
-        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
         try:
             with open(mod_config_file, "w+") as f:
                 config = self.config.copy()
@@ -1619,7 +1621,12 @@ class FuzzConfig:
                 f.truncate()
         except Exception as e:
             logger.error(f"Error saving calibration values: {e}")
+
+    def sigma_calc(self):
+        if self.oracle_model == "dtw":
+            self._sigma_calc_dtw()
         # Save the RC values as pickle file to later use in the current directory
+        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
         with open(pickle_file, "wb") as f:
             f.write(pickle.dumps(self.golden_rc_vals))
 
@@ -1677,13 +1684,7 @@ class FuzzConfig:
             # f"DTW threshold: {self.fuzzer_stats['dtw_threshold']:.2f}"
         )
 
-    def oracle(self):
-        """Perform anomaly detection using DTW distance calculations."""
-        if not self.golden_rc_vals:
-            logger.error(
-                "Don't have any golden RC values to compare, potentially calibration is broken?"
-            )
-            return
+    def oracle_dtw(self):
         combined_distance = 0.0
         for golden_rc_vals in self.golden_rc_vals:
             _, distance = self.calculate_dtw(golden_rc_vals, self.rcou_vals)
@@ -1746,6 +1747,18 @@ class FuzzConfig:
             # Close fd if it is opened
             if fd:
                 os.close(fd)
+
+    def oracle(self):
+        """Perform anomaly detection using DTW distance calculations."""
+        if not self.golden_rc_vals:
+            logger.error(
+                "Don't have any golden RC values to compare, potentially calibration is broken?"
+            )
+            return
+        if self.oracle_model == "dtw":
+            self.oracle_dtw()
+        elif self.oracle_model == "lstm":
+            pass
         # Clean up the fuzz_msgs
         self.fuzz_msgs = []
 
