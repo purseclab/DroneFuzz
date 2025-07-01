@@ -19,11 +19,19 @@ from lxml import etree
 from enum import Enum
 import heapq
 from dataclasses import dataclass, field
-from dtw import dtw
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
 from typing import Any, Dict, Optional
+
+# Models import
+from dtw import dtw
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
 
 # Set the mavlink version to 2
 os.environ["MAVLINK20"] = "1"
@@ -32,6 +40,8 @@ import subprocess
 from queue import Queue
 import threading
 
+
+# Exceptions
 
 # Exceptions
 class InternalError(Exception):
@@ -87,6 +97,87 @@ altitude_threshold = 0.1  # Threshold for altitude matching
 
 # Global error queue
 error_queue = Queue()
+
+RANDOM_SEED = 42  # For reproducibility
+
+# Supported models
+detection_models = ["dtw", "lstm"]
+
+
+class LSTMAE(nn.Module):
+    def __init__(self, seq_len, n_features, hidden_size_enc=64, hidden_size_dec=64):
+        super(LSTMAE, self).__init__()
+        self.seq_len = seq_len
+        self.n_features = n_features
+        self.hidden_size_enc = hidden_size_enc
+        self.hidden_size_dec = hidden_size_dec
+
+        # Encoder
+        self.lstm1_enc = nn.LSTM(
+            input_size=n_features, hidden_size=128, batch_first=True
+        )
+        self.dropout1_enc = nn.Dropout(0.2)
+        self.lstm2_enc = nn.LSTM(
+            input_size=128, hidden_size=hidden_size_enc, batch_first=True
+        )
+
+        # Decoder
+        # The decoder takes the last hidden state of the encoder (hidden_size_enc)
+        # and "repeats" it for each timestep in the sequence.
+        # This is implicitly handled by the LSTM's initial hidden state or by
+        # feeding the last encoder output repeatedly. Here, we feed a Linear
+        # layer that maps the bottleneck to the decoder's input size.
+        self.linear_dec = nn.Linear(
+            hidden_size_enc, hidden_size_dec
+        )  # Mapping bottleneck to decoder hidden size
+        self.lstm1_dec = nn.LSTM(
+            input_size=hidden_size_dec, hidden_size=128, batch_first=True
+        )
+        self.dropout1_dec = nn.Dropout(0.2)
+        self.lstm2_dec = nn.LSTM(
+            input_size=128, hidden_size=n_features, batch_first=True
+        )  # Output layer
+
+    def forward(self, x):
+        # Encoder
+        # Input shape: (batch_size, seq_len, n_features)
+        # hidden_state and cell_state are initialized to zeros by default if not provided
+        x, (hidden_state, cell_state) = self.lstm1_enc(x)
+        x = self.dropout1_enc(x)
+        x, (hidden_state, cell_state) = self.lstm2_enc(
+            x
+        )  # hidden_state[-1] contains the last hidden state for the last layer.
+
+        # Keras's RepeatVector takes the last output of the previous layer and
+        # repeats it for `seq_len` times. In PyTorch, we can use `expand` or `repeat`
+        # on the last hidden state/output to create the sequence for the decoder.
+        # We'll use the last hidden state of the second encoder LSTM as the "bottleneck".
+        # We need the hidden state for the last layer of the encoder.
+        # hidden_state shape: (num_layers * num_directions, batch, hidden_size_enc)
+        # We take the last layer's hidden state: hidden_state[-1, :, :]
+        # Then unsqueeze it to (batch, 1, hidden_size_enc) and expand to (batch, seq_len, hidden_size_enc)
+
+        # Take the hidden state from the last layer of the encoder LSTM
+        # (num_layers, batch_size, hidden_size) -> (batch_size, hidden_size)
+        bottleneck = hidden_state[-1, :, :]
+
+        # "RepeatVector" equivalent:
+        # Expand the bottleneck output to match the sequence length for the decoder
+        # (batch_size, hidden_size_enc) -> (batch_size, 1, hidden_size_enc) -> (batch_size, seq_len, hidden_size_enc)
+        bottleneck_repeated = bottleneck.unsqueeze(1).expand(-1, self.seq_len, -1)
+
+        # Apply the linear transformation before feeding to decoder LSTM
+        x = self.linear_dec(bottleneck_repeated)
+
+        # Decoder
+        # Input to decoder is (batch_size, seq_len, hidden_size_dec)
+        x, _ = self.lstm1_dec(x)
+        x = self.dropout1_dec(x)
+        x, _ = self.lstm2_dec(
+            x
+        )  # Output is (batch_size, seq_len, n_features) for TimeDistributed Dense
+
+        return x
 
 
 # Mutation helpers
@@ -925,9 +1016,12 @@ class FuzzConfig:
         self.vehicle = (
             args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
         )
-
         # Select the model that the oracle uses
         self.oracle_model = self.config.get("oracle_model", "dtw")
+        logger.info(f"Using oracle model: {self.oracle_model}")
+        if self.oracle_model not in detection_models:
+            logger.error("Unknown oracle model specified, using default: dtw")
+            self.oracle_model = "dtw"
 
         # Setup files - command line args override yaml config
         self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin", None)
@@ -935,6 +1029,20 @@ class FuzzConfig:
         self.ap_dir = (
             args.ap_dir if args.ap_dir else self.config.get("ap_dir", "/ardupilot")
         )
+        # Handle the case where we don't have a SITL binary
+        if self.sitl_bin is None:
+            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
+            vehicle_bin = f"ardu{self.vehicle}"
+            sitl_bin_path = os.path.join(
+                self.ap_dir, "build", "sitl", "bin", vehicle_bin
+            )
+            if file_exists(sitl_bin_path):
+                self.sitl_bin = sitl_bin_path
+            else:
+                raise FileNotFoundError(
+                    "SITL binary not found. Please provide a valid path."
+                )
+        
         # Handle the case where we don't have a SITL binary
         if self.sitl_bin is None:
             # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
@@ -965,6 +1073,8 @@ class FuzzConfig:
         )
 
         # Mission control
+        # We consider 300 seconds to be a reasonable timeout for the mission
+        self.timeout = self.config.get("timeout", 600)  # 10 minutes for now
         # We consider 300 seconds to be a reasonable timeout for the mission
         self.timeout = self.config.get("timeout", 600)  # 10 minutes for now
         # MAVLink check for https://mavlink.io/en/guide/routing.html
@@ -1080,7 +1190,7 @@ class FuzzConfig:
     def setup(self):
         """Setup the fuzzing configuration and initialize parameters."""
         # Setup the random seed for reproducibility
-        random.seed(42)
+        random.seed(RANDOM_SEED)
 
         self.fuzzer_stats = {
             "simulations_completed": 0,
@@ -1253,7 +1363,9 @@ class FuzzConfig:
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing."""
         if not self.default_parameter_set:
-            logger.warning("No default parameters set for fuzzing")
+            logger.warning(
+                "No default configuration parameters set for fuzzing, returning"
+            )
             return
         selected_param = random.choice(self.default_parameter_set)
         # Check if the value ends in DISABLE or ENABLE, then we set it 0 or 1
@@ -1579,6 +1691,126 @@ class FuzzConfig:
         )
         logger.info("-" * 30)
 
+    def _sigma_calc_lstm(self):
+        """Calculate the LSTM thresholds based on the golden RC values."""
+        # Setup the PyTorch LSTM
+        device = torch.device("cpu")
+        # Setup model parameters
+        window_size = self.config.get("lstm_window_size", 50)  # Based on experiments
+        num_features = self.config.get("lstm_num_features", 4)  # RC motor counts
+        batch_size = self.config.get("lstm_batch_size", 32)  # Default batch size
+        epochs = self.config.get("lstm_epochs", 25)  # Default epochs
+        # Convert the golden RC values list into a numpy array
+        # First need to extract and clean up things
+        fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
+        combined_data = []
+        for iter in self.golden_rc_vals:
+            combined_data.append(np.array([[pkt[f] for f in fields] for pkt in iter]))
+        calib_data = np.concatenate(combined_data, axis=0)
+        # Create sequences for the LSTM
+        calib_data_seq = []
+        for i in range(len(calib_data) - window_size):
+            calib_data_seq.append(calib_data[i : i + window_size])
+        calib_data_seq = np.array(calib_data_seq)
+        # Scale the training data
+        scaler = MinMaxScaler()
+        calib_data_seq_reshaped = calib_data_seq.reshape(-1, num_features)
+        calib_data_seq_scaled = scaler.fit_transform(calib_data_seq_reshaped)
+        calib_data_seq_scaled = calib_data_seq_scaled.reshape(calib_data_seq.shape)
+        # Train the model
+        # Convert the array into PyTorch tensors
+        calib_data_seq_tensor = (
+            torch.from_numpy(calib_data_seq_scaled).float().to(device)
+        )
+        # Split the data into training and validation sets
+        train_tensor, test_tensor = train_test_split(
+            calib_data_seq_tensor, test_size=0.2, random_state=RANDOM_SEED
+        )
+        # Create DataLoader
+        train_dataset = torch.utils.data.TensorDataset(train_tensor, train_tensor)
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True
+        )
+
+        validation_dataset = torch.utils.data.TensorDataset(test_tensor, test_tensor)
+        validation_loader = torch.utils.data.DataLoader(
+            validation_dataset, batch_size=batch_size, shuffle=False
+        )
+
+        # Model definition
+        model = LSTMAE(seq_len=window_size, n_features=num_features).to(device)
+        optimizer = optim.Adam(model.parameters())
+        criterion = nn.MSELoss()  # Mean Squared Error Loss
+
+        # Don't care about this for now
+        # try:
+        #     from torchinfo import summary
+        #
+        #     summary(
+        #         model,
+        #         input_size=(batch_size, window_size, num_features),
+        #         device=device,
+        #     )
+        # except ImportError:
+        #     logger.info(
+        #         "torchinfo not installed. Install with 'pip install torchinfo' for detailed model summary."
+        #     )
+        #     logger.info(model)  # Fallback to basic model print
+        logger.info("\nTraining PyTorch model...")
+        history = {"train_loss": [], "val_loss": []}
+
+        for epoch in range(epochs):
+            model.train()  # Set model to training mode
+            running_loss = 0.0
+            for batch_X, batch_y in train_loader:
+                optimizer.zero_grad()  # Zero the gradients
+                outputs = model(batch_X)
+                loss = criterion(outputs, batch_y)
+                loss.backward()  # Backpropagation
+                optimizer.step()  # Update weights
+                running_loss += loss.item() * batch_X.size(0)  # Accumulate batch loss
+
+            epoch_train_loss = running_loss / len(train_loader.dataset)
+            history["train_loss"].append(epoch_train_loss)
+
+            # Validation phase
+            model.eval()  # Set model to evaluation mode
+            val_loss = 0.0
+            with torch.no_grad():  # Disable gradient calculations
+                for batch_X_val, batch_y_val in validation_loader:
+                    outputs_val = model(batch_X_val)
+                    loss_val = criterion(outputs_val, batch_y_val)
+                    val_loss += loss_val.item() * batch_X_val.size(0)
+
+            epoch_val_loss = val_loss / len(validation_loader.dataset)
+            history["val_loss"].append(epoch_val_loss)
+
+            logger.info(
+                f"Epoch {epoch+1}/{epochs}, Train Loss: {epoch_train_loss:.6f}, Val Loss: {epoch_val_loss:.6f}"
+            )
+
+        # Calculate reconstruction errors on the validation set
+        model.eval()
+        with torch.no_grad():
+            test_val_pred = model(test_tensor)
+
+        # Calculate reconstruction errors as Mean Absolute Error (MAE)
+        reconstruction_errors = torch.mean(
+            torch.abs(test_tensor - test_val_pred), dim=(1, 2)
+        )
+
+        # Calculate threshold (3-sigma rule)
+        mean_error = torch.mean(reconstruction_errors).item()
+        std_error = torch.std(reconstruction_errors).item()
+        logger.debug(f"The mean is: {mean_error} and the std_dev is: {std_error}")
+        self.min_fuzz_threshold = mean_error - (2 * std_error)
+        self.max_fuzz_threshold = mean_error + (2 * std_error)
+        logger.debug(
+            "LSTM based thresholds calculated: min:{} max:{}".format(
+                self.min_fuzz_threshold, self.max_fuzz_threshold
+            )
+        )
+
     def _sigma_calc_dtw(self):
         """Calculate the DTW thresholds based on the golden RC values."""
         # Calculate the DTW thresholds based on the golden RC values
@@ -1606,6 +1838,16 @@ class FuzzConfig:
                 self.min_fuzz_threshold, self.max_fuzz_threshold
             )
         )
+
+    def sigma_calc(self):
+        if self.oracle_model == "dtw":
+            self._sigma_calc_dtw()
+        if self.oracle_model == "lstm":
+            self._sigma_calc_lstm()
+        # Save the RC values as pickle file to later use in the current directory
+        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
+        with open(pickle_file, "wb") as f:
+            f.write(pickle.dumps(self.golden_rc_vals))
         # Save the calibration values for faster reload next time
         mod_config_file = os.path.join(os.getcwd(), "cal_config.yaml")
         try:
@@ -1621,14 +1863,6 @@ class FuzzConfig:
                 f.truncate()
         except Exception as e:
             logger.error(f"Error saving calibration values: {e}")
-
-    def sigma_calc(self):
-        if self.oracle_model == "dtw":
-            self._sigma_calc_dtw()
-        # Save the RC values as pickle file to later use in the current directory
-        pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
-        with open(pickle_file, "wb") as f:
-            f.write(pickle.dumps(self.golden_rc_vals))
 
     def cleanup_sim(self):
         """Cleanup the simulation and reset states."""
@@ -1862,7 +2096,6 @@ class FuzzConfig:
         msg_def = random.choice(self.xml_messages)
 
         field_values = {}
-
         for field in msg_def["fields"]:
             field_name = field["name"]
             field_type = field.get("type")  # Get type safely

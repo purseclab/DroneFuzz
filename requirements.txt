@@ -8,8 +8,8 @@ scipy
 lxml==5.3.0
 scikit-learn==1.6.1
 fastdtw==0.3.4
-# tensorflow==2.18.0
-# matplotlib==3.10.0
+tensorflow==2.18.0
+matplotlib==3.10.0
 # From ArduPilot
 future
 MAVProxy
@@ -21,3 +21,5 @@ dronecan
 pyyaml
 tqdm
 dtw-python
+--index-url https://download.pytorch.org/whl/cpu
+torchinfo torch torchvision torchaudio

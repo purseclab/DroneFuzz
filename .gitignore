@@ -337,3 +337,10 @@ dmypy.json
 cython_debug/
 
 test_tmp*
+
+# Models
+*.keras
+# Numpy binary files
+*.npy
+# Pickle files
+*.pkl
