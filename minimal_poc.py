@@ -42,8 +42,6 @@ import threading
 
 
 # Exceptions
-
-# Exceptions
 class InternalError(Exception):
     pass
 
@@ -1042,7 +1040,7 @@ class FuzzConfig:
                 raise FileNotFoundError(
                     "SITL binary not found. Please provide a valid path."
                 )
-        
+
         # Handle the case where we don't have a SITL binary
         if self.sitl_bin is None:
             # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
@@ -1183,6 +1181,14 @@ class FuzzConfig:
                     )
                 except Exception as e:
                     logger.error(f"Error sending message: {e}")
+                    error_queue.put(
+                        {
+                            "type": "fuzzer_error",
+                            "error": e,
+                            "component": "periodic_send",
+                            "timestamp": time.time(),
+                        }
+                    )
                     self.fuzzer_shutdown_requested = True
 
                 time.sleep(1 / frequency)
@@ -1246,6 +1252,10 @@ class FuzzConfig:
             logger.info(f"Loading MAVLink message definitions from {self.xml_file}")
             self.xml_messages = load_xml_messages(self.xml_file, filter_list=msg_filter)
             logger.info(f"Loaded {len(self.xml_messages)} message definitions")
+        # Check if the supplied length of msg_type and self.xml_messages match
+        if len(msg_filter) != len(self.xml_messages):
+            logger.error("Couldn't find all the XML messages exiting")
+            exit(-1)
         # Check if the peripheral mapping has a frequency associated with it
         # If each peripheral has a frequency, spawn a new thread for each peripheral
         self.periodic_thread = {}
@@ -1261,6 +1271,15 @@ class FuzzConfig:
                 "No messages selected for fuzzing, please check the peripheral mapping"
             )
             return
+        # For now: Ideally only select a single message for fuzzing
+        final_msg = random.choice(selected_msgs)
+        extracted_msg = []
+        # Only have the final_msg inside the self.xml_messages
+        for msg in self.xml_messages:
+            if msg["msg_name"] == final_msg:
+                extracted_msg = [msg]
+        self.xml_messages = extracted_msg
+        # Ensure we use this everywhere else
         for msg in selected_msgs:
             # Get the frequency from the same index
             msg_idx = selected_msgs.index(msg)
@@ -2094,7 +2113,6 @@ class FuzzConfig:
         """
         # Generate random values for each field
         msg_def = random.choice(self.xml_messages)
-
         field_values = {}
         for field in msg_def["fields"]:
             field_name = field["name"]
