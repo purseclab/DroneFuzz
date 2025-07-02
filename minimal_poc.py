@@ -208,7 +208,7 @@ class TCPConn:
         self.mission_msg_queue = Queue()
         # GPS and Drone Status
         self.drone_ready = False  # Drone ready
-        self.gps_ready = False  # GPS lock
+        # self.gps_ready = False  # GPS lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
@@ -358,7 +358,7 @@ class TCPConn:
             self.drone_in_air = False
             self.rc_monitor = False
             self.drone_ready = False
-            self.gps_ready = False
+            # self.gps_ready = False
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -1279,6 +1279,7 @@ class FuzzConfig:
             if msg["msg_name"] == final_msg:
                 extracted_msg = [msg]
         self.xml_messages = extracted_msg
+        logger.info("Selecting fuzzing message: " + str(final_msg))
         # Ensure we use this everywhere else
         for msg in selected_msgs:
             # Get the frequency from the same index

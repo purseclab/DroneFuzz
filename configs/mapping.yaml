@@ -80,13 +80,49 @@ sensors:
     INS_HNTCH_MODE: 0,  # Static notch
     msg_type:
 
-# Generic
+# Generic (Set of 8 peripherals to test)
   ADSB:
     parameters:
       ADSB_TYPE: 1
-      # AVD_ENABLE: 1 # To actually use the ADSB to do avoidance?
+      AVD_ENABLE: 1
     msg_type:
       - ADSB_VEHICLE
+    frequency: [-1]
+
+  OpticalFlow:
+    parameters:
+      FLOW_TYPE: 5
+    frequency: [-1, -1, -1]
+    msg_type:
+      - OPTICAL_FLOW
+      - OPTICAL_FLOW_RAD
+      - HIL_OPTICAL_FLOW
+
+  Gimbal:
+    # cmd_msgs: True
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+    - GIMBAL_CONTROL
+    - GIMBAL_DEVICE_ATTITUDE_STATUS
+    - GIMBAL_DEVICE_INFORMATION
+    - GIMBAL_MANAGER_SET_ATTITUDE
+    - GIMBAL_MANAGER_SET_PITCHYAW
+    frequency: [-1,-1,-1,-1,-1]
+
+  Camera:
+    parameters:
+      CAM1_TYPE: 5
+    msg_type:
+    - DIGICAM_CONTROL
+
+  AP_Mount:
+    parameters:
+      MNT_TYPE: 4
+    msg_type:
+      - MAV_CMD_DO_MOUNT_CONTROL
+      - MAV_CMD_DO_MOUNT_CONTROL_QUAT
+      - MAV_CMD_DO_MOUNT_CONFIGURE
     frequency: [-1]
 
   Visual_ODOM:
@@ -94,8 +130,42 @@ sensors:
       VISO_TYPE: 1
     msg_type:
       - ATT_POS_MOCAP
+      - VICON_POSITION_ESTIMATE
+      - VISION_POSITION_DELTA
+      - VISION_POSITION_ESTIMATE
+      - VISION_SPEED_ESTIMATE
     frequency: [30]
     default_msg: [time, [0,0,0,0], 0, 0, 0]
+
+  EFI:
+    parameters:
+      EFI_TYPE: 9
+    msg_type:
+      - EFI_STATUS
+    frequency: [-1]
+
+  GPS:
+    parameters:
+      GPS1_TYPE: 14
+    msg_type:
+      - GPS_INJECT_DATA
+      - GPS_INPUT
+      - GPS_RTCM_DATA
+      # HIL_GPS will mostly not work with this?
+    frequency: [-1,-1,-1,-1]
+
+  OPENDRONEID:
+    msg_type: # Might not just work outside the box
+      - OPEN_DRONE_ID_BASIC_ID
+      - OPEN_DRONE_ID_LOCATION
+      - OPEN_DRONE_ID_AUTHENTICATION
+      - OPEN_DRONE_ID_SELF_ID
+      - OPEN_DRONE_ID_SYSTEM
+      - OPEN_DRONE_ID_OPERATOR_ID
+      - OPEN_DRONE_ID_MESSAGE_PACK
+      - OPEN_DRONE_ID_ARM_STATUS
+      - OPEN_DRONE_ID_SYSTEM_UPDATE
+    frequency: [-1]
 
   # TODO Verification required
   AP_ARSPD:
@@ -106,6 +176,7 @@ sensors:
     msg_type:
       - ADSB_VEHICLE
     frequency: [-1]
+
 
   # TODO Verification required
   # AP_AIS:
@@ -120,23 +191,6 @@ sensors:
       - SCALED_PRESSURE2
     frequency: [10]
 
-  # Button INPUT
-  # Buzzer
-
-  AP_Gimbal:
-    # cmd_msgs: True
-    parameters:
-      MNT_TYPE: 4
-    msg_type:
-      - MAV_CMD_DO_MOUNT_CONTROL
-    frequency: [-1]
-
-  AP_Mount:
-    parameters:
-      MNT_TYPE: 4
-    msg_type:
-      - MAV_CMD_DO_MOUNT_CONTROL
-    frequency: [-1]
 
   # Might not work on SITL :|
   AP_CropSprayer:
@@ -150,26 +204,14 @@ sensors:
   # Ethernet adapter?
   #
 
-  OpticalFlow:
-    parameters:
-      FLOW_TYPE: 5
-    frequency: [-1, -1, -1]
-    msg_type:
-      - OPTICAL_FLOW
-      - OPTICAL_FLOW_RAD
-      - HIL_OPTICAL_FLOW
 
   AP_Rangefinder:
     parameters:
-      RNGFND_TYPE: 5
+      PRX_TYPE: 2
     msg_type:
-      - DISTANCE_SENSOR
+      - OBSTACLE_DISTANCE
+      - OBSTACLE_DISTANCE_3D
 
-  AP_EFI:
-    parameters:
-      EFI_TYPE: 9
-    msg_type:
-      - EFI_STATUS
 
   AP_Proximity:
     parameters:
@@ -179,22 +221,6 @@ sensors:
     frequency: [25]
     default_msg: [time, 0, 12, 65535, 11, 11, 11, 0, 12]
 
-  GPS:
-    parameters:
-      MNT_TYPE: 4
-    msg_type:
-      - GPS_RAW_INT
-      - GPS_STATUS
-      - SET_GPS_GLOBAL_ORIGIN
-      - GPS_GLOBAL_ORIGIN
-      - HIL_GPS
-      - GPS_INJECT_DATA
-      - GPS2_RAW
-      - GPS_RKT
-      - GPS_INPUT
-      - GPS_RTCM_DATA
-      - GPS2_RKT
-    frequency: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 1]
 
   Terrain:
     msg_type:
@@ -260,18 +286,6 @@ sensors:
       - MAV_CMD_AIRFRAME_CONFIGURATION
     frequency: [-1]
 
-  OPENDRONEID:
-    msg_type: # Might not just work outside the box
-      - OPEN_DRONE_ID_BASIC_ID
-      - OPEN_DRONE_ID_LOCATION
-      - OPEN_DRONE_ID_AUTHENTICATION
-      - OPEN_DRONE_ID_SELF_ID
-      - OPEN_DRONE_ID_SYSTEM
-      - OPEN_DRONE_ID_OPERATOR_ID
-      - OPEN_DRONE_ID_MESSAGE_PACK
-      - OPEN_DRONE_ID_ARM_STATUS
-      - OPEN_DRONE_ID_SYSTEM_UPDATE
-    frequency: [-1]
 
 generic_params:
   # Only to be enable for CS5/CS6 cases
