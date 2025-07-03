@@ -21,5 +21,9 @@ dronecan
 pyyaml
 tqdm
 dtw-python
---index-url https://download.pytorch.org/whl/cpu
-torchinfo torch torchvision torchaudio
+--find-links https://download.pytorch.org/whl/cpu
+# Just for printing stuff
+# torchinfo
+torch
+torchvision
+torchaudio
