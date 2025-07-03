@@ -336,10 +336,8 @@ class TCPConn:
 
     def _monitor_ekf_lock(self, msg):
         """Ensure we have EKF getting the position"""
-        print("EKF Status Report:", msg)
         if (msg.flags & EKF_POS_HORIZ) or (msg.flags & EKF_POS_VERT):
             # If we have horizontal or vertical position lock
-            print("EKF is ready with position lock")
             self.ekf_ready = True
 
     def _monitor_status_text(self, msg):
