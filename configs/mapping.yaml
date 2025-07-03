@@ -148,11 +148,14 @@ sensors:
     parameters:
       GPS1_TYPE: 14
     msg_type:
-      - GPS_INJECT_DATA
+      # - GPS_INJECT_DATA (Dep)
       - GPS_INPUT
-      - GPS_RTCM_DATA
+      # - GPS_RAW_INT
+      # - GPS_RTCM_DATA (To support)
       # HIL_GPS will mostly not work with this?
-    frequency: [-1,-1,-1,-1]
+    frequency: [5]
+    # Copied from the SITL default -> Ardupilot standard location
+    default_msg: ['time', 0, 0, 1200000, 2430, 6, -353632621, 1491652374, 584, 1.0, 1.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0, 10]
 
   OPENDRONEID:
     msg_type: # Might not just work outside the box
