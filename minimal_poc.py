@@ -92,6 +92,9 @@ def setup_logging(file_dir=None):
 mavlink_timeout = 5
 approx_threshold = 0.00005  # Threshold for approximate location matching
 altitude_threshold = 0.1  # Threshold for altitude matching
+PREARM_CHECK = 0x10000000
+EKF_POS_HORIZ = 0x8
+EKF_POS_VERT = 0x10
 
 # Global error queue
 error_queue = Queue()
@@ -208,7 +211,8 @@ class TCPConn:
         self.mission_msg_queue = Queue()
         # GPS and Drone Status
         self.drone_ready = False  # Drone ready
-        # self.gps_ready = False  # GPS lock
+        self.gps_ready = False  # GPS lock
+        self.ekf_ready = False  # EKF lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
@@ -315,11 +319,35 @@ class TCPConn:
                     time.sleep(1)
         logger.info("Connection closed, stopping heartbeat thread.")
 
+    def _handle_sys_status(self, msg):
+        # Basically for now, we just check enum values if the pre-arm is ready
+        if msg.onboard_control_sensors_health & PREARM_CHECK:
+            self.drone_ready = (
+                msg.onboard_control_sensors_health & PREARM_CHECK
+                and self.gps_ready
+                and self.ekf_ready
+            )
+
+    def _monitor_gps_lock(self, msg):
+        """This is because we need the GPS before we can start auto missions"""
+        if msg.fix_type >= 3:
+            # Anything greater than 3
+            self.gps_ready = True
+
+    def _monitor_ekf_lock(self, msg):
+        """Ensure we have EKF getting the position"""
+        print("EKF Status Report:", msg)
+        if (msg.flags & EKF_POS_HORIZ) or (msg.flags & EKF_POS_VERT):
+            # If we have horizontal or vertical position lock
+            print("EKF is ready with position lock")
+            self.ekf_ready = True
+
     def _monitor_status_text(self, msg):
-        if re.search(r"EKF\d IMU\d is using GPS", msg.text, re.IGNORECASE):
-            # Need this cause we need to wait till EKF is ready with GPS info
-            logger.info("Vehicle is ready with gps_lock")
-            self.drone_ready = True
+        # Cause this wouldn't work in case of GPS (fuzzing)
+        # if re.search(r"EKF\d IMU\d is using GPS", msg.text, re.IGNORECASE):
+        #     # Need this cause we need to wait till EKF is ready with GPS info
+        #     logger.info("Vehicle is ready with gps_lock")
+        #     self.drone_ready = True
         if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
             logger.info("Mission ended, vehicle is disarmed.")
             self.drone_in_air = False
@@ -358,7 +386,7 @@ class TCPConn:
             self.drone_in_air = False
             self.rc_monitor = False
             self.drone_ready = False
-            # self.gps_ready = False
+            self.gps_ready = False
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -379,15 +407,19 @@ class TCPConn:
                                 mavutil.mavlink.MAV_CMD_NAV_LAND,
                                 mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
                                 mavutil.mavlink.MAV_CMD_MISSION_START,
+                                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
                             ]:
-                                logger.error(
-                                    f"Command failed: {msg.command} with result: {msg.result}"
+                                e = f"Command failed: {msg.command} with result: {msg.result}"
+                                error_queue.put(
+                                    {
+                                        "type": "fuzzer_error",
+                                        "error": e,
+                                        "component": "monitor_comms",
+                                        "timestamp": time.time(),
+                                    }
                                 )
                                 # self.internal_error = True
                                 self.shutdown_requested = True
-                                raise Exception(
-                                    "Failed to execute command: " + str(msg.command)
-                                )
                             logger.debug(
                                 f"Command failed: {msg.command} with result: {msg.result}"
                             )
@@ -416,6 +448,12 @@ class TCPConn:
                         self.mission_msg_queue.put(msg)
                     if msg.get_type() == "HEARTBEAT":  # type: ignore
                         self.drone_state = msg.system_status  # type: ignore
+                    if msg.get_type() == "SYS_STATUS":
+                        self._handle_sys_status(msg)
+                    if msg.get_type() == "GPS_RAW_INT":
+                        self._monitor_gps_lock(msg)
+                    if msg.get_type() == "EKF_STATUS_REPORT":  # AP_Specific
+                        self._monitor_ekf_lock(msg)
             except Exception as e:
                 logger.error(f"Error in monitor_comms: {e}")
                 error_queue.put(
@@ -1167,7 +1205,7 @@ class FuzzConfig:
             xml_msg: XML message definition.
             default_values: Default values for the message fields.
         """
-        logger.info(f"Starting periodic send for {xml_msg} every {frequency} seconds")
+        logger.info(f"Starting periodic send for {xml_msg} every {frequency} Hz")
         while True:
             if not self.fuzzing_active and self.sim_ready:
                 try:
@@ -1180,7 +1218,6 @@ class FuzzConfig:
                         xml_msg["msg_name"], xml_msg["msg_id"], default_values_dict
                     )
                 except Exception as e:
-                    logger.error(f"Error sending message: {e}")
                     error_queue.put(
                         {
                             "type": "fuzzer_error",
@@ -1674,7 +1711,7 @@ class FuzzConfig:
 
     def cleanup_and_exit(self):
         """Perform cleanup and print summary before exit."""
-        logger.info("\nPerforming cleanup...")
+        logger.info("Performing cleanup...")
 
         # Stop fuzzing first
         self.stop_fuzzing()
@@ -2294,6 +2331,13 @@ class FuzzConfig:
                 # Replace quaternion with a random value
                 # TODO: Please verify if this assumption is correct
                 field_values[field_name] = [random.uniform(-1, 1) for _ in range(4)]
+            # GPS Values
+            if "gps_id" in field_name:
+                field_values[field_name] = 0
+            if "satellites_visible" in field_name:
+                field_values[field_name] = random.randint(0, 30)
+            if "fix_type" in field_name:
+                field_values[field_name] = random.randint(3, 6)
 
     # Smart sleep
     def error_sleep(self, seconds, period=1):
@@ -2389,11 +2433,7 @@ class FuzzConfig:
                 self.fuzzer_stats["potential_crashes"] += 1
                 self.cleanup_sim()
             if error.get("type") == "fuzzer_error":
-                logger.error(
-                    "Internal fuzzer error: {0} in component {1}",
-                    error["error"],
-                    error["component"],
-                )
+                logger.error(error["error"])
                 logger.error("Not recoverable state, exiting...")
                 exit(1)
 
@@ -2409,6 +2449,7 @@ class FuzzConfig:
             List containing the message time, name, id, and field values.
         """
         self.hueristics(field_values)
+        # ^ TODO: Do we apply this only if we are in fuzzing mode?
         try:
             # Get the message class from mavutil
             msg_class = getattr(self.tcp_conn.conn.mav, f"{msg_name.lower()}_send")  # type: ignore
@@ -2578,7 +2619,8 @@ if __name__ == "__main__":
                     cfg.tcp_conn.drone_ready is False
                     and not cfg.fuzzer_shutdown_requested
                 ):
-                    time.sleep(1)
+                    if cfg.error_sleep(1):
+                        logger.error("Potential error encountered during waiting")
                     update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
                 if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
                     # Sleep for some more time to ensure the Gyro is consistent
@@ -2634,7 +2676,8 @@ if __name__ == "__main__":
                 and not cfg.fuzzer_shutdown_requested
                 and error_queue.empty()
             ):
-                time.sleep(1)
+                if cfg.error_sleep(1):
+                    logger.error("Potential error encountered during waiting")
                 pbar.refresh()  # Keep progress bar visible during waiting
 
             if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
