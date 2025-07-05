@@ -350,13 +350,15 @@ class TCPConn:
             logger.info("Mission ended, vehicle is disarmed.")
             self.drone_in_air = False
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
-            logger.info("AUTO Mission started, takeoff.")
             self.drone_in_air = True
             logger.info("AUTO Mission started, takeoff.")
         if re.search(r"Mission: 1 WP", msg.text, re.IGNORECASE):
             self.drone_in_air = True
         if re.search(r".*Mission Complete.*", msg.text, re.IGNORECASE):
             logger.info("Mission ended, vehicle is disarmed.")
+            self.drone_in_air = False
+        elif re.search(r".*Reached destination.*", msg.text, re.IGNORECASE):
+            logger.info("Reached destination , vehicle is disarmed.")
             self.drone_in_air = False
         # Handling scenario when we are in air
         if re.search(r"Mission: 2 WP", msg.text, re.IGNORECASE):
@@ -575,6 +577,22 @@ class TCPConn:
                 self.drone_in_air = False
                 break
             time.sleep(0.1)
+
+    def rtl(self):
+        """Return to Launch (RTL) the vehicle."""
+        self.conn.mav.command_long_send(
+            self.conn.target_system,  # type: ignore
+            self.conn.target_component,  # type: ignore
+            mavutil.mavlink.MAV_CMD_NAV_RETURN_TO_LAUNCH,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        )  # type: ignore
 
     def arm(self):
         self.conn.mav.command_long_send(
@@ -1458,29 +1476,25 @@ class FuzzConfig:
             ret_val = self.sim_handle.poll()
             # Get the signal number
             if ret_val is not None:
-                if ret_val < 0:
+                if ret_val != 0:
                     signal_num = -ret_val  # Because this is a negative value
+                    signal_name = "UNKNOWN"
                     try:
                         import signal
 
                         signal_name = signal.Signals(signal_num).name
-                        error = f"SITL simulation exited with signal: {signal_name} ({signal_num})"
-                        error_queue.put(
-                            {
-                                "type": "sitl_terminated_error",
-                                "error": error,
-                                "component": "monitor_sim",
-                                "timestamp": time.time(),
-                            }
-                        )
                     except ValueError:
-                        # If the signal number is not a valid signal, just log the number
-                        logger.error(
-                            f"SITL simulation exited with signal: {signal_num}"
-                        )
-                elif ret_val > 0:
-                    # If the return value is positive, it means the process exited normally
-                    logger.info(f"SITL simulation exited with return code: {ret_val}")
+                        # Nothing doing :)
+                        pass
+                    error = f"SITL simulation exited with signal: {signal_name} ({signal_num})"
+                    error_queue.put(
+                        {
+                            "type": "sitl_terminated_error",
+                            "error": error,
+                            "component": "monitor_sim",
+                            "timestamp": time.time(),
+                        }
+                    )
                 else:
                     # If the return value is 0, it means the process exited cleanly, let's exit the loop
                     logger.debug("SITL simulation exited cleanly")
@@ -1637,7 +1651,8 @@ class FuzzConfig:
         self.tcp_conn.set_mode("GUIDED")
         self.tcp_conn.arm()
         # Monitor
-        self.tcp_conn.takeoff(50)
+        if self.vehicle != "rover":
+            self.tcp_conn.takeoff(50)
 
         # Start fuzzing after takeoff
         if fuzzing:
@@ -1656,7 +1671,7 @@ class FuzzConfig:
         for _ in range(10):
             if random.uniform(0, 1) > 0.5:  # Randomly set a parameter
                 self.random_param_set()
-            time.sleep(1)
+            self.error_sleep(1)
         self.tcp_conn.set_mode("GUIDED")
         # -35.362839699999995, 149.1646279,
         self.tcp_conn.go_to_waypoint(-35.362839699999995, 149.1646279, 50)
@@ -1670,7 +1685,11 @@ class FuzzConfig:
         # Land
         self.tcp_conn.rc_monitor = False
         self.tcp_conn.st_msg_send("STOP RC")
-        self.tcp_conn.land()
+        self.tcp_conn.rtl()
+
+        while self.tcp_conn.drone_in_air:
+            self.error_sleep(1)  # Not raising an error as the main thread
+        return
 
     def send_mission(self, fuzzing=True):
         """Send a mission to the drone.
