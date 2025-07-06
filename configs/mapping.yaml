@@ -7,6 +7,7 @@ sensors:
   CS1:
     parameters:
       PRX_TYPE: 2
+      AVOID_ENABLE: 2
     msg_type:
       - OBSTACLE_DISTANCE_3D
     frequency: [25]
@@ -89,6 +90,14 @@ sensors:
       - ADSB_VEHICLE
     frequency: [-1]
 
+  ProximitySensor:
+    parameters:
+      PRX_TYPE: 2
+      PRX1_TYPE: 2
+    msg_type:
+      - OBSTACLE_DISTANCE
+      - OBSTACLE_DISTANCE_3D
+
   OpticalFlow:
     parameters:
       FLOW_TYPE: 5
@@ -96,14 +105,13 @@ sensors:
     msg_type:
       - OPTICAL_FLOW
       - OPTICAL_FLOW_RAD
-      - HIL_OPTICAL_FLOW
 
   Gimbal:
     # cmd_msgs: True
     parameters:
-      MNT_TYPE: 4
+      MNT1_TYPE: 4
     msg_type:
-    - GIMBAL_CONTROL
+    - GIMBAL_REPORT
     - GIMBAL_DEVICE_ATTITUDE_STATUS
     - GIMBAL_DEVICE_INFORMATION
     - GIMBAL_MANAGER_SET_ATTITUDE
@@ -118,7 +126,7 @@ sensors:
 
   AP_Mount:
     parameters:
-      MNT_TYPE: 4
+      MNT1_TYPE: 4
     msg_type:
       - MAV_CMD_DO_MOUNT_CONTROL
       - MAV_CMD_DO_MOUNT_CONTROL_QUAT
@@ -158,6 +166,8 @@ sensors:
     default_msg: ['time', 0, 0, 1200000, 2430, 6, -353632621, 1491652374, 584, 1.0, 1.0, 1.0, 1.0, 1.0, 3.0, 3.0, 3.0, 10]
 
   OPENDRONEID:
+    parameters:
+      DID_ENABLE: 1
     msg_type: # Might not just work outside the box
       - OPEN_DRONE_ID_BASIC_ID
       - OPEN_DRONE_ID_LOCATION
@@ -208,12 +218,6 @@ sensors:
   #
 
 
-  AP_Rangefinder:
-    parameters:
-      PRX_TYPE: 2
-    msg_type:
-      - OBSTACLE_DISTANCE
-      - OBSTACLE_DISTANCE_3D
 
 
   AP_Proximity:

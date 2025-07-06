@@ -2344,7 +2344,7 @@ class FuzzConfig:
                 field_values[field_name] = 0
             if "frame" in field_name:
                 field_values[field_name] = 12
-            if "min_distannce" in field_name:
+            if "min_distance" in field_name:
                 field_values[field_name] = 0.0
             if "max_distance" in field_name:
                 field_values[field_name] = 12.0
