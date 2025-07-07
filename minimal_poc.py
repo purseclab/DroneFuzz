@@ -2420,6 +2420,7 @@ class FuzzConfig:
             2. Saves the current message sequence to a temporary file
             3. Increments the potential crash counter
             4. Cleans up the simulation
+            5. If in calibration mode, exits with error code 1
         - For internal fuzzer errors:
             1. Logs the error with component information
             2. Exits the program with an error code (1) as these are considered unrecoverable
@@ -2452,7 +2453,15 @@ class FuzzConfig:
                         f.write(f"{msg}\n")
                 # Count it as a potential crash
                 self.fuzzer_stats["potential_crashes"] += 1
-                self.cleanup_sim()
+                
+                # If we're in calibration mode, this is a fatal error
+                if self.calibration_active:
+                    logger.error("SITL error during calibration phase - this is fatal")
+                    self.cleanup_and_exit()
+                    exit(1)
+                else:
+                    self.cleanup_sim()
+                    
             if error.get("type") == "fuzzer_error":
                 logger.error(error["error"])
                 logger.error("Not recoverable state, exiting...")
@@ -2641,17 +2650,40 @@ if __name__ == "__main__":
                     and not cfg.fuzzer_shutdown_requested
                 ):
                     if cfg.error_sleep(1):
-                        logger.error("Potential error encountered during waiting")
+                        logger.error("Error encountered during calibration waiting phase")
+                        cfg.cleanup_and_exit()
+                        exit(1)
                     update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
+                
+                # Check for errors after waiting loop
+                if not error_queue.empty():
+                    logger.error("Error detected during calibration phase")
+                    cfg.handle_errors()
+                    cfg.cleanup_and_exit()
+                    exit(1)
+                
                 if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
                     # Sleep for some more time to ensure the Gyro is consistent
                     time.sleep(8)
 
                 if cfg.fuzzer_shutdown_requested:
+                    logger.error("Shutdown requested during calibration")
                     cfg.cleanup_and_exit()
-                    exit(0)
+                    exit(1)
                 else:
-                    cfg.send_mission()
+                    try:
+                        cfg.send_mission()
+                    except Exception as e:
+                        logger.error(f"Error during calibration mission: {e}")
+                        cfg.cleanup_and_exit()
+                        exit(1)
+
+                # Check for errors after mission
+                if not error_queue.empty():
+                    logger.error("Error detected after calibration mission")
+                    cfg.handle_errors()
+                    cfg.cleanup_and_exit()
+                    exit(1)
 
                 cfg.cleanup_sim()
                 update_calib_tqdm_postfix()
