@@ -1538,6 +1538,7 @@ class FuzzConfig:
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
         sitl_args = ""
+        home_location = " --home -35.362938,149.165085,585,354 "
         if self.vehicle == "copter":
             sitl_args = " -S --model + -w --speedup 1 -I0"
         elif self.vehicle == "plane":
@@ -1546,7 +1547,7 @@ class FuzzConfig:
         elif self.vehicle == "rover":
             # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover" 
             sitl_args = " -S --model rover -w --speedup 1 -I0"
-        self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
+        self.sitl_cmd = self.sitl_bin + home_location + sitl_args + " --defaults " + self.param_file
         logger.info(f"Starting SITL with command: {self.sitl_cmd}")
         if self.calibration_active:
             assert (

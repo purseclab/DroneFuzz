@@ -97,6 +97,7 @@ sensors:
     msg_type:
       - OBSTACLE_DISTANCE
       - OBSTACLE_DISTANCE_3D
+    frequency: [25]
 
   OpticalFlow:
     parameters:
