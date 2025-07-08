@@ -352,6 +352,17 @@ class TCPConn:
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
             self.drone_in_air = True
             logger.info("AUTO Mission started, takeoff.")
+        if re.search(r"PreArm.*",msg.text,re.IGNORECASE):
+            logger.error("PreArm check failed, vehicle is not ready for flight.")
+            error_queue.put(
+                {
+                    "type": "fuzzer_error",
+                    "error": "PreArm check failed, vehicle is not ready for flight.",
+                    "component": "monitor_comms",
+                    "timestamp": time.time(),
+                }
+            )
+            self.drone_in_air = False
         if re.search(r"Mission: 1 WP", msg.text, re.IGNORECASE):
             self.drone_in_air = True
         if re.search(r".*Mission Complete.*", msg.text, re.IGNORECASE):
@@ -1143,8 +1154,14 @@ class FuzzConfig:
             logger.info(f"Using Ardupilot directory: {self.ap_dir}")
 
         # Parameter file
+        # Now we have a parameter dictionary
+        param_mapping = {
+            "copter": "copter.parm",
+            "plane": "plane-jsbsim.parm",
+            "rover": "rover.parm",
+        }
         self.param_file = os.path.join(
-            self.ap_dir, "Tools/autotest/default_params/", f"{self.vehicle}.parm"
+            self.ap_dir, "Tools/autotest/default_params/", param_mapping.get(self.vehicle, "None")
         )
         if file_exists(self.param_file):
             logger.info("Using parameter file: " + self.param_file)
@@ -1524,8 +1541,10 @@ class FuzzConfig:
         if self.vehicle == "copter":
             sitl_args = " -S --model + -w --speedup 1 -I0"
         elif self.vehicle == "plane":
-            sitl_args = " -S --model plane -w --speedup 1 -I0"
+                # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
+            sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
         elif self.vehicle == "rover":
+            # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover" 
             sitl_args = " -S --model rover -w --speedup 1 -I0"
         self.sitl_cmd = self.sitl_bin + sitl_args + " --defaults " + self.param_file
         logger.info(f"Starting SITL with command: {self.sitl_cmd}")
