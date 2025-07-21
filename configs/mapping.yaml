@@ -102,10 +102,10 @@ sensors:
   OpticalFlow:
     parameters:
       FLOW_TYPE: 5
-    frequency: [-1, -1, -1]
+    frequency: [25]
     msg_type:
       - OPTICAL_FLOW
-      - OPTICAL_FLOW_RAD
+    default_msg: [time, 0, 0, 0, 1, 1, 150, 12]
 
   Gimbal:
     # cmd_msgs: True

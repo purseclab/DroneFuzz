@@ -406,7 +406,7 @@ class TCPConn:
                 if msg:
                     self.msg_queue.put(msg)
                     if msg.get_type() == "STATUSTEXT":
-                        logger.debug(msg.text)
+                        logger.debug(f"DRONE_MSG: {msg.text}")
                         # Crazy check because pymavlink lock doesn't work
                         self._monitor_status_text(msg)
                     if msg.get_type() == "COMMAND_ACK":
@@ -1453,7 +1453,7 @@ class FuzzConfig:
     def random_param_set(self):
         """Randomly set a parameter set for fuzzing."""
         if not self.default_parameter_set:
-            logger.warning(
+            logger.debug(
                 "No default configuration parameters set for fuzzing, returning"
             )
             return
@@ -2484,7 +2484,10 @@ class FuzzConfig:
                     
             if error.get("type") == "fuzzer_error":
                 logger.error(error["error"])
-                logger.error("Not recoverable state, exiting...")
+                component = error.get("component", "unknown")
+                logger.error(
+                    f"Not recoverable state, fatal error inside {component}, exiting..."
+                )
                 exit(1)
 
     def send_fuzzed_message(self, msg_name, msg_id, field_values: Dict):
@@ -2539,7 +2542,7 @@ class FuzzConfig:
             logger.error(
                 f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
             )
-            return []
+            raise e
 
 
 # Misc utilities and sanity checks
