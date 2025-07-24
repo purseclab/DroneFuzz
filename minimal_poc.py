@@ -12,6 +12,7 @@ import yaml
 import os
 import random
 import tempfile
+import itertools
 import logging
 import datetime
 import pickle
@@ -22,7 +23,7 @@ from dataclasses import dataclass, field
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 # Models import
 from dtw import dtw
@@ -95,6 +96,7 @@ altitude_threshold = 0.1  # Threshold for altitude matching
 PREARM_CHECK = 0x10000000
 EKF_POS_HORIZ = 0x8
 EKF_POS_VERT = 0x10
+MAX_MODE_CHANGES = 3
 
 # Global error queue
 error_queue = Queue()
@@ -352,7 +354,7 @@ class TCPConn:
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
             self.drone_in_air = True
             logger.info("AUTO Mission started, takeoff.")
-        if re.search(r"PreArm.*",msg.text,re.IGNORECASE):
+        if re.search(r"PreArm.*", msg.text, re.IGNORECASE):
             logger.error("PreArm check failed, vehicle is not ready for flight.")
             error_queue.put(
                 {
@@ -1161,13 +1163,22 @@ class FuzzConfig:
             "rover": "rover.parm",
         }
         self.param_file = os.path.join(
-            self.ap_dir, "Tools/autotest/default_params/", param_mapping.get(self.vehicle, "None")
+            self.ap_dir,
+            "Tools/autotest/default_params/",
+            param_mapping.get(self.vehicle, "None"),
         )
         if file_exists(self.param_file):
             logger.info("Using parameter file: " + self.param_file)
 
         # Calibration settings
         self.calibration_active = False
+        self.calibration_mode_list = list(
+            itertools.combinations_with_replacement(
+                self.supported_modes, MAX_MODE_CHANGES
+            )
+        )
+        # Counter to check each calibration mode generated above
+        self.calibration_modes_ctr = 0
         self.calibration_threshold = None
         self.calibration_vals = None
         calibration_rounds = (
@@ -1176,6 +1187,9 @@ class FuzzConfig:
             else self.config.get("calibration_rounds", 10)
         )
         self.calibration_rounds = calibration_rounds
+        if self.calibration_rounds < len(self.calibration_mode_list):
+            logger.error("The configured number of calibration rounds is too low.")
+            raise ValueError("Calibration rounds are too low.")
         # 2025-06-14T10:09:17-0400: silipwn: Why are we setting this to 25? For now that's enough
         self.fuzzer_queue_len = 25
         # Check if we have calibration values
@@ -1542,12 +1556,14 @@ class FuzzConfig:
         if self.vehicle == "copter":
             sitl_args = " -S --model + -w --speedup 1 -I0"
         elif self.vehicle == "plane":
-                # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
+            # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
             sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
         elif self.vehicle == "rover":
-            # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover" 
+            # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover"
             sitl_args = " -S --model rover -w --speedup 1 -I0"
-        self.sitl_cmd = self.sitl_bin + home_location + sitl_args + " --defaults " + self.param_file
+        self.sitl_cmd = (
+            self.sitl_bin + home_location + sitl_args + " --defaults " + self.param_file
+        )
         logger.info(f"Starting SITL with command: {self.sitl_cmd}")
         if self.calibration_active:
             assert (
@@ -1583,11 +1599,10 @@ class FuzzConfig:
             # this would just kill the entire script, so need to handle it gracefully
             logger.error(f"Error starting simulation: {e}")
 
-    def monitor_auto_mission(self):
-        """Monitor the drone during an automatic mission."""
-        # Wait till the drone is in air
-        logger.info("Waiting till drone is in air")
-        # self.wait_for_condition(lambda: self.tcp_conn.rc_monitor, timeout=60)
+    def _monitor_auto_mission_calibration(self):
+        # In this case we need to actually set the different modes one by one and then check?
+        # The idea is to ensure that we run every possible mission change that can exist and is supported by the
+        # configuration
         try:
             while not self.tcp_conn.rc_monitor:
                 if self.error_sleep(1):
@@ -1595,7 +1610,48 @@ class FuzzConfig:
             self.start_fuzzing()
             mode_ctr = 0
             prev_state = None
-            MAX_MODE_CHANGES = 1
+            if self.calibration_modes_ctr < len(self.calibration_mode_list):
+                mode = self.calibration_mode_list[self.calibration_modes_ctr]
+                self.calibration_modes_ctr += 1
+            else:
+                # At this point we have exhausted all the mode combination, so we can just randomly select one
+                mode = random.choice(self.calibration_mode_list)
+            while self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
+                # Instead of actually setting things randomly, we select each mode from the generated modes
+                if mode_ctr < MAX_MODE_CHANGES:
+                    self.tcp_conn.set_mode(mode[mode_ctr])
+                    logger.debug(f"Changing mode to: {mode[mode_ctr]}")
+                    prev_state = mode[mode_ctr]
+                    mode_ctr += 1
+                elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
+                    logger.debug("Reached mode change limit, not changing mode anymore")
+                    self.tcp_conn.set_mode("AUTO")
+                    prev_state = "AUTO"
+                    logger.debug("Resetting Setting mode to AUTO")
+                if random.random() < 0.1:  # Randomly set a parameter
+                    self.random_param_set()
+                if self.error_sleep(3):
+                    raise InternalError
+            self.wait_for_condition(lambda: not self.tcp_conn.rc_monitor, timeout=60)
+            while self.tcp_conn.drone_in_air:
+                if self.error_sleep(1):
+                    raise InternalError
+            self.stop_fuzzing()
+            return
+        except InternalError:
+            logger.error("Warning detected, stopping fuzzing")
+            if self.fuzzing_active:
+                self.stop_fuzzing()
+            return
+
+    def _monitor_auto_mission_fuzzing(self):
+        try:
+            while not self.tcp_conn.rc_monitor:
+                if self.error_sleep(1):
+                    raise InternalError
+            self.start_fuzzing()
+            mode_ctr = 0
+            prev_state = None
             # self.wait_for_condition(lambda: self.tcp_conn.drone_in_air and self.tcp_conn.drone_in_air, timeout=60)
             # BREAKPOINT: 2025-05-26T12:41:06-0400: silipwn: This is where we stop for now, need to figure out how to actually handle this
             # while self.wait_for_condition(
@@ -1631,6 +1687,16 @@ class FuzzConfig:
             if self.fuzzing_active:
                 self.stop_fuzzing()
             return
+
+    def monitor_auto_mission(self):
+        """Monitor the drone during an automatic mission."""
+        # Wait till the drone is in air
+        # logger.info("Waiting till drone is in air")
+        # self.wait_for_condition(lambda: self.tcp_conn.rc_monitor, timeout=60)
+        if self.calibration_active:
+            self._monitor_auto_mission_calibration()
+        else:
+            self._monitor_auto_mission_fuzzing()
 
     def upload_auto_mission(self, mission_file):
         """Upload a mission from a waypoint file using MAVProxy's waypoint module.
@@ -2473,7 +2539,7 @@ class FuzzConfig:
                         f.write(f"{msg}\n")
                 # Count it as a potential crash
                 self.fuzzer_stats["potential_crashes"] += 1
-                
+
                 # If we're in calibration mode, this is a fatal error
                 if self.calibration_active:
                     logger.error("SITL error during calibration phase - this is fatal")
@@ -2481,7 +2547,7 @@ class FuzzConfig:
                     exit(1)
                 else:
                     self.cleanup_sim()
-                    
+
             if error.get("type") == "fuzzer_error":
                 logger.error(error["error"])
                 component = error.get("component", "unknown")
@@ -2673,18 +2739,20 @@ if __name__ == "__main__":
                     and not cfg.fuzzer_shutdown_requested
                 ):
                     if cfg.error_sleep(1):
-                        logger.error("Error encountered during calibration waiting phase")
+                        logger.error(
+                            "Error encountered during calibration waiting phase"
+                        )
                         cfg.cleanup_and_exit()
                         exit(1)
                     update_calib_tqdm_postfix()  # Keep progress bar visible during waiting
-                
+
                 # Check for errors after waiting loop
                 if not error_queue.empty():
                     logger.error("Error detected during calibration phase")
                     cfg.handle_errors()
                     cfg.cleanup_and_exit()
                     exit(1)
-                
+
                 if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
                     # Sleep for some more time to ensure the Gyro is consistent
                     time.sleep(8)
