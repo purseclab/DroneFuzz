@@ -1140,8 +1140,6 @@ class FuzzConfig:
         # Mission control
         # We consider 300 seconds to be a reasonable timeout for the mission
         self.timeout = self.config.get("timeout", 600)  # 10 minutes for now
-        # We consider 300 seconds to be a reasonable timeout for the mission
-        self.timeout = self.config.get("timeout", 600)  # 10 minutes for now
         # MAVLink check for https://mavlink.io/en/guide/routing.html
         self.target_system = self.config.get("target_system", 0)
         self.target_component = self.config.get("target_component", 0)
