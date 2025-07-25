@@ -1266,7 +1266,7 @@ class FuzzConfig:
                     error_queue.put(
                         {
                             "type": "fuzzer_error",
-                            "error": e,
+                            "error": str(e),
                             "component": "periodic_send",
                             "timestamp": time.time(),
                         }
