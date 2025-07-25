@@ -795,9 +795,9 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
         fields = []
         saw_field = False
         for child in msg:
-            if child.tag == "extensions":
-                break
-            if child.tag == "field":
+            # if child.tag == "extensions":
+            #     break
+            if child.tag == "field" or child.tag == "extensions":
                 saw_field = True
                 name = child.get("name")
                 typ = child.get("type")
@@ -813,7 +813,9 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                     if enum_cache[enum_name]:
                         entry["enum_vals"] = enum_cache[enum_name]
 
-                fields.append(entry)
+                # Only append if we have some name else ignore
+                if entry["name"] is not None:
+                    fields.append(entry)
 
         # 5) If no pre-extension fields, fall back to <param>
         if not saw_field:
@@ -2428,10 +2430,19 @@ class FuzzConfig:
                 field_values[field_name] = 0
             if "frame" in field_name:
                 field_values[field_name] = 12
+            # 2025-07-25T16:52:48-0400: silipwn: Creates issues when actually using for any other peripheral
+            # Proximity sensor have deviations here :|
             if "min_distance" in field_name:
-                field_values[field_name] = 0.0
+                # Check if the existing value is float, then set it to float(0)
+                if type(field_values[field_name]) is float:
+                    field_values[field_name] = 0.0
+                elif type(field_values[field_name]) is int:
+                    field_values[field_name] = 0
             if "max_distance" in field_name:
-                field_values[field_name] = 12.0
+                if type(field_values[field_name]) is float:
+                    field_values[field_name] = 12.0
+                elif type(field_values[field_name]) is int:
+                    field_values[field_name] = 12
             if field_name == "q":  # Exact match only
                 # Replace quaternion with a random value
                 # TODO: Please verify if this assumption is correct
