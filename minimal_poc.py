@@ -16,6 +16,8 @@ import itertools
 import logging
 import datetime
 import pickle
+import shutil
+import shlex
 from lxml import etree
 from enum import Enum
 import heapq
@@ -1036,6 +1038,71 @@ class PriorityQueueEntry:
         return f"Entry(priority={self.priority}, data={self.data!r})"
 
 
+class CoverageData:
+    """Class to hold coverage data for the simulator"""
+
+    def __init__(self, src_dir=None, fuzz_dir=None):
+        """Setup the coverage file"""
+        if src_dir is None or fuzz_dir is None:
+            raise Exception(
+                "Source directory and fuzzer directory must be provided for coverage data."
+            )
+        # First zero the counters in the root dir?
+        logger.info(f"Initializing coverage data with source directory: {src_dir}")
+        self.src_dir = src_dir
+        self.fuzz_dir = fuzz_dir
+        # mkdir for coverage data
+        self.coverage_dir = os.path.join(self.fuzz_dir, "coverage")
+        os.makedirs(self.coverage_dir, exist_ok=True)
+        self._reset()
+        lcov_cmd = f"lcov --no-external --capture --directory {self.src_dir} --output-file {self.coverage_dir}/base_coverage.info"
+        try:
+            subprocess.run(
+                shlex.split(lcov_cmd),
+                check=True,
+                stdout=subprocess.DEVNULL,  # Don't care about the output for now
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to capture initial coverage data: {e}")
+
+    def _reset(self):
+        """Command to reset the coverage data"""
+        # Zeroes the counters in the source directory
+        lcov_reset_cmd = f"lcov --no-external --zerocounters --directory {self.src_dir}"
+        try:
+            subprocess.run(
+                shlex.split(lcov_reset_cmd),
+                check=True,
+                stdout=subprocess.DEVNULL,  # Don't care about the output for now
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to reset coverage data: {e}")
+
+    def update(self):
+        """Just check the and update the relevant coverage data"""
+        lcov_capture_cmd = f"lcov --no-external --capture --directory {self.src_dir} --output-file {self.coverage_dir}/current_simulation_coverage.info"
+        try:
+            subprocess.run(
+                shlex.split(lcov_capture_cmd),
+                check=True,
+                stdout=subprocess.DEVNULL,  # Don't care about the output for now
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to update coverage data: {e}")
+
+    def archive_data(self, filename=None):
+        """Archive the coverage data if requested"""
+        # Copy the info file into the fuzz_dir with the requested filename
+        filename_extracted = f"{filename:08d}"
+        shutil.copy(
+            f"{self.coverage_dir}/current_simulation_coverage.info",
+            f"{self.coverage_dir}/anomaly-{filename_extracted}.info",
+        )
+
+
 class FuzzConfig:
     def __init__(self, args):
         """Initialize the FuzzConfig object with the provided arguments.
@@ -1243,6 +1310,11 @@ class FuzzConfig:
         if self.msg_freq:
             logger.info("Setting the fuzzing interval to match message frequency")
             self.fuzz_interval = self.msg_freq
+
+        # Setup the coverage metrics
+        self.coverage_class = CoverageData(
+            src_dir=self.ap_dir, fuzz_dir=self.fuzzer_temp_dir
+        )
 
     def periodic_send(self, frequency, xml_msg, default_values):
         """Send periodic messages based on the specified frequency.
@@ -1574,11 +1646,10 @@ class FuzzConfig:
         # Handle the case where vehicle is plane and we need to ensure it lands
         try:
             self.sim_handle = subprocess.Popen(
-                ["bash", "-c", self.sitl_cmd],
+                shlex.split(self.sitl_cmd),
                 # Comment out to debug the original binary
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                shell=False,
                 preexec_fn=os.setsid,
                 cwd=self.fuzzer_temp_dir,
             )
@@ -2030,40 +2101,45 @@ class FuzzConfig:
         if self.fuzzing_active:
             self.stop_fuzzing()
 
-        # Actually we start one and keep it running ideally
-        # Stop the periodic threads
-        # if self.periodic_thread:
-        #     for thread in self.periodic_thread.values():
-        #         thread.join()
-        #     logger.info("Periodic threads stopped")
-
-        # Reset the time
+        # Reset the time and state
         self.fuzzer_stats["current_mission_time"] = 0.0
-        # Reset state
         self.sim_ready = False
 
-        # Then cleanup TCP connection
+        # Step 1: Terminate TCP connection and collect RC values
         if self.tcp_conn:
             if self.fuzzer_shutdown_requested:
+                # If shutdown requested, just cleanup without collecting data
                 self.tcp_conn.cleanup()
-            elif self.rcou_vals:
-                self.rcou_vals = self.tcp_conn.cleanup()
-                if self.calibration_active:
-                    self.golden_rc_vals.append(self.rcou_vals)
-                else:
-                    if not self.min_fuzz_threshold:
-                        self.sigma_calc()
-                    self.oracle()
+                self.rcou_vals = []
             else:
+                # Normal cleanup - collect RC channel data
                 self.rcou_vals = self.tcp_conn.cleanup()
+                if not self.rcou_vals:
+                    self.rcou_vals = []
 
-        # Finally terminate the simulation
+        # Step 2: Terminate the simulation
         if hasattr(self, "sim_handle") and self.sim_handle:
             self.sim_handle.terminate()
             logger.info("Simulation terminated.")
-        time.sleep(1)  # Give some time for the threads to finish
+            
+        # Give some time for cleanup to complete
+        time.sleep(1)
+        self.coverage_class.update()
 
-        # TODO Check if we actually have a SITL binary running
+
+        # Step 3: Call the oracle (only if we have data and not shutting down)
+        if not self.fuzzer_shutdown_requested and self.rcou_vals:
+            if self.calibration_active:
+                # During calibration, just collect the golden values
+                self.golden_rc_vals.append(self.rcou_vals)
+                logger.debug(f"Collected calibration data: {len(self.rcou_vals)} RC samples")
+            else:
+                # During fuzzing, run anomaly detection
+                if not self.min_fuzz_threshold:
+                    # Calculate thresholds if not already done
+                    self.sigma_calc()
+                # Run the oracle to detect anomalies
+                self.oracle()
 
     def get_stats_summary(self):
         """Return a formatted string with current fuzzing stats.
@@ -2115,6 +2191,8 @@ class FuzzConfig:
                 prefix="inputs-anomalous-",
                 dir=self.fuzzer_temp_input_dir,
             )
+            # Save the coverage data
+            self.coverage_class.archive_data(filename=log_content)
         else:
             fd, input_file = tempfile.mkstemp(
                 suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_input_dir
