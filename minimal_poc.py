@@ -1054,7 +1054,7 @@ class CoverageData:
         # mkdir for coverage data
         self.coverage_dir = os.path.join(self.fuzz_dir, "coverage")
         os.makedirs(self.coverage_dir, exist_ok=True)
-        self._reset()
+        self.reset()
         lcov_cmd = f"lcov --no-external --capture --directory {self.src_dir} --output-file {self.coverage_dir}/base_coverage.info"
         try:
             subprocess.run(
@@ -1066,7 +1066,7 @@ class CoverageData:
         except subprocess.CalledProcessError as e:
             logger.error(f"Failed to capture initial coverage data: {e}")
 
-    def _reset(self):
+    def reset(self):
         """Command to reset the coverage data"""
         # Zeroes the counters in the source directory
         lcov_reset_cmd = f"lcov --no-external --zerocounters --directory {self.src_dir}"
@@ -1083,6 +1083,19 @@ class CoverageData:
     def update(self):
         """Just check the and update the relevant coverage data"""
         lcov_capture_cmd = f"lcov --no-external --capture --directory {self.src_dir} --output-file {self.coverage_dir}/current_simulation_coverage.info"
+        try:
+            subprocess.run(
+                shlex.split(lcov_capture_cmd),
+                check=True,
+                stdout=subprocess.DEVNULL,  # Don't care about the output for now
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to update coverage data: {e}")
+
+    def calibration_save(self):
+        """Save the current coverage data and save"""
+        lcov_capture_cmd = f"lcov --no-external --capture --directory {self.src_dir} --output-file {self.coverage_dir}/base_cal_coverage.info"
         try:
             subprocess.run(
                 shlex.split(lcov_capture_cmd),
@@ -2121,18 +2134,19 @@ class FuzzConfig:
         if hasattr(self, "sim_handle") and self.sim_handle:
             self.sim_handle.terminate()
             logger.info("Simulation terminated.")
-            
+
         # Give some time for cleanup to complete
         time.sleep(1)
         self.coverage_class.update()
-
 
         # Step 3: Call the oracle (only if we have data and not shutting down)
         if not self.fuzzer_shutdown_requested and self.rcou_vals:
             if self.calibration_active:
                 # During calibration, just collect the golden values
                 self.golden_rc_vals.append(self.rcou_vals)
-                logger.debug(f"Collected calibration data: {len(self.rcou_vals)} RC samples")
+                logger.debug(
+                    f"Collected calibration data: {len(self.rcou_vals)} RC samples"
+                )
             else:
                 # During fuzzing, run anomaly detection
                 if not self.min_fuzz_threshold:
@@ -2873,6 +2887,8 @@ if __name__ == "__main__":
             cfg.fuzzer_stats["current_mission_time"] = 0.0
             cfg.fuzzer_stats["simulations_completed"] = 0
             cfg.fuzzer_stats["messages_sent"] = 0
+            cfg.coverage_class.calibration_save()  # Save the current coverage metrics
+            cfg.coverage_class.reset()
         else:
             logger.debug("Calibration values already set, skipping calibration")
 
@@ -2927,6 +2943,7 @@ if __name__ == "__main__":
             )
             pbar.update(1)
             update_tqdm_postfix()
+            cfg.coverage_class.reset()
             # except Exception as e:
             #     tqdm.write(f"Error in main loop: {e}") # Use tqdm.write for errors too
             #     if not cfg.shutdown_requested:
