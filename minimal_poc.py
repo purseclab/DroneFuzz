@@ -1122,6 +1122,18 @@ class CoverageData:
         )
 
 
+def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
+    # Run the script and save the diff image
+    output_filename = os.path.join(output_dir, f"{filename}.png")
+    plot_script = os.path.join(script_dir, "plot_servo_values.py")
+    cmd = f"python3 {plot_script} {fuzz_enum_mode:08d}.BIN {filename:08d}.BIN --rc-log-filter --output {output_filename}"
+    log_dir = os.path.join(output_dir, "logs")
+    try:
+        subprocess.run(shlex.split(cmd), check=True, cwd=log_dir)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to save diff image: {e}")
+
+
 class FuzzConfig:
     def __init__(self, args):
         """Initialize the FuzzConfig object with the provided arguments.
@@ -1156,6 +1168,7 @@ class FuzzConfig:
             if args.peripheral_file
             else self.config.get("peripheral_file")
         )
+
         self.peripheral_mapping = {}
         if self.peripheral_file and os.path.exists(self.peripheral_file):
             with open(self.peripheral_file, "r") as f:
@@ -1181,6 +1194,10 @@ class FuzzConfig:
 
         self.ap_dir = (
             args.ap_dir if args.ap_dir else self.config.get("ap_dir", "/ardupilot")
+        )
+        # Get script directory
+        self.script_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "scripts/"
         )
         # Handle the case where we don't have a SITL binary
         if self.sitl_bin is None:
@@ -1259,10 +1276,13 @@ class FuzzConfig:
         # Calibration settings
         self.calibration_active = False
         self.calibration_mode_list = list(
-            itertools.combinations_with_replacement(
-                self.supported_modes, MAX_MODE_CHANGES
-            )
+            itertools.product(self.supported_modes, repeat=MAX_MODE_CHANGES)
         )
+        logger.debug(f"Printing the calibration mode list {self.calibration_mode_list}")
+        self.enumerated_modes = {
+            t: i for i, t in enumerate(self.calibration_mode_list, start=1)
+        }
+        self.fuzz_enum_mode = 0
         # Counter to check each calibration mode generated above
         self.calibration_modes_ctr = 0
         self.calibration_threshold = None
@@ -1740,6 +1760,7 @@ class FuzzConfig:
                 if self.error_sleep(1):
                     raise InternalError
             self.start_fuzzing()
+            mode_state = []
             mode_ctr = 0
             prev_state = None
             # self.wait_for_condition(lambda: self.tcp_conn.drone_in_air and self.tcp_conn.drone_in_air, timeout=60)
@@ -1755,6 +1776,7 @@ class FuzzConfig:
                 ):  # 2025-05-26T15:41:06-0400: silipwn: To ensure we only change modes couple of times
                     self.tcp_conn.set_mode(mode)
                     logger.debug(f"Changing mode to: {mode}")
+                    mode_state.append(mode)
                     mode_ctr += 1
                     prev_state = mode
                 elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
@@ -1771,6 +1793,11 @@ class FuzzConfig:
                 if self.error_sleep(1):
                     raise InternalError
             self.stop_fuzzing()
+            # Check if we can figure out what StateEnum we are in
+            selected_mode = self.enumerated_modes.get(tuple(mode_state))
+            if not selected_mode:
+                logger.warning("Could not find the selected mode in the enumeration")
+            self.fuzz_enum_mode = selected_mode
             return
         except InternalError:
             logger.error("Warning detected, stopping fuzzing")
@@ -2213,6 +2240,13 @@ class FuzzConfig:
             )
             # Save the coverage data
             self.coverage_class.archive_data(filename=log_content)
+            # Create an image for later analysis
+            save_diff_img(
+                filename=log_content,
+                fuzz_enum_mode=self.fuzz_enum_mode,
+                script_dir=self.script_dir,
+                output_dir=self.fuzzer_temp_dir,
+            )
         else:
             fd, input_file = tempfile.mkstemp(
                 suffix=".txt", prefix="inputs", dir=self.fuzzer_temp_input_dir

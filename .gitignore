@@ -145,7 +145,7 @@ way.txt
 *.wbproj
 *.wbproj
 segv_*out
-/scripts/
+# /scripts/ We use this hehe
 /repl/
 /Rover/scripts/
 /Rover/repl/
