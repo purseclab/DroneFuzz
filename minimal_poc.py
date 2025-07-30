@@ -203,6 +203,11 @@ def flip_float_bit(f, position):
     return bits_to_float(flipped_bits)
 
 
+def gen_int_step(min_val, max_val, increment):
+    """Generate a random int value within a specified increment"""
+    return random.choice(range(int(min_val), int(max_val) + 1, int(increment)))
+
+
 class TCPConn:
     def __init__(self):
         # Python inits
@@ -857,7 +862,9 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                     # Handle range-based params (typically float for MAVLink params)
                     mn_str = param.get("minValue")
                     mx_str = param.get("maxValue")
-                    # inc_str = param.get("increment") # Increment not directly used by random.uniform
+                    inc_str = param.get(
+                        "increment"
+                    )  # Increment not directly used by random.uniform
                     units = param.get("units", "")
 
                     entry["desc"] = desc_text
@@ -867,12 +874,11 @@ def load_xml_messages(file_path: str, filter_list: list) -> list:
                     try:
                         # Params are often floats. Use defaults if min/max are not specified.
                         entry["range_min"] = (
-                            float(mn_str) if mn_str is not None else 0.0
+                            mn_str if mn_str is not None else 0.0
                         )  # Wider default range
-                        entry["range_max"] = (
-                            float(mx_str) if mx_str is not None else 360.0
-                        )
-                        entry["type"] = "param_range_float"
+                        entry["range_max"] = mx_str if mx_str is not None else 360.0
+                        entry["increment"] = inc_str if inc_str is not None else 1.0
+                        entry["type"] = "param_range_auto"
                     except (ValueError, TypeError):
                         logger.warning(
                             f"Could not parse minValue/maxValue for param '{label}' as float. Using default range."
@@ -2379,10 +2385,16 @@ class FuzzConfig:
                 else:  # Value from enum_vals is already a number (e.g. int from type="enum")
                     field_values[field_name] = chosen_enum_value
 
-            elif field_type == "param_range_float":
+            elif field_type == "param_range_auto" or field_type == "param_range_float":
                 min_val = field.get("range_min", -10.0)
                 max_val = field.get("range_max", 10.0)
-                field_values[field_name] = random.uniform(min_val, max_val)
+                increment = field.get("increment", 0.1)
+                if type(min_val) is not float:
+                    field_values[field_name] = gen_int_step(min_val, max_val, increment)
+                else:
+                    field_values[field_name] = random.uniform(
+                        min_val, max_val
+                    )  # TODO: Handle float range properly
 
             elif field_type:  # Fallback for other standard MAVLink types
                 field_values[field_name] = generate_field_value(
@@ -2914,10 +2926,8 @@ if __name__ == "__main__":
         while not cfg.fuzzer_shutdown_requested:
             fuzzing_iterations += 1
             logger.info(f"Starting fuzzing iteration {fuzzing_iterations}")
-            tqdm.write(f"Fuzzing Iteration: {fuzzing_iterations}")
             cfg.run_sim()
 
-            tqdm.write("Waiting for drone GPS lock...")
             while (
                 not cfg.tcp_conn.drone_ready
                 and not cfg.fuzzer_shutdown_requested
