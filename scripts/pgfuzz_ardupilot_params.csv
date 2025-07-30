@@ -1,0 +1,308 @@
+PARAM_NAME,PARAM_VALUE,DESCRIPTION
+ATC_RAT_YAW_FLTT,1,Yaw rate filter parameters
+ATC_RAT_YAW_FLTD,1,Yaw rate filter parameters
+ATC_RAT_YAW_FLTE,1,Yaw rate filter parameters
+EK2_ACC_P_NSE,1,EKF2 accelerometer process noise
+EK2_ALT_M_NSE,10,EKF2 altitude measurement noise
+AHRS_COMP_BETA,0.5,AHRS compass beta parameter
+MNT_ANGMAX_ROL,4500,Mount maximum roll angle (centi-degrees)
+MNT_ANGMAX_PAN,4500,Mount maximum pan angle (centi-degrees)
+MNT_ANGMAX_TIL,4500,Mount maximum tilt angle (centi-degrees)
+ANGLE_MAX,1000000000000000,Maximum angle parameter causes arithmetic exception with large values
+ANGLE_MAX,-1,Maximum angle parameter causes arithmetic exception with negative values
+PSC_ANGLE_MAX,1000000000000000,Position control angle max causes arithmetic exception with large values
+PSC_ANGLE_MAX,-1,Position control angle max causes arithmetic exception with negative values
+LOIT_ANG_MAX,1000000000000000,Loiter angle max causes arithmetic exception with large values
+LOIT_ANG_MAX,-1,Loiter angle max causes arithmetic exception with negative values
+ATC_RATE_R_MAX,1000000000000000,Roll rate max causes arithmetic exception with large values
+ATC_RATE_R_MAX,-1,Roll rate max causes arithmetic exception with negative values
+ATC_RATE_P_MAX,1000000000000000,Pitch rate max causes arithmetic exception with large values
+ATC_RATE_P_MAX,-1,Pitch rate max causes arithmetic exception with negative values
+ATC_RATE_Y_MAX,1000000000000000,Yaw rate max causes arithmetic exception with large values
+ATC_RATE_Y_MAX,-1,Yaw rate max causes arithmetic exception with negative values
+ATC_INPUT_TC,1000000000000000,Input time constant makes drone stuck with big values
+ATC_INPUT_TC,-1,Input time constant makes drone stuck with negative values
+PSC_VELXY_IMAX,1000000000000000,Velocity XY I-term max makes drone unstable with large values
+PSC_VELXY_IMAX,-1,Velocity XY I-term max makes drone unstable with negative values
+LOIT_SPEED,20,Loiter speed makes drone unstable at value 20
+LOIT_SPEED,1000000000000000,Loiter speed makes drone unstable with large values
+LOIT_SPEED,-1,Loiter speed makes drone unstable with negative values
+SIM_GPS_GLITCH_Y,100,GPS glitch Y causes arithmetic exception
+SIM_GPS_GLITCH_Y,1000000000000000,GPS glitch Y causes arithmetic exception with large values
+SIM_GPS_GLITCH_Y,-1,GPS glitch Y causes arithmetic exception with negative values
+SIM_GPS_GLITCH_X,100,GPS glitch X causes arithmetic exception
+SIM_GPS_GLITCH_X,1000000000000000,GPS glitch X causes arithmetic exception with large values
+SIM_GPS_GLITCH_X,-1,GPS glitch X causes arithmetic exception with negative values
+SIM_ADSB_COUNT,1,ADSB count causes arithmetic exception
+SIM_ADSB_COUNT,1000000000000000,ADSB count causes arithmetic exception with large values
+SIM_ADSB_COUNT,-1,ADSB count causes arithmetic exception with negative values
+GND_TEMP,40,Ground temperature parameter
+GND_TEMP,1000000000000000,Ground temperature parameter with large values
+GND_TEMP,-1,Ground temperature parameter with negative values
+GND_ALT_OFFSET,300,Ground altitude offset parameter
+GND_ALT_OFFSET,1000000000000000,Ground altitude offset parameter with large values
+GND_ALT_OFFSET,-1,Ground altitude offset parameter with negative values
+GPS_POS1_Z,2.474742,GPS position Z offset
+GPS_POS1_Z,1000000000000000,GPS position Z offset with large values
+GPS_POS1_Z,-1,GPS position Z offset with negative values
+ATC_RAT_RLL_FF,0.432304,Roll rate feed forward
+ATC_RAT_RLL_FF,1000000000000000,Roll rate feed forward with large values
+ATC_RAT_RLL_FF,-1,Roll rate feed forward with negative values
+ATC_RATE_R_MAX,11,Roll rate maximum for flip mode failure
+FS_THR_VALUE,995,Failsafe throttle value causes false PreArm error
+FS_THR_VALUE,1000000000000000,Failsafe throttle value with large values
+FS_THR_VALUE,-1,Failsafe throttle value with negative values
+AHRS_TRIM_Z,1000000000000000,AHRS trim Z causes arithmetic exception with big values
+AHRS_TRIM_Z,-1,AHRS trim Z causes arithmetic exception with negative values
+BATT_AMP_OFFSET,1000000000000000,Battery amp offset causes arithmetic exception with big values
+BATT_AMP_OFFSET,-1,Battery amp offset causes arithmetic exception with negative values
+BATT_AMP_PERVLT,1000000000000000,Battery amp per volt causes arithmetic exception with big values
+BATT_AMP_PERVLT,-1,Battery amp per volt causes arithmetic exception with negative values
+BATT_VOLT_MULT,1000000000000000,Battery voltage multiplier causes arithmetic exception with big values
+BATT_VOLT_MULT,-1,Battery voltage multiplier causes arithmetic exception with negative values
+COMPASS_DIA2_Z,1000000000000000,Compass diameter 2 Z causes arithmetic exception with big values
+COMPASS_DIA2_Z,-1,Compass diameter 2 Z causes arithmetic exception with negative values
+COMPASS_DIA3_Z,1000000000000000,Compass diameter 3 Z causes arithmetic exception with big values
+COMPASS_DIA3_Z,-1,Compass diameter 3 Z causes arithmetic exception with negative values
+COMPASS_DIA_X,1000000000000000,Compass diameter X no valid range checking after takeoff
+COMPASS_DIA_X,-1,Compass diameter X no valid range checking after takeoff with negative values
+COMPASS_DIA_Y,1000000000000000,Compass diameter Y no valid range checking after takeoff
+COMPASS_DIA_Y,-1,Compass diameter Y no valid range checking after takeoff with negative values
+COMPASS_DIA_Z,1000000000000000,Compass diameter Z no valid range checking after takeoff
+COMPASS_DIA_Z,-1,Compass diameter Z no valid range checking after takeoff with negative values
+COMPASS_DIA2_X,1000000000000000,Compass diameter 2 X no valid range checking after takeoff
+COMPASS_DIA2_X,-1,Compass diameter 2 X no valid range checking after takeoff with negative values
+COMPASS_DIA2_Y,1000000000000000,Compass diameter 2 Y no valid range checking after takeoff
+COMPASS_DIA2_Y,-1,Compass diameter 2 Y no valid range checking after takeoff with negative values
+COMPASS_DIA3_X,1000000000000000,Compass diameter 3 X no valid range checking after takeoff
+COMPASS_DIA3_X,-1,Compass diameter 3 X no valid range checking after takeoff with negative values
+COMPASS_DIA3_Y,1000000000000000,Compass diameter 3 Y no valid range checking after takeoff
+COMPASS_DIA3_Y,-1,Compass diameter 3 Y no valid range checking after takeoff with negative values
+COMPASS_ODI2_X,1000000000000000,Compass ODI 2 X no valid range checking after takeoff
+COMPASS_ODI2_X,-1,Compass ODI 2 X no valid range checking after takeoff with negative values
+COMPASS_ODI2_Y,1000000000000000,Compass ODI 2 Y no valid range checking after takeoff
+COMPASS_ODI2_Y,-1,Compass ODI 2 Y no valid range checking after takeoff with negative values
+COMPASS_ODI2_Z,1000000000000000,Compass ODI 2 Z no valid range checking after takeoff
+COMPASS_ODI2_Z,-1,Compass ODI 2 Z no valid range checking after takeoff with negative values
+COMPASS_ODI3_X,1000000000000000,Compass ODI 3 X no valid range checking after takeoff
+COMPASS_ODI3_X,-1,Compass ODI 3 X no valid range checking after takeoff with negative values
+COMPASS_ODI3_Y,1000000000000000,Compass ODI 3 Y no valid range checking after takeoff
+COMPASS_ODI3_Y,-1,Compass ODI 3 Y no valid range checking after takeoff with negative values
+COMPASS_ODI3_Z,1000000000000000,Compass ODI 3 Z no valid range checking after takeoff
+COMPASS_ODI3_Z,-1,Compass ODI 3 Z no valid range checking after takeoff with negative values
+COMPASS_ODI_X,1000000000000000,Compass ODI X no valid range checking after takeoff
+COMPASS_ODI_X,-1,Compass ODI X no valid range checking after takeoff with negative values
+COMPASS_ODI_Y,1000000000000000,Compass ODI Y no valid range checking after takeoff
+COMPASS_ODI_Y,-1,Compass ODI Y no valid range checking after takeoff with negative values
+COMPASS_ODI_Z,1000000000000000,Compass ODI Z no valid range checking after takeoff
+COMPASS_ODI_Z,-1,Compass ODI Z no valid range checking after takeoff with negative values
+GPS_POS1_X,1000000000000000,GPS position 1 X no valid range checking after takeoff
+GPS_POS1_X,-1,GPS position 1 X no valid range checking after takeoff with negative values
+GPS_POS1_Y,1000000000000000,GPS position 1 Y no valid range checking after takeoff
+GPS_POS1_Y,-1,GPS position 1 Y no valid range checking after takeoff with negative values
+INS_ACC2OFFS_X,1000000000000000,INS accelerometer 2 offset X no valid range checking after takeoff
+INS_ACC2OFFS_X,-1,INS accelerometer 2 offset X no valid range checking after takeoff with negative values
+INS_ACC2OFFS_Y,1000000000000000,INS accelerometer 2 offset Y no valid range checking after takeoff
+INS_ACC2OFFS_Y,-1,INS accelerometer 2 offset Y no valid range checking after takeoff with negative values
+INS_ACC2SCAL_X,1000000000000000,INS accelerometer 2 scale X no valid range checking after takeoff
+INS_ACC2SCAL_X,-1,INS accelerometer 2 scale X no valid range checking after takeoff with negative values
+INS_ACC2SCAL_Y,1000000000000000,INS accelerometer 2 scale Y no valid range checking after takeoff
+INS_ACC2SCAL_Y,-1,INS accelerometer 2 scale Y no valid range checking after takeoff with negative values
+INS_ACCOFFS_X,1000000000000000,INS accelerometer offset X no valid range checking after takeoff
+INS_ACCOFFS_X,-1,INS accelerometer offset X no valid range checking after takeoff with negative values
+INS_ACCOFFS_Y,1000000000000000,INS accelerometer offset Y no valid range checking after takeoff
+INS_ACCOFFS_Y,-1,INS accelerometer offset Y no valid range checking after takeoff with negative values
+INS_ACCOFFS_Z,1000000000000000,INS accelerometer offset Z no valid range checking after takeoff
+INS_ACCOFFS_Z,-1,INS accelerometer offset Z no valid range checking after takeoff with negative values
+INS_ACCSCAL_Z,1000000000000000,INS accelerometer scale Z no valid range checking after takeoff
+INS_ACCSCAL_Z,-1,INS accelerometer scale Z no valid range checking after takeoff with negative values
+INS_GYR2OFFS_X,1000000000000000,INS gyroscope 2 offset X no valid range checking after takeoff
+INS_GYR2OFFS_X,-1,INS gyroscope 2 offset X no valid range checking after takeoff with negative values
+INS_GYR2OFFS_Y,1000000000000000,INS gyroscope 2 offset Y no valid range checking after takeoff
+INS_GYR2OFFS_Y,-1,INS gyroscope 2 offset Y no valid range checking after takeoff with negative values
+INS_GYR2OFFS_Z,1000000000000000,INS gyroscope 2 offset Z no valid range checking after takeoff
+INS_GYR2OFFS_Z,-1,INS gyroscope 2 offset Z no valid range checking after takeoff with negative values
+INS_GYROFFS_X,1000000000000000,INS gyroscope offset X no valid range checking after takeoff
+INS_GYROFFS_X,-1,INS gyroscope offset X no valid range checking after takeoff with negative values
+INS_GYROFFS_Y,1000000000000000,INS gyroscope offset Y no valid range checking after takeoff
+INS_GYROFFS_Y,-1,INS gyroscope offset Y no valid range checking after takeoff with negative values
+INS_GYROFFS_Z,1000000000000000,INS gyroscope offset Z no valid range checking after takeoff
+INS_GYROFFS_Z,-1,INS gyroscope offset Z no valid range checking after takeoff with negative values
+INS_POS1_X,1000000000000000,INS position 1 X no valid range checking after takeoff
+INS_POS1_X,-1,INS position 1 X no valid range checking after takeoff with negative values
+INS_POS1_Y,1000000000000000,INS position 1 Y no valid range checking after takeoff
+INS_POS1_Y,-1,INS position 1 Y no valid range checking after takeoff with negative values
+INS_POS1_Z,1000000000000000,INS position 1 Z no valid range checking after takeoff
+INS_POS1_Z,-1,INS position 1 Z no valid range checking after takeoff with negative values
+RC3_MAX,1000000000000000,RC channel 3 maximum no valid range checking after takeoff
+RC3_MAX,-1,RC channel 3 maximum no valid range checking after takeoff with negative values
+RC3_MIN,1000000000000000,RC channel 3 minimum no valid range checking after takeoff
+RC3_MIN,-1,RC channel 3 minimum no valid range checking after takeoff with negative values
+SIM_GP2_GLITCH_X,99,GPS 2 glitch X causes arithmetic exception
+SIM_GP2_GLITCH_X,1000000000000000,GPS 2 glitch X causes arithmetic exception with large values
+SIM_GP2_GLITCH_X,-1,GPS 2 glitch X causes arithmetic exception with negative values
+SIM_GP2_GLITCH_Y,99,GPS 2 glitch Y causes arithmetic exception
+SIM_GP2_GLITCH_Y,1000000000000000,GPS 2 glitch Y causes arithmetic exception with large values
+SIM_GP2_GLITCH_Y,-1,GPS 2 glitch Y causes arithmetic exception with negative values
+SIM_GPS_DELAY,-10,GPS delay causes arithmetic exception with negative values
+SIM_GPS_DELAY,1000000000000000,GPS delay causes arithmetic exception with large values
+SIM_GPS_HZ,0,GPS frequency causes arithmetic exception with zero value
+SIM_GPS_HZ,1000000000000000,GPS frequency causes arithmetic exception with large values
+SIM_GPS_HZ,-1,GPS frequency causes arithmetic exception with negative values
+ATC_RAT_RLL_P,0.01,Roll rate P-term crash in flip mode
+ATC_RAT_RLL_P,1000000000000000,Roll rate P-term crash in flip mode with large values
+ATC_RAT_RLL_P,-1,Roll rate P-term crash in flip mode with negative values
+ATC_RAT_RLL_I,0.02,Roll rate I-term crash in flip mode
+ATC_RAT_RLL_I,1000000000000000,Roll rate I-term crash in flip mode with large values
+ATC_RAT_RLL_I,-1,Roll rate I-term crash in flip mode with negative values
+FS_EKF_ACTION,2,EKF failsafe action primary altitude sensor GPS
+FS_EKF_ACTION,1000000000000000,EKF failsafe action with large values
+FS_EKF_ACTION,-1,EKF failsafe action with negative values
+EK2_ALT_SOURCE,2,EKF2 altitude source parameter
+EK2_ALT_SOURCE,1000000000000000,EKF2 altitude source parameter with large values
+EK2_ALT_SOURCE,-1,EKF2 altitude source parameter with negative values
+SIM_GPS_DISABLE,1,GPS disable simulation parameter
+SIM_GPS_DISABLE,1000000000000000,GPS disable simulation parameter with large values
+SIM_GPS_DISABLE,-1,GPS disable simulation parameter with negative values
+GND_ABS_PRESS,0.000001,Ground absolute pressure causes arithmetic exception
+GND_ABS_PRESS,1000000000000000,Ground absolute pressure causes arithmetic exception with large values
+GND_ABS_PRESS,-1,Ground absolute pressure causes arithmetic exception with negative values
+PSC_POSXY_P,0.000000000001,Position controller XY P-term causes arithmetic exception
+PSC_POSXY_P,1000000000000000,Position controller XY P-term causes arithmetic exception with large values
+PSC_POSXY_P,-1,Position controller XY P-term causes arithmetic exception with negative values
+RC3_DZ,0,RC channel 3 deadzone causes arithmetic exception when combined with RC3_MAX/MIN at 0
+RC3_DZ,1000000000000000,RC channel 3 deadzone causes arithmetic exception with large values
+RC3_DZ,-1,RC channel 3 deadzone causes arithmetic exception with negative values
+SCHED_LOOP_RATE,1000000000000000,Scheduler loop rate causes arithmetic exception with big values
+SCHED_LOOP_RATE,-1,Scheduler loop rate causes arithmetic exception with negative values
+SERIAL0_BAUD,1000000000000000,Serial 0 baud rate causes arithmetic exception with big values
+SERIAL0_BAUD,-1,Serial 0 baud rate causes arithmetic exception with negative values
+SERIAL1_BAUD,1000000000000000,Serial 1 baud rate causes arithmetic exception with big values
+SERIAL1_BAUD,-1,Serial 1 baud rate causes arithmetic exception with negative values
+SERIAL2_BAUD,1000000000000000,Serial 2 baud rate causes arithmetic exception with big values
+SERIAL2_BAUD,-1,Serial 2 baud rate causes arithmetic exception with negative values
+SERIAL3_BAUD,1000000000000000,Serial 3 baud rate causes arithmetic exception with big values
+SERIAL3_BAUD,-1,Serial 3 baud rate causes arithmetic exception with negative values
+SERIAL4_BAUD,1000000000000000,Serial 4 baud rate causes arithmetic exception with big values
+SERIAL4_BAUD,-1,Serial 4 baud rate causes arithmetic exception with negative values
+SERIAL5_BAUD,1000000000000000,Serial 5 baud rate causes arithmetic exception with big values
+SERIAL5_BAUD,-1,Serial 5 baud rate causes arithmetic exception with negative values
+SERIAL6_BAUD,1000000000000000,Serial 6 baud rate causes arithmetic exception with big values
+SERIAL6_BAUD,-1,Serial 6 baud rate causes arithmetic exception with negative values
+SERIAL7_BAUD,1000000000000000,Serial 7 baud rate causes arithmetic exception with big values
+SERIAL7_BAUD,-1,Serial 7 baud rate causes arithmetic exception with negative values
+STAT_FLTTIME,1000000000000000,Statistics flight time causes arithmetic exception with big values
+STAT_FLTTIME,-1,Statistics flight time causes arithmetic exception with negative values
+ARMING_MIS_ITEMS,1000000000000000,Arming mission items causes arithmetic exception with big values
+ARMING_MIS_ITEMS,-1,Arming mission items causes arithmetic exception with negative values
+TELEM_DELAY,1000000000000000,Telemetry delay causes arithmetic exception with big values
+TELEM_DELAY,-1,Telemetry delay causes arithmetic exception with negative values
+LOG_BITMASK,1000000000000000,Log bitmask causes arithmetic exception with big values
+LOG_BITMASK,-1,Log bitmask causes arithmetic exception with negative values
+DEV_OPTIONS,1000000000000000,Developer options causes arithmetic exception with big values
+DEV_OPTIONS,-1,Developer options causes arithmetic exception with negative values
+RTL_LOIT_TIME,1000000000000000,RTL loiter time causes arithmetic exception with big values
+RTL_LOIT_TIME,-1,RTL loiter time causes arithmetic exception with negative values
+STAT_RUNTIME,1000000000000000,Statistics runtime causes arithmetic exception with big values
+STAT_RUNTIME,-1,Statistics runtime causes arithmetic exception with negative values
+STAT_RESET,1000000000000000,Statistics reset causes arithmetic exception with big values
+STAT_RESET,-1,Statistics reset causes arithmetic exception with negative values
+GND_PROBE_EXT,1000000000000000,Ground probe extension causes arithmetic exception with big values
+GND_PROBE_EXT,-1,Ground probe extension causes arithmetic exception with negative values
+ARMING_CHECK,1000000000000000,Arming check causes arithmetic exception with big values
+ARMING_CHECK,-1,Arming check causes arithmetic exception with negative values
+FS_OPTIONS,1000000000000000,Failsafe options causes arithmetic exception with big values
+FS_OPTIONS,-1,Failsafe options causes arithmetic exception with negative values
+INS_ACCSCAL_X,1000000000000000,INS accelerometer scale X causes arithmetic exception with big values
+INS_ACCSCAL_X,-1,INS accelerometer scale X causes arithmetic exception with negative values
+INS_ACCSCAL_Y,1000000000000000,INS accelerometer scale Y causes arithmetic exception with big values
+INS_ACCSCAL_Y,-1,INS accelerometer scale Y causes arithmetic exception with negative values
+COMPASS_EXP_DID,1000000000000000,Compass expected device ID causes arithmetic exception with big values
+COMPASS_EXP_DID,-1,Compass expected device ID causes arithmetic exception with negative values
+COMPASS_EXP_DID2,1000000000000000,Compass expected device ID 2 causes arithmetic exception with big values
+COMPASS_EXP_DID2,-1,Compass expected device ID 2 causes arithmetic exception with negative values
+COMPASS_EXP_DID3,1000000000000000,Compass expected device ID 3 causes arithmetic exception with big values
+COMPASS_EXP_DID3,-1,Compass expected device ID 3 causes arithmetic exception with negative values
+INS_POS2_X,1000000000000000,INS position 2 X causes arithmetic exception with big values
+INS_POS2_X,-1,INS position 2 X causes arithmetic exception with negative values
+INS_POS2_Y,1000000000000000,INS position 2 Y causes arithmetic exception with big values
+INS_POS2_Y,-1,INS position 2 Y causes arithmetic exception with negative values
+INS_POS2_Z,1000000000000000,INS position 2 Z causes arithmetic exception with big values
+INS_POS2_Z,-1,INS position 2 Z causes arithmetic exception with negative values
+COMPASS_DEV_ID2,1000000000000000,Compass device ID 2 causes arithmetic exception with big values
+COMPASS_DEV_ID2,-1,Compass device ID 2 causes arithmetic exception with negative values
+COMPASS_OFS3_X,1000000000000000,Compass offset 3 X causes arithmetic exception with big values
+COMPASS_OFS3_X,-1,Compass offset 3 X causes arithmetic exception with negative values
+COMPASS_OFS3_Y,1000000000000000,Compass offset 3 Y causes arithmetic exception with big values
+COMPASS_OFS3_Y,-1,Compass offset 3 Y causes arithmetic exception with negative values
+COMPASS_OFS3_Z,1000000000000000,Compass offset 3 Z causes arithmetic exception with big values
+COMPASS_OFS3_Z,-1,Compass offset 3 Z causes arithmetic exception with negative values
+COMPASS_OFS_X,1000000000000000,Compass offset X causes arithmetic exception with big values
+COMPASS_OFS_X,-1,Compass offset X causes arithmetic exception with negative values
+COMPASS_OFS_Y,1000000000000000,Compass offset Y causes arithmetic exception with big values
+COMPASS_OFS_Y,-1,Compass offset Y causes arithmetic exception with negative values
+COMPASS_OFS_Z,1000000000000000,Compass offset Z causes arithmetic exception with big values
+COMPASS_OFS_Z,-1,Compass offset Z causes arithmetic exception with negative values
+COMPASS_OFS2_X,1000000000000000,Compass offset 2 X causes arithmetic exception with big values
+COMPASS_OFS2_X,-1,Compass offset 2 X causes arithmetic exception with negative values
+COMPASS_OFS2_Y,1000000000000000,Compass offset 2 Y causes arithmetic exception with big values
+COMPASS_OFS2_Y,-1,Compass offset 2 Y causes arithmetic exception with negative values
+COMPASS_OFS2_Z,1000000000000000,Compass offset 2 Z causes arithmetic exception with big values
+COMPASS_OFS2_Z,-1,Compass offset 2 Z causes arithmetic exception with negative values
+BRD_OPTIONS,1000000000000000,Board options causes arithmetic exception with big values
+BRD_OPTIONS,-1,Board options causes arithmetic exception with negative values
+AHRS_TRIM_X,1000000000000000,AHRS trim X causes arithmetic exception with big values
+AHRS_TRIM_X,-1,AHRS trim X causes arithmetic exception with negative values
+AHRS_TRIM_Y,1000000000000000,AHRS trim Y causes arithmetic exception with big values
+AHRS_TRIM_Y,-1,AHRS trim Y causes arithmetic exception with negative values
+COMPASS_TYPEMASK,1000000000000000,Compass type mask causes arithmetic exception with big values
+COMPASS_TYPEMASK,-1,Compass type mask causes arithmetic exception with negative values
+INS_ACC2SCAL_Z,1000000000000000,INS accelerometer 2 scale Z causes arithmetic exception with big values
+INS_ACC2SCAL_Z,-1,INS accelerometer 2 scale Z causes arithmetic exception with negative values
+INS_ACC2OFFS_Z,1000000000000000,INS accelerometer 2 offset Z causes arithmetic exception with big values
+INS_ACC2OFFS_Z,-1,INS accelerometer 2 offset Z causes arithmetic exception with negative values
+SERVO_ROB_POSMIN,1000000000000000,Servo Robotis position minimum causes arithmetic exception with big values
+SERVO_ROB_POSMIN,-1,Servo Robotis position minimum causes arithmetic exception with negative values
+BATT_CAPACITY,1000000000000000,Battery capacity causes arithmetic exception with big values
+BATT_CAPACITY,-1,Battery capacity causes arithmetic exception with negative values
+RC_OPTIONS,1000000000000000,RC options causes arithmetic exception with big values
+RC_OPTIONS,-1,RC options causes arithmetic exception with negative values
+INS_ACC_ID,1000000000000000,INS accelerometer ID causes arithmetic exception with big values
+INS_ACC_ID,-1,INS accelerometer ID causes arithmetic exception with negative values
+INS_ACC2_ID,1000000000000000,INS accelerometer 2 ID causes arithmetic exception with big values
+INS_ACC2_ID,-1,INS accelerometer 2 ID causes arithmetic exception with negative values
+BATT_ARM_MAH,1000000000000000,Battery arming mAh causes arithmetic exception with big values
+BATT_ARM_MAH,-1,Battery arming mAh causes arithmetic exception with negative values
+SERVO_VOLZ_MASK,1000000000000000,Servo Volz mask causes arithmetic exception with big values
+SERVO_VOLZ_MASK,-1,Servo Volz mask causes arithmetic exception with negative values
+INS_GYR_ID,1000000000000000,INS gyroscope ID causes arithmetic exception with big values
+INS_GYR_ID,-1,INS gyroscope ID causes arithmetic exception with negative values
+BATT_SERIAL_NUM,1000000000000000,Battery serial number causes arithmetic exception with big values
+BATT_SERIAL_NUM,-1,Battery serial number causes arithmetic exception with negative values
+SERVO_ROB_POSMAX,1000000000000000,Servo Robotis position maximum causes arithmetic exception with big values
+SERVO_ROB_POSMAX,-1,Servo Robotis position maximum causes arithmetic exception with negative values
+PSC_POSZ_P,1000000000000000,Position controller Z P-term only checked before arming
+PSC_POSZ_P,-1,Position controller Z P-term only checked before arming with negative values
+PSC_ACCZ_P,1000000000000000,Acceleration controller Z P-term only checked before arming
+PSC_ACCZ_P,-1,Acceleration controller Z P-term only checked before arming with negative values
+PSC_VELZ_P,1000000000000000,Velocity controller Z P-term only checked before arming
+PSC_VELZ_P,-1,Velocity controller Z P-term only checked before arming with negative values
+PSC_ACCZ_I,1000000000000000,Acceleration controller Z I-term only checked before arming
+PSC_ACCZ_I,-1,Acceleration controller Z I-term only checked before arming with negative values
+SIM_ACC_FAIL_MSK,81,Accelerometer failure mask causes arithmetic exception
+SIM_ACC_FAIL_MSK,1000000000000000,Accelerometer failure mask causes arithmetic exception with large values
+SIM_ACC_FAIL_MSK,-1,Accelerometer failure mask causes arithmetic exception with negative values
+SIM_BARO_COUNT,87,Barometer count causes arithmetic exception
+SIM_BARO_COUNT,1000000000000000,Barometer count causes arithmetic exception with large values
+SIM_BARO_COUNT,-1,Barometer count causes arithmetic exception with negative values
+SIM_GYR_FAIL_MSK,90,Gyroscope failure mask causes arithmetic exception
+SIM_GYR_FAIL_MSK,1000000000000000,Gyroscope failure mask causes arithmetic exception with large values
+SIM_GYR_FAIL_MSK,-1,Gyroscope failure mask causes arithmetic exception with negative values
+SIM_OPOS_LNG,1000000000000000,Optical position longitude causes arithmetic exception with big values
+SIM_OPOS_LNG,-1,Optical position longitude causes arithmetic exception with negative values
+SIM_WIND_T_ALT,1000000000000000,Wind turbulence altitude causes arithmetic exception with big values
+SIM_WIND_T_ALT,-1,Wind turbulence altitude causes arithmetic exception with negative values
+SIM_SONAR_SCALE,0,Sonar scale causes arithmetic exception with zero value
+SIM_SONAR_SCALE,1000000000000000,Sonar scale causes arithmetic exception with large values
+SIM_SONAR_SCALE,-1,Sonar scale causes arithmetic exception with negative values
+SIM_TEMP_BFACTOR,93,Temperature B-factor causes arithmetic exception
