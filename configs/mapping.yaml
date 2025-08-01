@@ -151,7 +151,7 @@ sensors:
       - VISION_POSITION_ESTIMATE
       - VISION_SPEED_ESTIMATE
     frequency: [30]
-    default_msg: [time, [0,0,0,0], 0, 0, 0]
+    default_msg: [time, [0,0,0,0], 0, 0, 0,[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]]
 
   EFI:
     parameters:
