@@ -1514,6 +1514,9 @@ class FuzzConfig:
 
         # Also if we have a parameter file, create a temporary one and send it to the simulator
         if self.peripheral_config.get("parameters"):
+            # Need to add additional parameters for plane to land
+            if self.vehicle == "plane":
+                self.peripheral_config["parameters"].update({"RTL_AUTOLAND": 1})
             self.fuzzer_param_file = tempfile.mkstemp(".parm", "dronefuzz", "/tmp")[1]
             with open(self.fuzzer_param_file, "w") as f:
                 for parameter, values in self.peripheral_config["parameters"].items():
