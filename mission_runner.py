@@ -6,6 +6,8 @@ import yaml
 import os
 import threading
 import ast
+import subprocess
+import shlex
 from pymavlink import mavutil, mavwp
 
 # Setup logging
@@ -144,12 +146,30 @@ class TCPConn:
     def random_param_set(self):
         # This is a placeholder for setting random parameters
         logger.debug("Setting a random parameter.")
-        self.set_param("FS_GCS_ENABL", random.randint(0,1))
 
     def error_sleep(self, duration):
         # This is a placeholder
         time.sleep(duration)
         return False # No error
+
+    def reboot_and_wait_for_ack(self):
+        """Reboots the vehicle and waits for it to be ready."""
+        self.conn.mav.command_long_send(
+            self.conn.target_system,
+            self.conn.target_component,
+            mavutil.mavlink.MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN,
+            0, 1, 0, 0, 0, 0, 0, 0)
+        logger.info("Reboot command sent. Waiting for vehicle to reconnect...")
+        self.conn.close()
+        time.sleep(5) # Wait for SITL to restart
+        self.__init__() # Re-initialize connection
+        self.conn.wait_heartbeat()
+        logger.info("Vehicle reconnected.")
+
+    def cleanup(self, shutdown=True):
+        if shutdown:
+            self.conn.close()
+            logger.info("Connection closed.")
 
 
 def send_sensor_messages(tcp_conn, sensor_messages):
@@ -181,7 +201,50 @@ def send_sensor_messages(tcp_conn, sensor_messages):
 
 def run_mission(args):
     """Connects, uploads mission, and runs the main loop."""
-    tcp_conn = TCPConn()
+    config = None
+    if args.config:
+        with open(args.config, 'r') as f:
+            config = yaml.safe_load(f)
+    
+    # Start the mission
+    logger.info("Starting the mission")
+    
+    # Start the simulation with subprocess
+    sitl_bin = os.path.join(args.ap_dir, 'build', 'sitl', 'bin', 'ardupilot')
+    home_location = " --home -35.362938,149.165085,585,354 "
+    sitl_args = ""
+    if args.vehicle == "copter":
+        sitl_args = " -S --model + -w --speedup 1 -I0"
+    elif args.vehicle == "plane":
+        sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
+    elif args.vehicle == "rover":
+        sitl_args = " -S --model rover -w --speedup 1 -I0"
+    
+    sitl_cmd_str = sitl_bin + home_location + sitl_args
+    if args.param_file:
+        sitl_cmd_str += " --defaults " + args.param_file
+
+    logger.info(f"Starting SITL with command: {sitl_cmd_str}")
+    
+    sim_handle = subprocess.Popen(
+        shlex.split(sitl_cmd_str),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=os.setsid
+    )
+    
+    time.sleep(5) # Give some time for SITL to initialize
+
+    try:
+        init_conn = TCPConn()
+        init_conn.reboot_and_wait_for_ack()
+        init_conn.cleanup(shutdown=False)
+        
+        tcp_conn = TCPConn()
+    except Exception as e:
+        logger.error(f"Error starting simulation or connecting: {e}")
+        sim_handle.terminate()
+        return
 
     sensor_thread = None
     if args.sensor_file:
@@ -203,12 +266,9 @@ def run_mission(args):
         else:
             logger.error(f"Sensor file not found: {args.sensor_file}")
 
-    if args.config:
-        with open(args.config, 'r') as f:
-            config = yaml.safe_load(f)
-            if 'supported_modes' in config:
-                tcp_conn.supported_modes = config['supported_modes']
-            logger.info(f"Loaded modes from config: {tcp_conn.supported_modes}")
+    if config and 'supported_modes' in config:
+        tcp_conn.supported_modes = config['supported_modes']
+    logger.info(f"Loaded modes from config: {tcp_conn.supported_modes}")
 
     if args.mission_file:
         tcp_conn.upload_mission(args.mission_file)
@@ -272,6 +332,10 @@ def run_mission(args):
         logger.error(f"An error occurred: {e}")
     finally:
         logger.info("Cleaning up.")
+        if 'sim_handle' in locals() and sim_handle.poll() is None:
+            os.killpg(os.getpgid(sim_handle.pid), 15) # signal.SIGTERM
+            sim_handle.wait()
+            logger.info("Simulation terminated.")
 
 
 if __name__ == "__main__":
