@@ -110,6 +110,23 @@ class TCPConn:
             logger.info(f"Sending waypoint {msg.seq}")
         logger.info("Mission uploaded")
 
+    def send_custom_message(self, msg_name, field_values):
+        """Sends a MAVLink message with the given field values."""
+        try:
+            # The message name needs to be in the format MAVLink_{message_name}_message
+            message_constructor = getattr(mavutil.mavlink, f"MAVLink_{msg_name.lower()}_message")
+            
+            # Create the message with the provided values
+            # Note: This assumes field_values keys match the message constructor's arguments
+            msg = message_constructor(**field_values)
+            
+            self.conn.mav.send(msg)
+            logger.debug(f"Sent message: {msg_name} with values {field_values}")
+        except AttributeError:
+            logger.error(f"Could not find a MAVLink message constructor for '{msg_name}'")
+        except Exception as e:
+            logger.error(f"Error sending custom message {msg_name}: {e}")
+
     def wait_for_condition(self, condition, timeout=60):
         start_time = time.time()
         while time.time() - start_time < timeout:
@@ -134,9 +151,46 @@ class TCPConn:
         return False # No error
 
 
+def send_sensor_messages(tcp_conn, sensor_messages):
+    """Sends sensor messages based on their timestamps."""
+    logger.info("Starting to send sensor messages from file.")
+    # Sort messages by timestamp
+    sorted_messages = sorted(sensor_messages, key=lambda x: x[0])
+    
+    if not sorted_messages:
+        logger.warning("Sensor file is empty, no messages to send.")
+        return
+
+    start_time = time.time()
+    last_msg_timestamp = 0
+
+    for msg_data in sorted_messages:
+        timestamp, msg_name, _, values = msg_data
+        
+        # Calculate delay from the last message
+        delay = timestamp - last_msg_timestamp
+        if delay > 0:
+            time.sleep(delay)
+        
+        tcp_conn.send_custom_message(msg_name, values)
+        last_msg_timestamp = timestamp
+    
+    logger.info("Finished sending all sensor messages from file.")
+
+
 def run_mission(args):
     """Connects, uploads mission, and runs the main loop."""
     tcp_conn = TCPConn()
+
+    sensor_thread = None
+    if args.sensor_file:
+        if os.path.exists(args.sensor_file):
+            with open(args.sensor_file, 'r') as f:
+                sensor_messages = yaml.safe_load(f)
+            sensor_thread = threading.Thread(target=send_sensor_messages, args=(tcp_conn, sensor_messages), daemon=True)
+            sensor_thread.start()
+        else:
+            logger.error(f"Sensor file not found: {args.sensor_file}")
 
     if args.config:
         with open(args.config, 'r') as f:
@@ -213,6 +267,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a drone mission with mode changes.")
     parser.add_argument("--mission_file", type=str, help="Path to the mission file.")
     parser.add_argument("--config", type=str, help="Path to a YAML config file for supported modes.")
+    parser.add_argument("--sensor_file", type=str, help="Path to a YAML file with sensor messages to send.")
     parser.add_argument("--max_mode_changes", type=int, default=3, help="Maximum number of random mode changes.")
     parser.add_argument("--fixed_modes", nargs='+', help="A fixed list of modes to execute in sequence.")
     args = parser.parse_args()
