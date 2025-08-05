@@ -5,6 +5,7 @@ import time
 import yaml
 import os
 import threading
+import ast
 from pymavlink import mavutil, mavwp
 
 # Setup logging
@@ -185,10 +186,20 @@ def run_mission(args):
     sensor_thread = None
     if args.sensor_file:
         if os.path.exists(args.sensor_file):
+            sensor_messages = []
             with open(args.sensor_file, 'r') as f:
-                sensor_messages = yaml.safe_load(f)
-            sensor_thread = threading.Thread(target=send_sensor_messages, args=(tcp_conn, sensor_messages), daemon=True)
-            sensor_thread.start()
+                for line in f:
+                    try:
+                        # Assuming each line is a list literal
+                        sensor_messages.append(ast.literal_eval(line.strip()))
+                    except (ValueError, SyntaxError) as e:
+                        logger.error(f"Could not parse line in sensor file: {line.strip()} - {e}")
+            
+            if sensor_messages:
+                sensor_thread = threading.Thread(target=send_sensor_messages, args=(tcp_conn, sensor_messages), daemon=True)
+                sensor_thread.start()
+            else:
+                logger.warning("Sensor file was empty or contained no valid messages.")
         else:
             logger.error(f"Sensor file not found: {args.sensor_file}")
 
