@@ -48,9 +48,25 @@ import threading
 class InternalError(Exception):
     pass
 
+mavlink_timeout = 5
+approx_threshold = 0.00005  # Threshold for approximate location matching
+altitude_threshold = 0.1  # Threshold for altitude matching
+logger = None
+PREARM_CHECK = 0x10000000
+EKF_POS_HORIZ = 0x8
+EKF_POS_VERT = 0x10
+MAX_MODE_CHANGES = 3
+
+# Global error queue
+error_queue = Queue()
+
+RANDOM_SEED = 42  # For reproducibility
+
+# Supported models
+detection_models = ["dtw", "lstm"]
 
 # Setup logging
-def setup_logging(file_dir=None):
+def setup_logging(name="dronefuzz",file_dir=None):
     """Setup logging with timestamp in filename"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"dronefuzz_{timestamp}.log"
@@ -58,7 +74,7 @@ def setup_logging(file_dir=None):
         log_filename = os.path.join(file_dir, log_filename)
 
     # Create logger
-    logger = logging.getLogger("dronefuzz")
+    logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
 
@@ -88,25 +104,6 @@ def setup_logging(file_dir=None):
 
     print(f"Logging initialized. Log file: {log_filename}")
     return logger
-
-
-# Initialize logger
-
-mavlink_timeout = 5
-approx_threshold = 0.00005  # Threshold for approximate location matching
-altitude_threshold = 0.1  # Threshold for altitude matching
-PREARM_CHECK = 0x10000000
-EKF_POS_HORIZ = 0x8
-EKF_POS_VERT = 0x10
-MAX_MODE_CHANGES = 3
-
-# Global error queue
-error_queue = Queue()
-
-RANDOM_SEED = 42  # For reproducibility
-
-# Supported models
-detection_models = ["dtw", "lstm"]
 
 
 class LSTMAE(nn.Module):
@@ -1135,7 +1132,7 @@ def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
 
 
 class FuzzConfig:
-    def __init__(self, args):
+    def __init__(self, args, logger_instance):
         """Initialize the FuzzConfig object with the provided arguments.
 
         Args:
@@ -1146,8 +1143,9 @@ class FuzzConfig:
         # signal.signal(signal.SIGTERM, self.signal_handler)
         self.fuzzer_shutdown_requested = False  # Handles the entire fuzzer shutdown
 
+        global logger; logger = logger_instance
         # Load configuration from config YAML file first
-        self.config_file = args.config if args.config else None
+        self.config_file = getattr(args, "config", None)
         self.config = {}
         if self.config_file and os.path.exists(self.config_file):
             with open(self.config_file, "r") as f:
@@ -1161,11 +1159,10 @@ class FuzzConfig:
             raise ValueError(
                 "Atleast SITL binary and peripheral_file are required in the config file."
             )
-
         # Load peripheral mapping from peripheral YAML file
         self.peripheral_file = (
-            args.peripheral_file
-            if args.peripheral_file
+            getattr(args, "peripheral_file", None)
+            if getattr(args, "peripheral_file", None)
             else self.config.get("peripheral_file")
         )
 
@@ -1180,7 +1177,7 @@ class FuzzConfig:
         self.supported_modes = self.config.get("supported_modes") or ["GUIDED", "AUTO"]
 
         self.vehicle = (
-            args.vehicle if args.vehicle else self.config.get("vehicle", "copter")
+            getattr(args, "vehicle", None) if getattr(args, "vehicle", None) else self.config.get("vehicle", "copter")
         )
         # Select the model that the oracle uses
         self.oracle_model = self.config.get("oracle_model", "dtw")
@@ -1190,10 +1187,10 @@ class FuzzConfig:
             self.oracle_model = "dtw"
 
         # Setup files - command line args override yaml config
-        self.sitl_bin = args.bin if args.bin else self.config.get("sitl_bin", None)
+        self.sitl_bin = getattr(args, "bin", None) if getattr(args, "bin", None) else self.config.get("sitl_bin", None)
 
         self.ap_dir = (
-            args.ap_dir if args.ap_dir else self.config.get("ap_dir", "/ardupilot")
+            getattr(args, "ap_dir", None) if getattr(args, "ap_dir", None) else self.config.get("ap_dir", "/ardupilot")
         )
         # Get script directory
         self.script_dir = os.path.join(
@@ -1226,12 +1223,12 @@ class FuzzConfig:
                 raise FileNotFoundError(
                     "SITL binary not found. Please provide a valid path."
                 )
-        self.xml_file = args.xml if args.xml else self.config.get("xml_file")
+        self.xml_file = getattr(args, "xml", None) if getattr(args, "xml", None) else self.config.get("xml_file")
 
         # Auto mission configuration
         self.auto_mission_enabled = False
         self.auto_mission_path = (
-            args.auto_mission if args.auto_mission else self.config.get("mission_file")
+            getattr(args, "auto_mission", None) if getattr(args, "auto_mission", None) else self.config.get("mission_file")
         )
         if self.auto_mission_path and file_exists(self.auto_mission_path):
             logger.info("Mission file found, AUTO mode testing enabled")
@@ -1239,7 +1236,7 @@ class FuzzConfig:
 
         # Variables - command line args override yaml config
         self.peripheral_under_test = (
-            args.peripheral if args.peripheral else self.config.get("peripheral")
+            getattr(args, "peripheral", None) if getattr(args, "peripheral", None) else self.config.get("peripheral")
         )
 
         # Mission control
@@ -1288,8 +1285,8 @@ class FuzzConfig:
         self.calibration_threshold = None
         self.calibration_vals = None
         calibration_rounds = (
-            args.calibration_rounds
-            if args.calibration_rounds
+            getattr(args, "calibration_rounds", None)
+            if getattr(args, "calibration_rounds", None)
             else self.config.get("calibration_rounds", 10)
         )
         self.calibration_rounds = calibration_rounds
@@ -1336,8 +1333,8 @@ class FuzzConfig:
 
         # Initialize fuzzer
         self.fuzzer_param_file = None
-        assert args.fuzzer_temp_dir, "Temporary directory must be provided"
-        self.fuzzer_temp_dir = args.fuzzer_temp_dir
+        assert getattr(args, "fuzzer_temp_dir", None), "Temporary directory must be provided"
+        self.fuzzer_temp_dir = getattr(args, "fuzzer_temp_dir", None)
         self.fuzzer_temp_input_dir = self.fuzzer_temp_dir + "/input"
         # Create the temporary input directory if it doesn't exist
         if not os.path.exists(self.fuzzer_temp_input_dir):
@@ -2849,7 +2846,7 @@ if __name__ == "__main__":
         logger = setup_logging(fuzzer_temp_dir)
         # Add the fuzzer temp dir to args for later use
         args.fuzzer_temp_dir = fuzzer_temp_dir
-        cfg = FuzzConfig(args)
+        cfg = FuzzConfig(args, logger)
 
         if not cfg.calibration_threshold:
             # Establish the threshold for the fuzzing runs
