@@ -1385,6 +1385,10 @@ class FuzzConfig:
 
                 time.sleep(1 / frequency)
 
+    def periodic_replayer(self, frequency, xml_msg, default_values):
+        """Send periodic messages based on the specified frequency for replayer."""
+        pass
+
     def setup(self):
         """Setup the fuzzing configuration and initialize parameters."""
         # Setup the random seed for reproducibility
@@ -1817,7 +1821,6 @@ class FuzzConfig:
 
     def upload_auto_mission(self, mission_file):
         """Upload a mission from a waypoint file using MAVProxy's waypoint module.
-
         Args:
             mission_file: Path to the mission file (.waypoints format).
         """
@@ -2141,7 +2144,7 @@ class FuzzConfig:
         except Exception as e:
             logger.error(f"Error saving calibration values: {e}")
 
-    def cleanup_sim(self):
+    def cleanup_sim(self,oracle=True):
         """Cleanup the simulation and reset states."""
         # Stop fuzzing first
         if self.fuzzing_active:
@@ -2173,7 +2176,7 @@ class FuzzConfig:
         self.coverage_class.update()
 
         # Step 3: Call the oracle (only if we have data and not shutting down)
-        if not self.fuzzer_shutdown_requested and self.rcou_vals:
+        if not self.fuzzer_shutdown_requested and self.rcou_vals and oracle:
             if self.calibration_active:
                 # During calibration, just collect the golden values
                 self.golden_rc_vals.append(self.rcou_vals)
@@ -2658,7 +2661,7 @@ class FuzzConfig:
             1. Logs the error with component information
             2. Exits the program with an error code (1) as these are considered unrecoverable
 
-        The method continuously processes all errors in the queue until it's empty.
+        The method continuously processes all errors in the queue until its empty.
         """
         # Check if we don't have any errors
         while not error_queue.empty():
@@ -2756,6 +2759,42 @@ class FuzzConfig:
                 f"Error sending message {msg_name} with ID {msg_id} and values {field_values}: {e}"
             )
             raise e
+
+    def replay_messages(self, messages, start_time=None, logger=None):
+        """
+        Replay a list of messages at the correct time offsets.
+        Each message: [timestamp, msg_name, msg_id, dict{field_values}]
+        """
+        if not messages:
+            if logger:
+                logger.warning("No messages to replay.")
+            return
+
+        # Sort messages by timestamp
+        messages = sorted(messages, key=lambda x: x[0])
+        base_time = start_time if start_time is not None else time.time()
+        first_msg_time = messages[0][0]
+
+        for msg in messages:
+            msg_time, msg_name, msg_id, field_values = msg
+            # Calculate when to send this message
+            send_at = base_time + (msg_time - first_msg_time)
+            now = time.time()
+            sleep_time = send_at - now
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+            # Send the message using the TCPConn infrastructure
+            if hasattr(self, "tcp_conn") and hasattr(self.tcp_conn, "msg_send"):
+                self.tcp_conn.msg_send(msg_name, field_values)
+                if logger:
+                    logger.info(f"Replayed {msg_name} at {msg_time} with fields {field_values}")
+            else:
+                if logger:
+                    logger.error("TCP connection or msg_send not available.")
+                else:
+                    print("TCP connection or msg_send not available.")
+
 
 
 # Misc utilities and sanity checks
