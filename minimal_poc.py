@@ -487,9 +487,10 @@ class TCPConn:
     def msg_recv(self, msg_type, timeout=mavlink_timeout):
         return self.conn.recv_match(type=msg_type, timeout=timeout, blocking=True)  # type: ignore
 
-    def msg_send(self):
-        msg = mavutil.mavlink.MAVLink_statustext_message()  # type: ignore
-        return self.conn.mav.send(msg)  # type: ignore
+    def custom_msg_send(self, type, field_values):
+        # Basically get the type of message and then get the values and send
+        msg_class = getattr(self.conn.mav, f"{type.lower()}_send")
+        msg_class(**field_values)
 
     def st_msg_send(self, text):
         msg = self.conn.mav.statustext_encode(
@@ -1721,7 +1722,8 @@ class FuzzConfig:
             while not self.tcp_conn.rc_monitor:
                 if self.error_sleep(1):
                     raise InternalError
-            self.start_fuzzing()
+            if self.fuzzing_active:
+                self.start_fuzzing()
             mode_ctr = 0
             prev_state = None
             if self.calibration_modes_ctr < len(self.calibration_mode_list):
@@ -1763,7 +1765,8 @@ class FuzzConfig:
             while not self.tcp_conn.rc_monitor:
                 if self.error_sleep(1):
                     raise InternalError
-            self.start_fuzzing()
+            if self.fuzzing_active:
+                self.start_fuzzing()
             mode_state = []
             mode_ctr = 0
             prev_state = None
@@ -2760,7 +2763,7 @@ class FuzzConfig:
             )
             raise e
 
-    def replay_messages(self, messages, start_time=None, logger=None):
+    def replay_messages(self, messages, start_time=None):
         """
         Replay a list of messages at the correct time offsets.
         Each message: [timestamp, msg_name, msg_id, dict{field_values}]
@@ -2769,6 +2772,9 @@ class FuzzConfig:
             if logger:
                 logger.warning("No messages to replay.")
             return
+
+        while not self.tcp_conn.rc_monitor and self.tcp_conn.drone_in_air:
+            time.sleep(1)
 
         # Sort messages by timestamp
         messages = sorted(messages, key=lambda x: x[0])
@@ -2785,8 +2791,8 @@ class FuzzConfig:
                 time.sleep(sleep_time)
 
             # Send the message using the TCPConn infrastructure
-            if hasattr(self, "tcp_conn") and hasattr(self.tcp_conn, "msg_send"):
-                self.tcp_conn.msg_send(msg_name, field_values)
+            if hasattr(self, "tcp_conn") and hasattr(self.tcp_conn, "custom_msg_send"):
+                self.tcp_conn.custom_msg_send(msg_name, field_values)
                 if logger:
                     logger.info(f"Replayed {msg_name} at {msg_time} with fields {field_values}")
             else:
@@ -2795,6 +2801,7 @@ class FuzzConfig:
                 else:
                     print("TCP connection or msg_send not available.")
 
+        return
 
 
 # Misc utilities and sanity checks

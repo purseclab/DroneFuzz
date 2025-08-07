@@ -1,4 +1,6 @@
 import argparse
+import time
+import threading
 import sys
 import os
 import ast
@@ -81,12 +83,16 @@ def main():
 
         logger.info("Waiting for drone to be ready...")
         # Wait for the drone to be ready (GPS lock, etc.)
+
         ready = fuzzer.wait_for_condition(lambda: fuzzer.tcp_conn.drone_ready, timeout=120)
 
         if not ready:
             raise Exception("Drone did not become ready in time.")
 
         logger.info("Drone is ready. Sending mission.")
+        # Start the replayer thread
+        replayer_thread = threading.Thread(target=fuzzer.replay_messages,args=(mutated_data,))
+        replayer_thread.start()
         fuzzer.send_mission(fuzzing=False)
         logger.info("Simulation run finished.")
         if fuzzer:
