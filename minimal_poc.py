@@ -48,6 +48,7 @@ import threading
 class InternalError(Exception):
     pass
 
+
 mavlink_timeout = 5
 approx_threshold = 0.00005  # Threshold for approximate location matching
 altitude_threshold = 0.1  # Threshold for altitude matching
@@ -65,8 +66,9 @@ RANDOM_SEED = 42  # For reproducibility
 # Supported models
 detection_models = ["dtw", "lstm"]
 
+
 # Setup logging
-def setup_logging(name="dronefuzz",file_dir=None):
+def setup_logging(name="dronefuzz", file_dir=None):
     """Setup logging with timestamp in filename"""
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     log_filename = f"dronefuzz_{timestamp}.log"
@@ -1144,7 +1146,8 @@ class FuzzConfig:
         # signal.signal(signal.SIGTERM, self.signal_handler)
         self.fuzzer_shutdown_requested = False  # Handles the entire fuzzer shutdown
 
-        global logger; logger = logger_instance
+        global logger
+        logger = logger_instance
         # Load configuration from config YAML file first
         self.config_file = getattr(args, "config", None)
         self.config = {}
@@ -1178,7 +1181,9 @@ class FuzzConfig:
         self.supported_modes = self.config.get("supported_modes") or ["GUIDED", "AUTO"]
 
         self.vehicle = (
-            getattr(args, "vehicle", None) if getattr(args, "vehicle", None) else self.config.get("vehicle", "copter")
+            getattr(args, "vehicle", None)
+            if getattr(args, "vehicle", None)
+            else self.config.get("vehicle", "copter")
         )
         # Select the model that the oracle uses
         self.oracle_model = self.config.get("oracle_model", "dtw")
@@ -1188,10 +1193,16 @@ class FuzzConfig:
             self.oracle_model = "dtw"
 
         # Setup files - command line args override yaml config
-        self.sitl_bin = getattr(args, "bin", None) if getattr(args, "bin", None) else self.config.get("sitl_bin", None)
+        self.sitl_bin = (
+            getattr(args, "bin", None)
+            if getattr(args, "bin", None)
+            else self.config.get("sitl_bin", None)
+        )
 
         self.ap_dir = (
-            getattr(args, "ap_dir", None) if getattr(args, "ap_dir", None) else self.config.get("ap_dir", "/ardupilot")
+            getattr(args, "ap_dir", None)
+            if getattr(args, "ap_dir", None)
+            else self.config.get("ap_dir", "/ardupilot")
         )
         # Get script directory
         self.script_dir = os.path.join(
@@ -1224,12 +1235,18 @@ class FuzzConfig:
                 raise FileNotFoundError(
                     "SITL binary not found. Please provide a valid path."
                 )
-        self.xml_file = getattr(args, "xml", None) if getattr(args, "xml", None) else self.config.get("xml_file")
+        self.xml_file = (
+            getattr(args, "xml", None)
+            if getattr(args, "xml", None)
+            else self.config.get("xml_file")
+        )
 
         # Auto mission configuration
         self.auto_mission_enabled = False
         self.auto_mission_path = (
-            getattr(args, "auto_mission", None) if getattr(args, "auto_mission", None) else self.config.get("mission_file")
+            getattr(args, "auto_mission", None)
+            if getattr(args, "auto_mission", None)
+            else self.config.get("mission_file")
         )
         if self.auto_mission_path and file_exists(self.auto_mission_path):
             logger.info("Mission file found, AUTO mode testing enabled")
@@ -1237,7 +1254,9 @@ class FuzzConfig:
 
         # Variables - command line args override yaml config
         self.peripheral_under_test = (
-            getattr(args, "peripheral", None) if getattr(args, "peripheral", None) else self.config.get("peripheral")
+            getattr(args, "peripheral", None)
+            if getattr(args, "peripheral", None)
+            else self.config.get("peripheral")
         )
 
         # Mission control
@@ -1334,7 +1353,9 @@ class FuzzConfig:
 
         # Initialize fuzzer
         self.fuzzer_param_file = None
-        assert getattr(args, "fuzzer_temp_dir", None), "Temporary directory must be provided"
+        assert getattr(
+            args, "fuzzer_temp_dir", None
+        ), "Temporary directory must be provided"
         self.fuzzer_temp_dir = getattr(args, "fuzzer_temp_dir", None)
         self.fuzzer_temp_input_dir = self.fuzzer_temp_dir + "/input"
         # Create the temporary input directory if it doesn't exist
@@ -1722,8 +1743,7 @@ class FuzzConfig:
             while not self.tcp_conn.rc_monitor:
                 if self.error_sleep(1):
                     raise InternalError
-            if self.fuzzing_active:
-                self.start_fuzzing()
+            self.start_fuzzing()
             mode_ctr = 0
             prev_state = None
             if self.calibration_modes_ctr < len(self.calibration_mode_list):
@@ -1765,8 +1785,7 @@ class FuzzConfig:
             while not self.tcp_conn.rc_monitor:
                 if self.error_sleep(1):
                     raise InternalError
-            if self.fuzzing_active:
-                self.start_fuzzing()
+            self.start_fuzzing()
             mode_state = []
             mode_ctr = 0
             prev_state = None
@@ -2147,7 +2166,7 @@ class FuzzConfig:
         except Exception as e:
             logger.error(f"Error saving calibration values: {e}")
 
-    def cleanup_sim(self,oracle=True):
+    def cleanup_sim(self, oracle=True):
         """Cleanup the simulation and reset states."""
         # Stop fuzzing first
         if self.fuzzing_active:
@@ -2794,7 +2813,9 @@ class FuzzConfig:
             if hasattr(self, "tcp_conn") and hasattr(self.tcp_conn, "custom_msg_send"):
                 self.tcp_conn.custom_msg_send(msg_name, field_values)
                 if logger:
-                    logger.info(f"Replayed {msg_name} at {msg_time} with fields {field_values}")
+                    logger.info(
+                        f"Replayed {msg_name} at {msg_time} with fields {field_values}"
+                    )
             else:
                 if logger:
                     logger.error("TCP connection or msg_send not available.")

@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from minimal_poc import FuzzConfig, setup_logging, file_exists
 
+
 def parse_file(mutated_file: str) -> List:
     # Contains the actual messages
     # Check if the file exists
@@ -30,6 +31,7 @@ def parse_file(mutated_file: str) -> List:
                 print(f"Failed with {e}")
                 return []
     return parsed_data
+
 
 def main():
     """
@@ -52,8 +54,9 @@ def main():
     )
 
     args = parser.parse_args()
+    raise NotImplementedError("This script is currently broken")
     fuzzer = None
-    temp_dir = tempfile.mkdtemp("run_data","reproducer", os.getcwd())
+    temp_dir = tempfile.mkdtemp("run_data", "reproducer", os.getcwd())
     logger = setup_logging("reproducer", file_dir=temp_dir)
 
     try:
@@ -84,14 +87,18 @@ def main():
         logger.info("Waiting for drone to be ready...")
         # Wait for the drone to be ready (GPS lock, etc.)
 
-        ready = fuzzer.wait_for_condition(lambda: fuzzer.tcp_conn.drone_ready, timeout=120)
+        ready = fuzzer.wait_for_condition(
+            lambda: fuzzer.tcp_conn.drone_ready, timeout=120
+        )
 
         if not ready:
             raise Exception("Drone did not become ready in time.")
 
         logger.info("Drone is ready. Sending mission.")
         # Start the replayer thread
-        replayer_thread = threading.Thread(target=fuzzer.replay_messages,args=(mutated_data,))
+        replayer_thread = threading.Thread(
+            target=fuzzer.replay_messages, args=(mutated_data,)
+        )
         replayer_thread.start()
         fuzzer.send_mission(fuzzing=False)
         logger.info("Simulation run finished.")
@@ -104,6 +111,7 @@ def main():
         sys.exit(1)
     finally:
         logger.info("Reproducer script finished.")
+
 
 if __name__ == "__main__":
     main()
