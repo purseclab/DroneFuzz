@@ -3018,8 +3018,8 @@ if __name__ == "__main__":
                     "state": f"{cfg.fuzzer_state}",
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
-                    "dtw_min": f"{cfg.min_fuzz_threshold:.1f}",
-                    "dtw_max": f"{cfg.max_fuzz_threshold:.1f}",
+                    "dtw_min": f"{cfg.min_fuzz_threshold:.6f}",
+                    "dtw_max": f"{cfg.max_fuzz_threshold:.6f}",
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
