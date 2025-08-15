@@ -2574,7 +2574,7 @@ class FuzzConfig:
             field_values: Dictionary of field values to modify.
         """
         # Heuristic replacer for some common fields
-        for field_name in field_values.keys():
+        for field_name in list(field_values):
             # Check if we have a field name that contains "time"
             if "time_boot_ms" in field_name:
                 current_time = round(
@@ -2617,6 +2617,9 @@ class FuzzConfig:
                 field_values[field_name] = random.randint(0, 30)
             if "fix_type" in field_name:
                 field_values[field_name] = random.randint(3, 6)
+            if "thrust_body" in field_name:
+                # Remove the field
+                field_values.pop(field_name, None)
 
     # Smart sleep
     def error_sleep(self, seconds, period=1):
