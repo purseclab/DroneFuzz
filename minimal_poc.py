@@ -1364,6 +1364,17 @@ class FuzzConfig:
             logger.info(
                 f"Created temporary input directory: {self.fuzzer_temp_input_dir}"
             )
+        # Check if we have additional parameters in the peripheral mapping
+        self.generic_params = getattr(args, "generic_params", None)
+        if self.generic_params is None:
+            # Try to load from config file first
+            self.generic_params = self.config.get("generic_params", [])
+
+        # Parse generic parameters and initialize default parameter set
+        self.default_parameter_set = self._parse_generic_params()
+        if not self.default_parameter_set:
+            logger.warning("No generic parameters loaded")
+
         self.setup()
         if self.msg_freq:
             logger.info("Setting the fuzzing interval to match message frequency")
@@ -1373,6 +1384,69 @@ class FuzzConfig:
         self.coverage_class = CoverageData(
             src_dir=self.ap_dir, fuzz_dir=self.fuzzer_temp_dir
         )
+
+    def _parse_generic_params(self):
+        """Parse generic_params from config and return a structured parameter set.
+
+        Expected format in config:
+        generic_params:
+          - "param_name MIN MAX STEP"
+          - "param_name MIN MAX"
+          - "param_name"
+
+        Returns:
+            dict: Dictionary mapping parameter names to their constraints
+        """
+        if not self.generic_params:
+            return {}
+
+        parsed_params = {}
+
+        for param_line in self.generic_params:
+            if not param_line or not isinstance(param_line, str):
+                continue
+
+            parts = param_line.strip().split()
+            if not parts:
+                continue
+
+            param_name = parts[0]
+
+            if len(parts) == 1:
+                # Just parameter name, no constraints
+                parsed_params[param_name] = {}
+            elif len(parts) == 3:
+                # param_name MIN MAX
+                try:
+                    min_val = float(parts[1])
+                    max_val = float(parts[2])
+                    parsed_params[param_name] = {"min": min_val, "max": max_val}
+                except ValueError:
+                    logger.warning(
+                        f"Invalid numeric values for parameter {param_name}: {parts[1]}, {parts[2]}"
+                    )
+                    parsed_params[param_name] = {}
+            elif len(parts) == 4:
+                # param_name MIN MAX STEP
+                try:
+                    min_val = float(parts[1])
+                    max_val = float(parts[2])
+                    step_val = float(parts[3])
+                    parsed_params[param_name] = {
+                        "min": min_val,
+                        "max": max_val,
+                        "step": step_val,
+                    }
+                except ValueError:
+                    logger.warning(
+                        f"Invalid numeric values for parameter {param_name}: {parts[1]}, {parts[2]}, {parts[3]}"
+                    )
+                    parsed_params[param_name] = {}
+            else:
+                logger.warning(f"Invalid parameter format: {param_line}")
+
+        logger.info(f"Parsed {len(parsed_params)} generic parameters for fuzzing")
+        return parsed_params
 
     def periodic_send(self, frequency, xml_msg, default_values):
         """Send periodic messages based on the specified frequency.
@@ -1445,11 +1519,6 @@ class FuzzConfig:
             .decode("utf-8")
         )
         logger.debug("Source Under Testing commit hash %s", src_commit_hash)
-
-        # Check if we have additional parameters in the peripheral mapping
-        self.default_parameter_set = self.peripheral_mapping.get("generic_params", {})
-        if not self.default_parameter_set:
-            logger.debug("Don't have any generic parameters to set")
 
         # Find the filter from the peripheral mapping
         msg_filter = self.peripheral_config.get("msg_type", [])
@@ -1608,14 +1677,37 @@ class FuzzConfig:
                 "No default configuration parameters set for fuzzing, returning"
             )
             return
-        selected_param = random.choice(self.default_parameter_set)
-        # Check if the value ends in DISABLE or ENABLE, then we set it 0 or 1
-        if re.match(r".*ABLE$", selected_param):
-            random_val = random.randint(0, 1)
+
+        # Select a random parameter from the parsed parameter set
+        selected_param = random.choice(list(self.default_parameter_set.keys()))
+        param_constraints = self.default_parameter_set[selected_param]
+
+        # Generate value based on parameter constraints
+        if "min" in param_constraints and "max" in param_constraints:
+            min_val = param_constraints["min"]
+            max_val = param_constraints["max"]
+
+            if "step" in param_constraints:
+                # Use step-based generation for discrete values
+                step_val = param_constraints["step"]
+                random_val = gen_int_step(min_val, max_val, step_val)
+            else:
+                # Generate continuous value between min and max
+                if isinstance(min_val, float) or isinstance(max_val, float):
+                    random_val = random.uniform(min_val, max_val)
+                else:
+                    random_val = random.randint(int(min_val), int(max_val))
         else:
-            random_val = generate_field_value(
-                field_type="uint8"
-            )  # Default to int8 for now
+            # No constraints specified, use heuristics based on parameter name
+            if re.match(r".*ABLE$", selected_param):
+                # Parameters ending in ABLE (ENABLE/DISABLE) should be 0 or 1
+                random_val = random.randint(0, 1)
+            else:
+                # Default to generating a value using the field generator
+                random_val = generate_field_value(field_type="uint8")
+
+        logger.debug(f"Setting parameter {selected_param} to {random_val}")
+
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
