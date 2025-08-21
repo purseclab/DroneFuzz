@@ -2672,6 +2672,9 @@ class FuzzConfig:
                 current_time = round(
                     (time.time() - self.fuzzer_stats["current_mission_time"]) * 1000
                 )
+                # Wrap the value at 2**32 - 1
+                if current_time > 2**32 - 1:
+                    current_time = current_time % (2**32 - 1)
                 field_values[field_name] = current_time
             if "time_usec" in field_name:
                 field_values[field_name] = int(time.time())
