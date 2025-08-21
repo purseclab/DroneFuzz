@@ -1385,6 +1385,24 @@ class FuzzConfig:
             src_dir=self.ap_dir, fuzz_dir=self.fuzzer_temp_dir
         )
 
+    def _parse_numeric_value(self, value_str):
+        """Parse a numeric value string, preserving int/float type.
+
+        Args:
+            value_str: String representation of a numeric value
+
+        Returns:
+            Parsed numeric value (int or float) or None if invalid
+        """
+        try:
+            # Check if it's an integer (no decimal point)
+            if "." not in value_str and "e" not in value_str.lower():
+                return int(value_str)
+            else:
+                return float(value_str)
+        except ValueError:
+            return None
+
     def _parse_generic_params(self):
         """Parse generic_params from config and return a structured parameter set.
 
@@ -1417,27 +1435,29 @@ class FuzzConfig:
                 parsed_params[param_name] = {}
             elif len(parts) == 3:
                 # param_name MIN MAX
-                try:
-                    min_val = float(parts[1])
-                    max_val = float(parts[2])
+                min_val = self._parse_numeric_value(parts[1])
+                max_val = self._parse_numeric_value(parts[2])
+
+                if min_val is not None and max_val is not None:
                     parsed_params[param_name] = {"min": min_val, "max": max_val}
-                except ValueError:
+                else:
                     logger.warning(
                         f"Invalid numeric values for parameter {param_name}: {parts[1]}, {parts[2]}"
                     )
                     parsed_params[param_name] = {}
             elif len(parts) == 4:
                 # param_name MIN MAX STEP
-                try:
-                    min_val = float(parts[1])
-                    max_val = float(parts[2])
-                    step_val = float(parts[3])
+                min_val = self._parse_numeric_value(parts[1])
+                max_val = self._parse_numeric_value(parts[2])
+                step_val = self._parse_numeric_value(parts[3])
+
+                if min_val is not None and max_val is not None and step_val is not None:
                     parsed_params[param_name] = {
                         "min": min_val,
                         "max": max_val,
                         "step": step_val,
                     }
-                except ValueError:
+                else:
                     logger.warning(
                         f"Invalid numeric values for parameter {param_name}: {parts[1]}, {parts[2]}, {parts[3]}"
                     )
@@ -1690,7 +1710,13 @@ class FuzzConfig:
             if "step" in param_constraints:
                 # Use step-based generation for discrete values
                 step_val = param_constraints["step"]
-                random_val = gen_int_step(min_val, max_val, step_val)
+                if step_val == 0:
+                    logger.warning(
+                        f"Step value for parameter {selected_param} is 0, using default value"
+                    )
+                    random_val = min_val
+                else:
+                    random_val = gen_int_step(min_val, max_val, step_val)
             else:
                 # Generate continuous value between min and max
                 if isinstance(min_val, float) or isinstance(max_val, float):
