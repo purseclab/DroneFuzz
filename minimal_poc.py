@@ -1124,6 +1124,8 @@ class CoverageData:
 
 def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
     # Run the script and save the diff image
+    if filename == 0 or filename == "N/A":
+        raise Exception("Filename is not valid, cannot save diff image.")
     output_filename = os.path.join(output_dir, f"{filename}.png")
     plot_script = os.path.join(script_dir, "plot_servo_values.py")
     cmd = f"python3 {plot_script} {fuzz_enum_mode:08d}.BIN {filename:08d}.BIN --rc-log-filter --output {output_filename}"
@@ -1831,8 +1833,8 @@ class FuzzConfig:
             self.sim_handle = subprocess.Popen(
                 shlex.split(self.sitl_cmd),
                 # Comment out to debug the original binary
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 preexec_fn=os.setsid,
                 cwd=self.fuzzer_temp_dir,
             )
@@ -2624,15 +2626,23 @@ class FuzzConfig:
         """
         # Get a message from the fuzzer queue
         entry = self.get_next_in_fuzz_queue()
-        msg_list = entry.data
-        if not msg_list:
+        msg_entry = entry.data
+        print(msg_entry)
+        if not msg_entry:
             logger.error("No messages in the fuzzer queue to mutate")
             return None, None, None
         # It should ideally be a list of msgs, that contains the timestamp, msg_name, msg_id and field_values
-        msg_entry = random.choice(msg_list)  # Select a random message from the list
-        msg_name = msg_entry[1]
-        msg_id = msg_entry[2]
-        field_values = msg_entry[3]
+        # Handle the scenario where we get a PARAM_SET message
+        if msg_entry[1] == "PARAM_SET":
+            # NOTE: 2025-08-23T08:30:41-0400: silipwn: We only want to mutate PARAM_SET in the main loop
+            logger.debug("PARAM_SET message detected, skipping mutation")
+        try:
+            msg_name = msg_entry[1]
+            msg_id = msg_entry[2]
+            field_values = msg_entry[3]
+        except IndexError:
+            print("Failed for the following message")
+            print(msg_entry)
         if self.fuzzer_state == FuzzState.Bitflip:
             field_values = self._mutate_bitflip(field_values)
         if self.fuzzer_state == FuzzState.Arithmetic:
