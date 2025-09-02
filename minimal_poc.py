@@ -1242,6 +1242,8 @@ class FuzzConfig:
             if getattr(args, "xml", None)
             else self.config.get("xml_file")
         )
+        # Random param set
+        self.random_param_prob = getattr(args, "random_param_probability", 0.1)
 
         # Auto mission configuration
         self.auto_mission_enabled = False
@@ -1931,7 +1933,7 @@ class FuzzConfig:
                     self.tcp_conn.set_mode("AUTO")
                     prev_state = "AUTO"
                     logger.debug("Resetting Setting mode to AUTO")
-                if random.random() < 0.1:  # Randomly set a parameter
+                if random.random() < self.random_param_prob:  # Randomly set a parameter
                     self.random_param_set()
                 if self.error_sleep(3):
                     raise InternalError
