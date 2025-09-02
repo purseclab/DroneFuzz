@@ -1740,6 +1740,7 @@ class FuzzConfig:
             param_id=selected_param,
             param_value=random_val,
         )
+        # Ensure we properly add the value to queue
         self.fuzz_msgs.append(
             [
                 time.time() - self.fuzzer_stats["current_mission_time"],
@@ -2512,7 +2513,6 @@ class FuzzConfig:
             )
             return
 
-        self.manage_fuzzer_state()
         self.fuzzing_active = True
         self.fuzzing_thread = threading.Thread(target=self.fuzz_loop, daemon=True)
         self.fuzzing_thread.start()
@@ -2626,23 +2626,15 @@ class FuzzConfig:
         """
         # Get a message from the fuzzer queue
         entry = self.get_next_in_fuzz_queue()
-        msg_entry = entry.data
-        print(msg_entry)
-        if not msg_entry:
-            logger.error("No messages in the fuzzer queue to mutate")
+        msg_list = entry.data
+        msg_entry = random.choice(msg_list)
+        msg_name = msg_entry[1]
+        if msg_name == "PARAM_SET":
+            logger.debug("Skipping PARAM_SET message for mutation")
             return None, None, None
-        # It should ideally be a list of msgs, that contains the timestamp, msg_name, msg_id and field_values
-        # Handle the scenario where we get a PARAM_SET message
-        if msg_entry[1] == "PARAM_SET":
-            # NOTE: 2025-08-23T08:30:41-0400: silipwn: We only want to mutate PARAM_SET in the main loop
-            logger.debug("PARAM_SET message detected, skipping mutation")
-        try:
-            msg_name = msg_entry[1]
+        else:
             msg_id = msg_entry[2]
             field_values = msg_entry[3]
-        except IndexError:
-            print("Failed for the following message")
-            print(msg_entry)
         if self.fuzzer_state == FuzzState.Bitflip:
             field_values = self._mutate_bitflip(field_values)
         if self.fuzzer_state == FuzzState.Arithmetic:
@@ -2652,13 +2644,18 @@ class FuzzConfig:
     def fuzz_loop(self):
         """Main fuzzing loop that runs in a separate thread."""
         while self.fuzzing_active and self.tcp_conn.drone_in_air:
+            # Check the current state
+            self.manage_fuzzer_state()
+            # Now figure out what we need to do
             if self.fuzzer_state == FuzzState.Init:
                 msg_name, msg_id, field_values = self.init_generate_message()
             elif self.fuzzer_state in [FuzzState.Bitflip, FuzzState.Arithmetic]:
                 msg_name, msg_id, field_values = self.mutate_msg()
                 if field_values is None:
                     # If we don't have a message to mutate, go back to init state
-                    logger.debug("No message to mutate, going back to init state")
+                    logger.debug(
+                        "No message to mutate, falling back to generating a message"
+                    )
                     msg_name, msg_id, field_values = self.init_generate_message()
             # If we are in calibration mode, just send the same values over for the fields
             # TODO Eventually move towards a common state in Fuzzer_State for calibration
