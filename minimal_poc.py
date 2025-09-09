@@ -52,7 +52,7 @@ class InternalError(Exception):
 mavlink_timeout = 5
 approx_threshold = 0.00005  # Threshold for approximate location matching
 altitude_threshold = 0.1  # Threshold for altitude matching
-logger = None
+logger = logging.getLogger("dummy")
 PREARM_CHECK = 0x10000000
 EKF_POS_HORIZ = 0x8
 EKF_POS_VERT = 0x10
@@ -1952,6 +1952,14 @@ class FuzzConfig:
             logger.error("Warning detected, stopping fuzzing")
             if self.fuzzing_active:
                 self.stop_fuzzing()
+            error_queue.put(
+                {
+                    "type": "fuzzer_error",
+                    "error": "Error when trying to sleep",
+                    "component": "monitor_auto_mission_fuzzing",
+                    "timestamp": time.time(),
+                }
+            )
             return
 
     def monitor_auto_mission(self):
@@ -2847,18 +2855,20 @@ class FuzzConfig:
 
                 # If we're in calibration mode, this is a fatal error
                 if self.calibration_active:
-                    logger.error("SITL error during calibration phase - this is fatal")
+                    logger.error(
+                        "\nSITL error during calibration phase - this is fatal"
+                    )
                     self.cleanup_and_exit()
                     exit(1)
                 else:
-                    self.cleanup_sim()
+                    self.cleanup_sim(oracle=False)  # No need to run the oracle again
 
             if error.get("type") == "fuzzer_error":
-                logger.error(error["error"])
                 component = error.get("component", "unknown")
                 logger.error(
-                    f"Not recoverable state, fatal error inside {component}, exiting..."
+                    f"\nNot recoverable state, fatal error inside {component}, exiting..."
                 )
+                logger.error(error["error"])
                 exit(1)
 
     def send_fuzzed_message(self, msg_name, msg_id, field_values: Dict):
@@ -3145,14 +3155,16 @@ if __name__ == "__main__":
 
         # Function to update tqdm with stats
         def update_tqdm_postfix():
+            dtw_min_val = getattr(cfg, "min_fuzz_threshold")
+            dtw_max_val = getattr(cfg, "max_fuzz_threshold")
             pbar.set_postfix(
                 {
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
                     "state": f"{cfg.fuzzer_state}",
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
-                    "dtw_min": f"{cfg.min_fuzz_threshold:.6f}",
-                    "dtw_max": f"{cfg.max_fuzz_threshold:.6f}",
+                    "dtw_min": f"{'NaN' if dtw_min_val is None else f'{dtw_min_val:.6f}'}",
+                    "dtw_max": f"{'NaN' if dtw_max_val is None else f'{dtw_max_val:.6f}'}",
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
                 }
             )
