@@ -1955,11 +1955,12 @@ class FuzzConfig:
             error_queue.put(
                 {
                     "type": "fuzzer_error",
-                    "error": "Error when trying to sleep",
+                    "error": "Error inside error_sleep",
                     "component": "monitor_auto_mission_fuzzing",
                     "timestamp": time.time(),
                 }
             )
+            # self.handle_errors()
             return
 
     def monitor_auto_mission(self):
