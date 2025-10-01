@@ -344,3 +344,6 @@ test_tmp*
 *.npy
 # Pickle files
 *.pkl
+
+# Ignore files we generated
+fuzzing_data*
