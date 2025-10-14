@@ -1599,6 +1599,9 @@ class FuzzConfig:
             logger.warning("No generic parameters loaded")
 
         self.setup()
+        if self.msg_freq:
+            logger.info("Setting the fuzzing interval to match message frequency")
+            self.fuzz_interval = self.msg_freq
 
         # Setup the coverage metrics
         self.coverage_class = CoverageData(
