@@ -10,10 +10,8 @@ SCRIPTS_DIR = os.path.join(HERE, "scripts")
 if os.path.isdir(SCRIPTS_DIR) and SCRIPTS_DIR not in sys.path:
     sys.path.append(SCRIPTS_DIR)
 
-# Reuse your BIN parser
 from plot_servo_values import parse_ardupilot_bin
 
-# Reuse EVERYTHING from your code (no rewrites)
 from minimal_poc import FuzzConfig
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -43,7 +41,6 @@ class OfflineHarness:
     methods use, then CALLS them. No code duplication.
     """
     def __init__(self, out_dir, base_cfg: dict):
-        # mirror fields your methods read
         self.config = dict(base_cfg or {})
         self.fuzzer_temp_dir = out_dir
         os.makedirs(self.fuzzer_temp_dir, exist_ok=True)
@@ -75,7 +72,6 @@ class OfflineHarness:
         self.lstm_err_mean = None
         self.lstm_err_std = None
 
-        # LSTM dims/hparams the same keys your code uses
         self.lstm_window = int(self.config.get("lstm_window", 128))
         self.lstm_stride = int(self.config.get("lstm_stride", 64))
         self.lstm_hidden = int(self.config.get("lstm_hidden", 32))
@@ -95,10 +91,8 @@ class OfflineHarness:
         self.ssl_head_path = os.path.join(self.fuzzer_temp_dir, "lstm_head.pt")
         self.ssl_last_train_sims = -1
 
-        # Provide a no-op coverage object (oracle_* calls it)
         self.coverage_class = _NoopCoverage()
 
-        # ---- Bind the exact methods from your class (no duplicate code) ----
         self._series_to_matrix  = FuzzConfig._series_to_matrix.__get__(self, OfflineHarness)
         self._build_windows     = FuzzConfig._build_windows.__get__(self, OfflineHarness)
         self._normalize         = FuzzConfig._normalize.__get__(self, OfflineHarness)
@@ -108,11 +102,10 @@ class OfflineHarness:
         self._sigma_calc_lstm   = FuzzConfig._sigma_calc_lstm.__get__(self, OfflineHarness)
         self.calculate_dtw      = FuzzConfig.calculate_dtw.__get__(self, OfflineHarness)
 
-        # oracles (as-is)
+        # oracles
         self.oracle_dtw         = FuzzConfig.oracle_dtw.__get__(self, OfflineHarness)
         self.oracle_lstm        = FuzzConfig.oracle_lstm.__get__(self, OfflineHarness)
 
-    # exact persistence behavior your sigma_calc() does
     def persist_rc_pickle_and_yaml(self):
         pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
         with open(pickle_file, "wb") as f:
@@ -147,7 +140,6 @@ def main():
     ap.add_argument("--out_dir",  required=True, help="Where minimal_poc artifacts go (lstm_ae.pt, *.npy, head, etc.)")
     ap.add_argument("--rc-log-filter", action="store_true", help='Respect "LOG RC"/"STOP RC"')
     ap.add_argument("--score_bin", help="Optional: score this BIN offline with both oracles")
-    # pass through hyperparams to your existing methods (they read self.config)
     ap.add_argument("--lstm-window", type=int, default=128)
     ap.add_argument("--lstm-stride", type=int, default=64)
     ap.add_argument("--lstm-hidden", type=int, default=32)
@@ -171,7 +163,7 @@ def main():
     off.golden_rc_vals = load_goldens_from_dir(logs_dir, rc_log_filter=args.rc_log_filter)
     log.info("Loaded %d golden BINs from %s", len(off.golden_rc_vals), logs_dir)
 
-    # 2) calibrate with your exact routines (NO rewrites)
+    # 2) calibrate with exact routines
     off._sigma_calc_dtw()
     log.info("DTW thresholds: min=%.6f max=%.6f (mean=%.6f std=%.6f)",
              off.min_fuzz_threshold, off.max_fuzz_threshold, off.dtw_mean, off.dtw_std)
@@ -179,18 +171,16 @@ def main():
     log.info("LSTM AE band: mean=%.6e std=%.6e  -> min=%.6e max=%.6e",
              off.lstm_err_mean, off.lstm_err_std, off.lstm_err_min, off.lstm_err_max)
 
-    # 3) persist artifacts in the same places your online code expects
+    # 3) persist artifacts in the same places online code expects
     off.persist_rc_pickle_and_yaml()
     log.info("Wrote rcou_vals.pkl + cal_config.yaml in %s; model+norm in %s", os.getcwd(), args.out_dir)
 
-    # 4) optional: score one BIN offline WITH YOUR ORACLES
+    # 4) optional: score one BIN offline WITH ORACLES
     if args.score_bin:
         d = parse_ardupilot_bin(args.score_bin, rc_log_filter=args.rc_log_filter, channels=["C1","C2","C3","C4"])
         series = bin_to_series(d)
         off.rcou_vals = series  # what cleanup_sim() would set
-        # (a) run DTW oracle exactly (it sets last_dtw_distance, last_scores, etc.)
         off.oracle_dtw()
-        # (b) then run LSTM oracle exactly (it will read the DTW values & SSL rules)
         off.oracle_lstm()
         # print what both wrote
         log.info("DTW dist=%.6f  z=%.2f", float(off.last_scores["dtw"]), float(off.last_scores["z_dtw"]))
