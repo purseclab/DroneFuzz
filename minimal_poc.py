@@ -1160,10 +1160,12 @@ class FuzzConfig:
         self.fuzzer_state = FuzzState.Init
         self.fuzzer_queue = []
         # Or queue.Queue (if we have multiple producers)
-        # Just check if the file contains at least ap_dir and peripheral_file
-        if not self.config.get("ap_dir") or not self.config.get("peripheral_file"):
+        # Just check if the file contains at least src_dir and peripheral_file
+        if not self.config.get("peripheral_file") and not self.config.get(
+            "autopilot_type"
+        ):
             raise ValueError(
-                "Atleast SITL binary and peripheral_file are required in the config file."
+                "Atleast autopilot_type and peripheral_file are required in the config file."
             )
         # Load peripheral mapping from peripheral YAML file
         self.peripheral_file = (
@@ -1171,6 +1173,13 @@ class FuzzConfig:
             if getattr(args, "peripheral_file", None)
             else self.config.get("peripheral_file")
         )
+        # By default we have Ardupilot
+        self.autopilot_type = (
+            getattr(args, "autopilot_type", None)
+            if getattr(args, "autopilot_type", None)
+            else self.config.get("autopilot_type", "ardupilot")
+        )
+        logger.info(f"Using autopilot type: {self.autopilot_type}")
 
         self.peripheral_mapping = {}
         if self.peripheral_file and os.path.exists(self.peripheral_file):
@@ -1201,42 +1210,41 @@ class FuzzConfig:
             else self.config.get("sitl_bin", None)
         )
 
-        self.ap_dir = (
-            getattr(args, "ap_dir", None)
-            if getattr(args, "ap_dir", None)
-            else self.config.get("ap_dir", "/ardupilot")
-        )
+        # Setup the new dir
+        self.src_dir = None
+        if self.autopilot_type == "ardupilot":
+            self.src_dir = getattr(args, "ap_dir", None) or self.config.get(
+                "ap_dir", "/ardupilot"
+            )
+        elif self.autopilot_type == "px4":
+            self.src_dir = getattr(args, "px4_dir", None) or self.config.get(
+                "px4_dir", "/px4"
+            )
+
+        if self.src_dir is None:
+            raise ValueError("Failed to obtain src_dir")
+
         # Get script directory
         self.script_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "scripts/"
         )
         # Handle the case where we don't have a SITL binary
-        if self.sitl_bin is None:
-            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
-            vehicle_bin = f"ardu{self.vehicle}"
-            sitl_bin_path = os.path.join(
-                self.ap_dir, "build", "sitl", "bin", vehicle_bin
-            )
-            if file_exists(sitl_bin_path):
-                self.sitl_bin = sitl_bin_path
-            else:
-                raise FileNotFoundError(
-                    "SITL binary not found. Please provide a valid path."
+        if self.autopilot_type == "ardupilot":
+            if self.sitl_bin is None:
+                # Check if we have the binary at src_dir + build/sitl/bin/ardu + vehicle
+                vehicle_bin = f"ardu{self.vehicle}"
+                sitl_bin_path = os.path.join(
+                    self.src_dir, "build", "sitl", "bin", vehicle_bin
                 )
+                if file_exists(sitl_bin_path):
+                    self.sitl_bin = sitl_bin_path
+                else:
+                    raise FileNotFoundError(
+                        "SITL binary not found. Please provide a valid path."
+                    )
+        elif self.autopilot_type == "px4":
+            raise NotImplementedError("PX4 under construction")
 
-        # Handle the case where we don't have a SITL binary
-        if self.sitl_bin is None:
-            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
-            vehicle_bin = f"ardu{self.vehicle}"
-            sitl_bin_path = os.path.join(
-                self.ap_dir, "build", "sitl", "bin", vehicle_bin
-            )
-            if file_exists(sitl_bin_path):
-                self.sitl_bin = sitl_bin_path
-            else:
-                raise FileNotFoundError(
-                    "SITL binary not found. Please provide a valid path."
-                )
         self.xml_file = (
             getattr(args, "xml", None)
             if getattr(args, "xml", None)
@@ -1275,9 +1283,9 @@ class FuzzConfig:
         )
 
         # Validate required files
-        if file_exists(self.sitl_bin) and file_exists(self.ap_dir):
+        if file_exists(self.sitl_bin) and file_exists(self.src_dir):
             logger.info(f"Using SITL binary: {self.sitl_bin}")
-            logger.info(f"Using Ardupilot directory: {self.ap_dir}")
+            logger.info(f"Using Ardupilot directory: {self.src_dir}")
 
         # Parameter file
         # Now we have a parameter dictionary
@@ -1287,7 +1295,7 @@ class FuzzConfig:
             "rover": "rover.parm",
         }
         self.param_file = os.path.join(
-            self.ap_dir,
+            self.src_dir,
             "Tools/autotest/default_params/",
             param_mapping.get(self.vehicle, "None"),
         )
@@ -1386,7 +1394,7 @@ class FuzzConfig:
 
         # Setup the coverage metrics
         self.coverage_class = CoverageData(
-            src_dir=self.ap_dir, fuzz_dir=self.fuzzer_temp_dir
+            src_dir=self.src_dir, fuzz_dir=self.fuzzer_temp_dir
         )
 
     def _parse_numeric_value(self, value_str):
@@ -1538,7 +1546,7 @@ class FuzzConfig:
 
         # Get the directory for the script and check the git log for the version
         src_commit_hash = (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.ap_dir)
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.src_dir)
             .strip()
             .decode("utf-8")
         )
@@ -1811,52 +1819,65 @@ class FuzzConfig:
 
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
-        sitl_args = ""
-        home_location = " --home -35.362938,149.165085,585,354 "
-        if self.vehicle == "copter":
-            sitl_args = " -S --model + -w --speedup 1 -I0"
-        elif self.vehicle == "plane":
-            # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
-            sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
-        elif self.vehicle == "rover":
-            # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover"
-            sitl_args = " -S --model rover -w --speedup 1 -I0"
-        self.sitl_cmd = (
-            self.sitl_bin + home_location + sitl_args + " --defaults " + self.param_file
-        )
-        logger.info(f"Starting SITL with command: {self.sitl_cmd}")
-        if self.calibration_active:
-            assert (
-                self.fuzzing_active is False
-            ), "Cannot run calibration while fuzzing is active"
-        if self.fuzzer_param_file:
-            self.sitl_cmd += "," + self.fuzzer_param_file
-        # Handle the case where vehicle is plane and we need to ensure it lands
-        try:
-            self.sim_handle = subprocess.Popen(
-                shlex.split(self.sitl_cmd),
-                # Comment out to debug the original binary
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                preexec_fn=os.setsid,
-                cwd=self.fuzzer_temp_dir,
+        if self.autopilot_type == "ardupilot":
+            logger.debug("Starting Ardupilot SITL simulation")
+            sitl_args = ""
+            home_location = " --home -35.362938,149.165085,585,354 "
+            if self.vehicle == "copter":
+                sitl_args = " -S --model + -w --speedup 1 -I0"
+            elif self.vehicle == "plane":
+                # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
+                sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
+            elif self.vehicle == "rover":
+                # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover"
+                sitl_args = " -S --model rover -w --speedup 1 -I0"
+            self.sitl_cmd = (
+                self.sitl_bin
+                + home_location
+                + sitl_args
+                + " --defaults "
+                + self.param_file
             )
-            init_conn = TCPConn()
-            # Reboot to ensure we have reloaded the parameters
-            init_conn.reboot_and_wait_for_ack()
-            time.sleep(2)  # Give some time for the reboot to complete
-            init_conn.cleanup(shutdown=False)
-            self.fuzzer_stats["current_mission_time"] = time.time()
-            self.tcp_conn = TCPConn()
-            self.tcp_conn.setup_threads()
-            self.sim_ready = True
-            # Start the monitoring thread
-            self.monitor_thread = threading.Thread(
-                target=self._monitor_sim, daemon=True
-            ).start()
-        except Exception as e:
-            # this would just kill the entire script, so need to handle it gracefully
-            logger.error(f"Error starting simulation: {e}")
+            logger.info(f"Starting SITL with command: {self.sitl_cmd}")
+            if self.calibration_active:
+                assert (
+                    self.fuzzing_active is False
+                ), "Cannot run calibration while fuzzing is active"
+            if self.fuzzer_param_file:
+                self.sitl_cmd += "," + self.fuzzer_param_file
+            # Handle the case where vehicle is plane and we need to ensure it lands
+            try:
+                self.sim_handle = subprocess.Popen(
+                    shlex.split(self.sitl_cmd),
+                    # Comment out to debug the original binary
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=os.setsid,
+                    cwd=self.fuzzer_temp_dir,
+                )
+                init_conn = TCPConn()
+                # Reboot to ensure we have reloaded the parameters
+                init_conn.reboot_and_wait_for_ack()
+                time.sleep(2)  # Give some time for the reboot to complete
+                init_conn.cleanup(shutdown=False)
+                self.fuzzer_stats["current_mission_time"] = time.time()
+                self.tcp_conn = TCPConn()
+                self.tcp_conn.setup_threads()
+                self.sim_ready = True
+                # Start the monitoring thread
+                self.monitor_thread = threading.Thread(
+                    target=self._monitor_sim, daemon=True
+                ).start()
+            except Exception as e:
+                # this would just kill the entire script, so need to handle it gracefully
+                logger.error(f"Error starting simulation: {e}")
+        elif self.autopilot_type == "px4":
+            logger.debug("Starting PX4 SITL simulation")
+            # Ideally this should be using something like make px4_sitl jmavsim
+            # But we need only the base command
+            raise NotImplementedError("PX4 SITL support not implemented yet")
+        else:
+            raise ValueError("Unknown software system specified")
 
     def _monitor_auto_mission_calibration(self):
         # In this case we need to actually set the different modes one by one and then check?
@@ -2971,6 +2992,9 @@ class FuzzConfig:
 
 # Misc utilities and sanity checks
 def file_exists(file_o_dir):
+    # Handle special case of having null
+    if not file_o_dir:
+        raise FileNotFoundError(f"File or directory {file_o_dir} does not exist.")
     if os.path.exists(file_o_dir):
         return True
     else:
@@ -2991,7 +3015,7 @@ if __name__ == "__main__":
             "--peripheral", type=str, help="Peripheral to fuzz", required=False
         )
         argument_parser.add_argument(
-            "--ap_dir", type=str, help="Ardupilot directory", required=False
+            "--src_dir", type=str, help="Source directory", required=False
         )
         argument_parser.add_argument(
             "--auto_mission", type=str, help="Auto mission file", required=False
@@ -3043,8 +3067,8 @@ if __name__ == "__main__":
                 missing_args.append("--xml")
             if not args.peripheral_file:
                 missing_args.append("--peripheral_file")
-            if not args.ap_dir:
-                missing_args.append("--ap_dir")
+            if not args.src_dir:
+                missing_args.append("--src_dir")
 
             if missing_args:
                 argument_parser.error(
