@@ -86,7 +86,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
 
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.DEBUG)
 
     # Create formatters
     file_formatter = logging.Formatter(
@@ -208,7 +208,7 @@ def gen_int_step(min_val, max_val, increment):
 
 
 class TCPConn:
-    def __init__(self):
+    def __init__(self, autopilot_type="ardupilot"):
         # Python inits
         self.shutdown_requested = False
         self.connected = threading.Event()
@@ -225,25 +225,20 @@ class TCPConn:
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
         # self.internal_error = False
-        self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
-        # Connection details
-        with open(os.devnull, "w") as fnull:
-            with redirect_stdout(fnull):
-                self.conn = mavutil.mavlink_connection(
-                    "tcp:localhost:5760", autoreconnect=True, retries=3
-                )  # type: ignore
+        if autopilot_type == "ardupilot":
+            self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
+            # Connection details
+            with open(os.devnull, "w") as fnull:
+                with redirect_stdout(fnull):
+                    self.conn = mavutil.mavlink_connection(
+                        "tcp:localhost:5760", autoreconnect=True, retries=3
+                    )  # type: ignore
+        elif autopilot_type == "px4":
+            # PX4 uses UDP connection
+            self.conn = mavutil.mavlink_connection(
+                "udp:localhost:14550", autoreconnect=True
+            )  # type: ignore
         self.wait_for_connection()
-        # self.conn.wait_heartbeat()
-        # self.connected.set()
-
-    def setup_threads(self):
-        # self.conn.wait_heartbeat()
-        self.location_waiting = threading.Condition()
-        # Start a thread to keep sending heartbeats
-        threading.Thread(target=self.send_heartbeat, daemon=True).start()
-        # Start a thread to monitor communications
-        self.setup_streams()
-        threading.Thread(target=self.monitor_comms, daemon=True).start()
 
     def setup_streams(self):
         self.conn.mav.request_data_stream_send(
@@ -1243,7 +1238,20 @@ class FuzzConfig:
                         "SITL binary not found. Please provide a valid path."
                     )
         elif self.autopilot_type == "px4":
-            raise NotImplementedError("PX4 under construction")
+            # PX4 uses make command instead of direct binary path
+            # Check if PX4 directory exists and has Makefile
+            if not file_exists(self.src_dir):
+                raise FileNotFoundError(
+                    f"PX4 directory not found at {self.src_dir}. Please provide a valid path."
+                )
+            makefile_path = os.path.join(self.src_dir, "Makefile")
+            if not file_exists(makefile_path):
+                raise FileNotFoundError(
+                    f"PX4 Makefile not found at {makefile_path}. Please ensure PX4 is properly installed."
+                )
+            # Set a placeholder for sitl_bin to pass validation (will use make command instead)
+            self.sitl_bin = makefile_path
+            logger.info(f"PX4 directory found at: {self.src_dir}")
 
         self.xml_file = (
             getattr(args, "xml", None)
@@ -1283,24 +1291,28 @@ class FuzzConfig:
         )
 
         # Validate required files
-        if file_exists(self.sitl_bin) and file_exists(self.src_dir):
-            logger.info(f"Using SITL binary: {self.sitl_bin}")
-            logger.info(f"Using Ardupilot directory: {self.src_dir}")
+        if self.autopilot_type == "ardupilot":
+            if file_exists(self.sitl_bin) and file_exists(self.src_dir):
+                logger.info(f"Using SITL binary: {self.sitl_bin}")
+                logger.info(f"Using Ardupilot directory: {self.src_dir}")
+            # Parameter file for Ardupilot
+            # Now we have a parameter dictionary
+            param_mapping = {
+                "copter": "copter.parm",
+                "plane": "plane-jsbsim.parm",
+                "rover": "rover.parm",
+            }
+            self.param_file = os.path.join(
+                self.src_dir,
+                "Tools/autotest/default_params/",
+                param_mapping.get(self.vehicle, "None"),
+            )
+            if file_exists(self.param_file):
+                logger.info("Using parameter file: " + self.param_file)
+        elif self.autopilot_type == "px4":
+            if file_exists(self.src_dir):
+                logger.info(f"Using PX4 directory: {self.src_dir}")
 
-        # Parameter file
-        # Now we have a parameter dictionary
-        param_mapping = {
-            "copter": "copter.parm",
-            "plane": "plane-jsbsim.parm",
-            "rover": "rover.parm",
-        }
-        self.param_file = os.path.join(
-            self.src_dir,
-            "Tools/autotest/default_params/",
-            param_mapping.get(self.vehicle, "None"),
-        )
-        if file_exists(self.param_file):
-            logger.info("Using parameter file: " + self.param_file)
 
         # Calibration settings
         self.calibration_active = False
@@ -1873,9 +1885,42 @@ class FuzzConfig:
                 logger.error(f"Error starting simulation: {e}")
         elif self.autopilot_type == "px4":
             logger.debug("Starting PX4 SITL simulation")
-            # Ideally this should be using something like make px4_sitl jmavsim
-            # But we need only the base command
-            raise NotImplementedError("PX4 SITL support not implemented yet")
+            # PX4 uses make command: make px4_sitl jmavsim
+            # Run from the PX4 directory
+            current_env = os.environ.copy()
+            current_env["HEADLESS"] = "1"
+            current_env["PX4_SIM_MODEL"] = "jmavsim_iris"
+            self.sitl_cmd = f"./build/px4_sitl_default/bin/px4 -d"
+            logger.info(f"Starting PX4 SITL with command: {self.sitl_cmd}")
+            if self.calibration_active:
+                assert (
+                    self.fuzzing_active is False
+                ), "Cannot run calibration while fuzzing is active"
+            # Note: PX4 parameter files work differently than ArduPilot
+            try:
+                self.sim_handle = subprocess.Popen(
+                    shlex.split(self.sitl_cmd),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=os.setsid,
+                    env=current_env,
+                    cwd=self.src_dir,  # Run from PX4 directory
+                )
+                time.sleep(10) # Give some time for the simulation to start
+                init_conn = TCPConn(autopilot_type="px4")
+                # Reboot to ensure we have reloaded the parameters
+                init_conn.cleanup(shutdown=False)
+                self.fuzzer_stats["current_mission_time"] = time.time()
+                self.tcp_conn = TCPConn()
+                self.tcp_conn.setup_threads()
+                self.sim_ready = True
+                # Start the monitoring thread
+                self.monitor_thread = threading.Thread(
+                    target=self._monitor_sim, daemon=True
+                ).start()
+            except Exception as e:
+                # this would just kill the entire script, so need to handle it gracefully
+                logger.error(f"Error starting PX4 simulation: {e}")
         else:
             raise ValueError("Unknown software system specified")
 
