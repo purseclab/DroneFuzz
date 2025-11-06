@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import os, sys, glob, argparse, pickle, yaml, logging
 import numpy as np
+from tqdm import tqdm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
@@ -11,8 +12,9 @@ if os.path.isdir(SCRIPTS_DIR) and SCRIPTS_DIR not in sys.path:
     sys.path.append(SCRIPTS_DIR)
 
 from plot_servo_values import parse_ardupilot_bin
+from types import SimpleNamespace
 
-from minimal_poc import FuzzConfig
+from minimal_poc import FuzzConfig, _ssl_finetune_head, FuzzState
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("offline")
@@ -31,6 +33,48 @@ def bin_to_series(servo_data):
         })
     return out
 
+def add_to_fuzz_queue(self, msgs, score: float):
+    item = SimpleNamespace(priority=float(score), msgs=list(msgs))
+    self.fuzzer_queue.append(item)
+    # Keep highest-priority first to mimic your online behavior
+    self.fuzzer_queue.sort(key=lambda x: x.priority, reverse=True)
+
+def _prepare_logs_for_dtw_plot(off, src_bin_path: str, baseline_bin_path: str = None):
+    """
+    Ensure fuzzer_temp_dir/logs/ has what save_diff_img() expects.
+    - baseline:  {off.fuzz_enum_mode:08d}.BIN
+    - anomaly:   {log_id:08d}.BIN (and write LASTLOG.TXT=log_id)
+    """
+    import shutil, random
+    logs_dir = os.path.join(off.fuzzer_temp_dir, "logs")
+    os.makedirs(logs_dir, exist_ok=True)
+
+    # pick an integer id for this anomaly file
+    log_id = random.randint(1, 99999999)
+
+    # copy the anomaly BIN
+    anom_dst = os.path.join(logs_dir, f"{log_id:08d}.BIN")
+    shutil.copy2(src_bin_path, anom_dst)
+
+    # choose a baseline: given path, or first golden, or fall back to the same file
+    if baseline_bin_path and os.path.exists(baseline_bin_path):
+        base_src = baseline_bin_path
+    elif off.golden_rc_vals:
+        # If you have raw golden series only, you may not have a BIN; just reuse the same BIN.
+        base_src = src_bin_path
+    else:
+        base_src = src_bin_path
+
+    base_dst = os.path.join(logs_dir, f"{off.fuzz_enum_mode:08d}.BIN")
+    if not os.path.exists(base_dst):
+        shutil.copy2(base_src, base_dst)
+
+    # write LASTLOG.TXT with the anomaly id
+    with open(os.path.join(logs_dir, "LASTLOG.TXT"), "w") as f:
+        f.write(str(log_id))
+
+    # nothing to return; DTW will read the files on its own
+
 class _NoopCoverage:
     def update(self): pass
     def archive_data(self, filename=None): pass
@@ -46,6 +90,11 @@ class OfflineHarness:
         os.makedirs(self.fuzzer_temp_dir, exist_ok=True)
         self.fuzzer_temp_input_dir = os.path.join(self.fuzzer_temp_dir, "input")
         os.makedirs(self.fuzzer_temp_input_dir, exist_ok=True)
+        
+        def _ssl_finetune_head_method(model_ae, device):
+            return _ssl_finetune_head(self, model_ae, device)
+
+        self._ssl_finetune_head = _ssl_finetune_head_method
 
         self.script_dir = os.path.join(HERE, "scripts")  # used by save_diff_img in your DTW path
         self.golden_rc_vals = []
@@ -57,10 +106,17 @@ class OfflineHarness:
             "last_mission_time": 0.0,
         }
         self.fuzzer_state = None
+        self.fuzzer_stats["bugs_dtw"] = 0
+        self.fuzzer_stats["bugs_lstm"] = 0
+
         self.fuzz_enum_mode = 0
         self.last_scores = {"dtw": float("nan"), "z_dtw": float("nan"),
                             "lstm_err": float("nan"), "p_anom": float("nan")}
         self.last_dtw_distance = float("nan")
+        self.fuzzer_queue = []            # simple list of items with .priority
+        self.fuzz_msgs = []               # messages written to mkstemp file
+        self.fuzzer_state = FuzzState.Init
+        self.add_to_fuzz_queue = add_to_fuzz_queue.__get__(self, OfflineHarness)
 
         # thresholds populated by _sigma_calc_dtw/_sigma_calc_lstm
         self.min_fuzz_threshold = None
@@ -134,6 +190,18 @@ def load_goldens_from_dir(logs_dir, rc_log_filter=True):
         raise RuntimeError("No usable BINs after parsing.")
     return goldens
 
+def update_tqdm_postfix(off: OfflineHarness, pbar: tqdm):
+    dtw_min_val = off.min_fuzz_threshold
+    dtw_max_val = off.max_fuzz_threshold
+    pbar.set_postfix({
+        "sims": off.fuzzer_stats["simulations_completed"],
+        "msgs": off.fuzzer_stats["messages_sent"],
+        "dtw_min": "NaN" if dtw_min_val is None else f"{dtw_min_val:.6f}",
+        "dtw_max": "NaN" if dtw_max_val is None else f"{dtw_max_val:.6f}",
+        "bugs_dtw": off.fuzzer_stats.get("bugs_dtw", 0),
+        "bugs_lstm": off.fuzzer_stats.get("bugs_lstm", 0),
+    })
+
 def main():
     ap = argparse.ArgumentParser("Offline: reuse minimal_poc to calibrate from BINs and score BINs")
     logs_dir = os.path.join(HERE, "calibration_logs")
@@ -146,6 +214,9 @@ def main():
     ap.add_argument("--lstm-epochs", type=int, default=100)
     ap.add_argument("--lstm-batch", type=int, default=64)
     ap.add_argument("--lstm-lr", type=float, default=1e-3)
+    ap.add_argument("--score_dir", help="If set, score all BINs in this folder (offline, no SITL)")
+    ap.add_argument("--scores_csv", default="scores.csv", help="CSV filename to write under out_dir")
+
     args = ap.parse_args()
 
     base_cfg = {
@@ -175,18 +246,109 @@ def main():
     off.persist_rc_pickle_and_yaml()
     log.info("Wrote rcou_vals.pkl + cal_config.yaml in %s; model+norm in %s", os.getcwd(), args.out_dir)
 
-    # 4) optional: score one BIN offline WITH ORACLES
+    # 4) optional: score one BIN
     if args.score_bin:
+        _prepare_logs_for_dtw_plot(off, args.score_bin)
         d = parse_ardupilot_bin(args.score_bin, rc_log_filter=args.rc_log_filter, channels=["C1","C2","C3","C4"])
         series = bin_to_series(d)
-        off.rcou_vals = series  # what cleanup_sim() would set
+        off.rcou_vals = series
+        off.fuzzer_stats["simulations_completed"] += 1
+        # DTW first (sets weak labels/last_scores), then LSTM
+        prev_crashes = off.fuzzer_stats["potential_crashes"]
         off.oracle_dtw()
+        if off.fuzzer_stats["potential_crashes"] > prev_crashes:
+            off.fuzzer_stats["bugs_dtw"] += 1
+        prev_crashes = off.fuzzer_stats["potential_crashes"]
         off.oracle_lstm()
-        # print what both wrote
+        if off.fuzzer_stats["potential_crashes"] > prev_crashes:
+            off.fuzzer_stats["bugs_lstm"] += 1
         log.info("DTW dist=%.6f  z=%.2f", float(off.last_scores["dtw"]), float(off.last_scores["z_dtw"]))
         log.info("LSTM err=%.6e  p_anom=%s",
-                 float(off.last_scores["lstm_err"]),
-                 "nan" if np.isnan(off.last_scores["p_anom"]) else f"{off.last_scores['p_anom']:.3f}")
+                float(off.last_scores["lstm_err"]),
+                "nan" if np.isnan(off.last_scores["p_anom"]) else f"{off.last_scores['p_anom']:.3f}")
+
+    # Default to scoring the calibration_logs folder if no target provided
+    if not args.score_dir and not args.score_bin:
+        log.info("No --score_dir/--score_bin provided; defaulting to --score_dir %s", logs_dir)
+        args.score_dir = logs_dir
+
+    # 5) optional: score an entire folder (offline)
+    if args.score_dir:
+        bin_paths = sorted(glob.glob(os.path.join(args.score_dir, "*.BIN")))
+        if not bin_paths:
+            log.error("No BINs found in %s", args.score_dir)
+            return 1
+
+        csv_path = os.path.join(args.out_dir, args.scores_csv)
+        with open(csv_path, "w", newline="") as f:
+            import csv
+            w = csv.writer(f)
+            w.writerow(["bin", "dtw", "z_dtw", "lstm_err", "p_anom", "flag_dtw", "flag_lstm"])
+
+            pbar = tqdm(total=len(bin_paths), desc="Offline scoring")
+            for i, p in enumerate(bin_paths, start=1):
+                # “iteration” start
+                log.info("Starting offline iteration %d on %s", i, os.path.basename(p))
+
+                # load BIN → rcou_vals (no SITL)
+                try:
+                    _prepare_logs_for_dtw_plot(off, p)
+                    d = parse_ardupilot_bin(p, rc_log_filter=args.rc_log_filter, channels=["C1","C2","C3","C4"])
+                except Exception as e:
+                    log.warning("Skipping %s: %s", p, e)
+                    pbar.update(1)
+                    continue
+
+                off.rcou_vals = bin_to_series(d)
+                off.fuzzer_stats["simulations_completed"] = i
+
+                # run DTW then LSTM (LSTM uses DTW for weak labels)
+                prev_crashes = off.fuzzer_stats["potential_crashes"]
+                off.oracle_dtw()
+                flagged_dtw = off.fuzzer_stats["potential_crashes"] > prev_crashes
+                if flagged_dtw:
+                    off.fuzzer_stats["bugs_dtw"] += 1
+
+                prev_crashes = off.fuzzer_stats["potential_crashes"]
+                off.oracle_lstm()
+                flagged_lstm = off.fuzzer_stats["potential_crashes"] > prev_crashes
+                if flagged_lstm:
+                    off.fuzzer_stats["bugs_lstm"] += 1
+
+                # write one row to CSV
+                w.writerow([
+                    os.path.basename(p),
+                    f"{float(off.last_scores['dtw']):.6f}",
+                    f"{float(off.last_scores['z_dtw']):.2f}",
+                    f"{float(off.last_scores['lstm_err']):.6e}",
+                    "" if np.isnan(off.last_scores['p_anom']) else f"{off.last_scores['p_anom']:.3f}",
+                    int(flagged_dtw),
+                    int(flagged_lstm),
+                ])
+
+                # “iteration” end visuals
+                pbar.update(1)
+                update_tqdm_postfix(off, pbar)
+
+        log.info("Wrote offline scores CSV: %s", csv_path)
+        # --- final summary ---
+        total_bins = len(bin_paths)
+        bugs_dtw  = off.fuzzer_stats.get("bugs_dtw", 0)
+        bugs_lstm = off.fuzzer_stats.get("bugs_lstm", 0)
+        both = bugs_dtw + bugs_lstm
+        log.info("============================================================")
+        log.info("Offline Scoring Summary")
+        log.info("Total BINs processed: %d", total_bins)
+        log.info("DTW flagged anomalies : %d", bugs_dtw)
+        log.info("LSTM flagged anomalies: %d", bugs_lstm)
+        log.info("Combined total (may overlap): %d", both)
+        log.info("============================================================")
+
+        pbar.close()
+        print(f"[SUMMARY] DTW={bugs_dtw}, LSTM={bugs_lstm}, total={both}")
+
+
+
 
 if __name__ == "__main__":
     sys.exit(main())
