@@ -223,9 +223,10 @@ class TCPConn:
         self.ekf_ready = False  # EKF lock
         self.drone_in_air = False
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
+        self.autopilot_type = autopilot_type
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
         # self.internal_error = False
-        if autopilot_type == "ardupilot":
+        if self.autopilot_type == "ardupilot":
             self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
             # Connection details
             with open(os.devnull, "w") as fnull:
@@ -233,12 +234,23 @@ class TCPConn:
                     self.conn = mavutil.mavlink_connection(
                         "tcp:localhost:5760", autoreconnect=True, retries=3
                     )  # type: ignore
-        elif autopilot_type == "px4":
+        elif self.autopilot_type == "px4":
             # PX4 uses UDP connection
             self.conn = mavutil.mavlink_connection(
                 "udp:localhost:14550", autoreconnect=True
             )  # type: ignore
         self.wait_for_connection()
+        # self.conn.wait_heartbeat()
+        # self.connected.set()
+
+    def setup_threads(self):
+        # self.conn.wait_heartbeat()
+        self.location_waiting = threading.Condition()
+        # Start a thread to keep sending heartbeats
+        threading.Thread(target=self.send_heartbeat, daemon=True).start()
+        # Start a thread to monitor communications
+        self.setup_streams()
+        threading.Thread(target=self.monitor_comms, daemon=True).start()
 
     def setup_streams(self):
         self.conn.mav.request_data_stream_send(
@@ -323,6 +335,7 @@ class TCPConn:
         logger.info("Connection closed, stopping heartbeat thread.")
 
     def _handle_sys_status(self, msg):
+        print(f"SYS_STATUS: {msg}")
         # Basically for now, we just check enum values if the pre-arm is ready
         if msg.onboard_control_sensors_health & PREARM_CHECK:
             self.drone_ready = (
@@ -339,11 +352,12 @@ class TCPConn:
 
     def _monitor_ekf_lock(self, msg):
         """Ensure we have EKF getting the position"""
+        print(f"EKF_STATUS_REPORT: {msg}")
         if (msg.flags & EKF_POS_HORIZ) or (msg.flags & EKF_POS_VERT):
             # If we have horizontal or vertical position lock
             self.ekf_ready = True
 
-    def _monitor_status_text(self, msg):
+    def _monitor_status_text_ap(self, msg):
         # Cause this wouldn't work in case of GPS (fuzzing)
         # if re.search(r"EKF\d IMU\d is using GPS", msg.text, re.IGNORECASE):
         #     # Need this cause we need to wait till EKF is ready with GPS info
@@ -402,6 +416,58 @@ class TCPConn:
             self.drone_ready = False
             self.gps_ready = False
 
+    def _monitor_status_text_px4(self, msg):
+        print(f"DRONE_MSG: {msg.text}")
+        # TODO: Need to verify all these messages
+        if re.search(r"Ready for takeoff!", msg.text, re.IGNORECASE):
+            logger.info("Vehicle is ready for takeoff.")
+            self.drone_ready = True
+        if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
+            logger.info("Mission ended, vehicle is disarmed.")
+            self.drone_in_air = False
+        if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
+            self.drone_in_air = True
+            logger.info("AUTO Mission started, takeoff.")
+        if re.search(r"PreArm.*", msg.text, re.IGNORECASE):
+            logger.error("PreArm check failed, vehicle is not ready for flight.")
+            error_queue.put(
+                {
+                    "type": "fuzzer_error",
+                    "error": "PreArm check failed, vehicle is not ready for flight.",
+                    "component": "monitor_comms",
+                    "timestamp": time.time(),
+                }
+            )
+            self.drone_in_air = False
+        if re.search(r"Mission: 1 WP", msg.text, re.IGNORECASE):
+            self.drone_in_air = True
+        if re.search(r".*Mission Complete.*", msg.text, re.IGNORECASE):
+            logger.info("Mission ended, vehicle is disarmed.")
+            self.drone_in_air = False
+        elif re.search(r".*Reached destination.*", msg.text, re.IGNORECASE):
+            logger.info("Reached destination , vehicle is disarmed.")
+            self.drone_in_air = False
+        # Handling scenario when we are in air
+        if re.search(r"Mission: 2 WP", msg.text, re.IGNORECASE):
+            logger.debug("Now monitoring RC channels")
+            self.rc_monitor = True
+            self.st_msg_send("LOG RC")
+        elif re.search(r"Mission: \d+ RTL", msg.text, re.IGNORECASE):
+            logger.debug("Not monitoring RC channels")
+            self.rc_monitor = False
+            self.st_msg_send("STOP RC")
+        # If the drone crashed or something
+        if re.search(r"hit ground\w*", msg.text, re.IGNORECASE):
+            logger.info("Drone hit the ground, shutting down.")
+            logger.debug("Disabling all flags")
+            # self.internal_error = True
+            # self.shutdown_requested = True
+            self.st_msg_send("STOP RC")
+            self.drone_in_air = False
+            self.rc_monitor = False
+            self.drone_ready = False
+            self.gps_ready = False
+
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
             try:
@@ -411,7 +477,10 @@ class TCPConn:
                     if msg.get_type() == "STATUSTEXT":
                         logger.debug(f"DRONE_MSG: {msg.text}")
                         # Crazy check because pymavlink lock doesn't work
-                        self._monitor_status_text(msg)
+                        if self.autopilot_type == "ardupilot":
+                            self._monitor_status_text_ap(msg)
+                        elif self.autopilot_type == "px4":
+                            self._monitor_status_text_px4(msg)
                     if msg.get_type() == "COMMAND_ACK":
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
                             # Only create an error if the command was a arming/land/takeoff/auto
@@ -625,6 +694,15 @@ class TCPConn:
         )  # type: ignore
 
     def takeoff(self, altitude):
+        # Peek at the drone_location queue to get the relative altitude
+        loc = self.loc_queue.get(timeout=mavlink_timeout)
+        if loc is None:
+            logger.error("No location data received, skipping takeoff")
+            return
+        rel_alt = loc["rel_alt"]
+        # Check if the altitude is current range
+        target_alt = rel_alt + altitude
+        print(f"Target altitude: {target_alt} meters")
         self.conn.mav.command_long_send(
             self.conn.target_system,  # type: ignore
             self.conn.target_component,  # type: ignore
@@ -636,7 +714,7 @@ class TCPConn:
             0,
             0,
             0,
-            altitude,
+            target_alt,
         )  # type: ignore
         # Check if the drone state is within the altitude range
         logger.debug("Waiting for location to be within the altitude range")
@@ -1866,9 +1944,9 @@ class FuzzConfig:
                     stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid,
                     cwd=self.fuzzer_temp_dir,
-                )
                 init_conn = TCPConn()
                 # Reboot to ensure we have reloaded the parameters
+                )
                 init_conn.reboot_and_wait_for_ack()
                 time.sleep(2)  # Give some time for the reboot to complete
                 init_conn.cleanup(shutdown=False)
@@ -1900,18 +1978,18 @@ class FuzzConfig:
             try:
                 self.sim_handle = subprocess.Popen(
                     shlex.split(self.sitl_cmd),
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
+                    # stdout=subprocess.DEVNULL,
+                    # stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid,
                     env=current_env,
                     cwd=self.src_dir,  # Run from PX4 directory
                 )
                 time.sleep(10) # Give some time for the simulation to start
-                init_conn = TCPConn(autopilot_type="px4")
+                # init_conn = TCPConn(autopilot_type="px4")
                 # Reboot to ensure we have reloaded the parameters
-                init_conn.cleanup(shutdown=False)
+                # init_conn.cleanup(shutdown=False)
                 self.fuzzer_stats["current_mission_time"] = time.time()
-                self.tcp_conn = TCPConn()
+                self.tcp_conn = TCPConn(autopilot_type="px4")
                 self.tcp_conn.setup_threads()
                 self.sim_ready = True
                 # Start the monitoring thread
