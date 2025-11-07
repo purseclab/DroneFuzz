@@ -86,7 +86,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
 
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.WARNING)
+    console_handler.setLevel(logging.DEBUG)
 
     # Create formatters
     file_formatter = logging.Formatter(
@@ -203,8 +203,9 @@ def gen_int_step(min_val, max_val, increment):
 
 
 class TCPConn:
-    def __init__(self):
+    def __init__(self, autopilot_type="ardupilot"):
         # Python inits
+        self.autopilot_type = autopilot_type
         self.shutdown_requested = False
         self.connected = threading.Event()
         self.connected.clear()
@@ -220,13 +221,19 @@ class TCPConn:
         self.rc_monitor = False  # Flag to monitor RC channel (ideally we want only after takeoff/and before landing)
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
         # self.internal_error = False
-        self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
-        # Connection details
-        with open(os.devnull, "w") as fnull:
-            with redirect_stdout(fnull):
-                self.conn = mavutil.mavlink_connection(
-                    "tcp:localhost:5760", autoreconnect=True, retries=3
-                )  # type: ignore
+        if autopilot_type == "ardupilot":
+            self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
+            # Connection details
+            with open(os.devnull, "w") as fnull:
+                with redirect_stdout(fnull):
+                    self.conn = mavutil.mavlink_connection(
+                        "tcp:localhost:5760", autoreconnect=True, retries=3
+                    )  # type: ignore
+        elif autopilot_type == "px4":
+            # PX4 uses UDP connection
+            self.conn = mavutil.mavlink_connection(
+                "udp:localhost:14540", autoreconnect=True
+            )  # type: ignore
         self.wait_for_connection()
         # self.conn.wait_heartbeat()
         # self.connected.set()
@@ -1133,93 +1140,29 @@ def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to save diff image: {e}")
 
-
-def save_lstm_img(
-    filename: str,
-    W: np.ndarray,  # [B,T,4] normalized inputs
-    recon: np.ndarray,  # [B,T,4] normalized recon
-    mse_per_win: np.ndarray,  # [B]
-    lstm_err_min: float,
-    lstm_err_max: float,
-    dtw_dist: float,
-    p_anom: Optional[float],
-    output_dir: str,
-    title: str = "LSTM AE (normalized)",
-):
+# --- helper: stitch overlapped windows by mean on overlaps ---
+def _stitch_overlap_mean(wins: np.ndarray, stride: int) -> np.ndarray:
     """
-    Save a visualization comparing original vs reconstruction for the first window,
-    plus the window-wise MSE with AE thresholds, and annotate DTW/LSTM scores.
+    wins: [B, T, C] windows (already in same scale).
+    Returns a single sequence [L, C] formed by overlap-averaging with given stride.
     """
-    import matplotlib.pyplot as plt
-
-    os.makedirs(os.path.join(output_dir, "images"), exist_ok=True)
-    path = os.path.join(output_dir, "images", f"{filename}-lstm.png")
-
-    B, T, C = W.shape
-    if B == 0:
-        return
-    b0 = 0
-    t = np.arange(T)
-
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=False)
-    # Top: channels original vs recon
-    ch_names = ["C1", "C2", "C3", "C4"]
-    for c in range(min(4, C)):
-        axes[0].plot(t, W[b0, :, c], label=f"{ch_names[c]} original")
-        axes[0].plot(t, recon[b0, :, c], linestyle="--", label=f"{ch_names[c]} recon")
-    axes[0].set_title(f"{title} – window 0")
-    axes[0].set_ylabel("z-score (norm)")
-    axes[0].grid(True)
-    axes[0].legend(ncol=4, fontsize=9)
-
-    # Middle: per-window MSE distribution
-    axes[1].plot(np.arange(len(mse_per_win)), mse_per_win, marker=".", linestyle="-")
-    axes[1].axhline(lstm_err_min, color="orange", linestyle="--", label="AE low band")
-    axes[1].axhline(lstm_err_max, color="red", linestyle="--", label="AE high band")
-    axes[1].set_title("Window-wise AE MSE")
-    axes[1].set_ylabel("MSE")
-    axes[1].grid(True)
-    axes[1].legend()
-
-    # Bottom: text panel with scores
-    axes[2].axis("off")
-    txt = [
-        f"DTW dist: {dtw_dist:.6f}",
-        f"LSTM AE mean MSE: {float(np.mean(mse_per_win)):.6e}",
-        f"AE band: [{lstm_err_min:.6e}, {lstm_err_max:.6e}]",
-        f"Head p_anom: {('na' if p_anom is None else f'{p_anom:.3f}')}",
-    ]
-    axes[2].text(0.01, 0.9, "\n".join(txt), fontsize=12, va="top")
-
-    fig.suptitle(f"{title} – {filename}", y=0.98)
-    plt.tight_layout(rect=[0, 0, 1, 0.96])
-    plt.savefig(path, dpi=150)
-    plt.close(fig)
-
-
-def _stitch_overlap_mean(windows: np.ndarray, stride: int) -> np.ndarray:
-    """
-    windows: [B,T,C] normalized or raw windows
-    returns: [T0 + (B-1)*stride, C] stitched by overlap-averaging
-    """
-    B, T, C = windows.shape
-    out_len = T + (B - 1) * stride if B > 0 else 0
-    out = np.zeros((out_len, C), dtype=windows.dtype)
-    cnt = np.zeros((out_len, C), dtype=np.float32)
+    B, T, C = wins.shape
+    L = (B - 1) * stride + T
+    out = np.zeros((L, C), dtype=wins.dtype)
+    cnt = np.zeros((L, 1), dtype=np.float32)
     for b in range(B):
         s = b * stride
-        e = s + T
-        out[s:e] += windows[b]
-        cnt[s:e] += 1.0
+        out[s:s+T] += wins[b]
+        cnt[s:s+T] += 1.0
     cnt[cnt == 0] = 1.0
     return out / cnt
 
-
-def save_lstm_bin_overlay(
+# --- new: 3-panel overlay (BIN original vs LSTM recon vs difference) ---
+def save_lstm_bin_triptych(
     filename_idx: int | None,
-    recon_norm: np.ndarray,  # [B,T,4] normalized recon
-    mean: np.ndarray,  # [4] per-channel norm mean
-    std: np.ndarray,  # [4] per-channel norm std
+    recon_norm: np.ndarray,   # [B,T,4] normalized reconstruction
+    mean: np.ndarray,         # [4]
+    std: np.ndarray,          # [4]
     stride: int,
     output_dir: str,
     title: str = "LSTM Reconstruction vs BIN (raw units)",
@@ -1227,27 +1170,30 @@ def save_lstm_bin_overlay(
     rc_log_filter: bool = True,
 ):
     """
-    Overlay raw BIN servo signals vs LSTM reconstruction (denormalized & stitched).
-    If filename_idx is None, it falls back to current mission only (skips BIN parse).
+    Produces three subplots:
+      (top)   BIN raw C1..C4
+      (mid)   LSTM reconstruction (denorm, stitched)
+      (bottom)Per-channel difference: recon - BIN, aligned on a common time grid
+    If filename_idx is None or BIN is missing, it will plot only the reconstruction.
     """
     import matplotlib.pyplot as plt
     from pymavlink import mavutil
+    import os, numpy as np
 
     images_dir = os.path.join(output_dir, "images")
     os.makedirs(images_dir, exist_ok=True)
 
-    # Denormalize recon and stitch to single series
-    recon_denorm = recon_norm * (std[None, None, :]) + (mean[None, None, :])  # [B,T,4]
+    # 1) Denormalize and stitch [B,T,4] -> [L,4]
+    recon_denorm = recon_norm * (std[None, None, :]) + (mean[None, None, :])
     recon_seq = _stitch_overlap_mean(recon_denorm, stride=stride)  # [L,4]
 
-    # Try to load matching BIN to plot the true raw servo outputs
+    # 2) Try to read matching BIN -> ts, bin_seq [N,4]
     ts = None
     bin_seq = None
     if isinstance(filename_idx, int):
         bin_path = os.path.join(output_dir, "logs", f"{filename_idx:08d}.BIN")
         if os.path.exists(bin_path):
             mlog = mavutil.mavlink_connection(bin_path)
-            # optional RC log gating
             rc_ok = not rc_log_filter
             times = []
             vals = {ch: [] for ch in [f"C{i}" for i in range(1, 17)]}
@@ -1265,57 +1211,76 @@ def save_lstm_bin_overlay(
                     for i in range(1, 17):
                         ch = f"C{i}"
                         vals[ch].append(getattr(msg, ch) if hasattr(msg, ch) else 0)
-            if len(times) > 0:
-                ts = np.array(times)
-                # Stack C1..C4 only
-                bin_seq = np.stack(
-                    [np.array(vals[ch]) for ch in channels], axis=1
-                )  # [N,4]
 
-    # Prepare figure
-    fig, ax = plt.subplots(1, 1, figsize=(12, 5))
-    # Plot BIN if present
-    if bin_seq is not None and ts is not None:
-        for c_idx, ch in enumerate(channels):
-            ax.plot(ts, bin_seq[:, c_idx], label=f"{ch} (BIN)", linewidth=1.0)
+            if times:
+                ts = np.array(times, dtype=np.float64)
+                bin_seq = np.stack([np.array(vals[ch], dtype=np.float32) for ch in channels], axis=1)  # [N,4]
 
-        # Make a synthetic time for recon overlay to align roughly:
-        # scale recon length to BIN length
-        L = recon_seq.shape[0]
-        ts_recon = np.linspace(ts[0], ts[-1], L)
+    # 3) Build plots
+    if bin_seq is None or ts is None:
+        # Only reconstruction available
+        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+        t_rec = np.arange(recon_seq.shape[0])
         for c_idx, ch in enumerate(channels):
-            ax.plot(
-                ts_recon,
-                recon_seq[:, c_idx],
-                linestyle="--",
-                label=f"{ch} (recon)",
-                linewidth=1.0,
-            )
-        name = f"{filename_idx:08d}-lstm_overlay.png"
+            ax.plot(t_rec, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
+        ax.set_title(title + " (no BIN available)")
+        ax.set_xlabel("sample")
+        ax.set_ylabel("servo (raw)")
+        ax.grid(True); ax.legend(ncol=4, fontsize=9)
+        out_path = os.path.join(images_dir, "lstm_triptych_recon_only.png")
+        plt.tight_layout(); plt.savefig(out_path, dpi=150); plt.close(fig)
+        return
+
+    # 4) Align recon to BIN time with a common grid and compute diff
+    L = recon_seq.shape[0]
+    ts_recon = np.linspace(ts[0], ts[-1], L)  # synthetic time for recon
+    # choose a common time grid in the overlap range
+    t0 = max(ts[0], ts_recon[0])
+    t1 = min(ts[-1], ts_recon[-1])
+    if t1 <= t0:
+        # degenerate overlap; fall back to independent axes
+        common_t = None
     else:
-        # fallback: just plot recon against a synthetic time
-        L = recon_seq.shape[0]
-        t = np.arange(L)
-        for c_idx, ch in enumerate(channels):
-            ax.plot(
-                t,
-                recon_seq[:, c_idx],
-                linestyle="--",
-                label=f"{ch} (recon)",
-                linewidth=1.0,
-            )
-        name = "lstm_overlay.png"
+        common_t = np.linspace(t0, t1, min(len(ts), L))
 
-    ax.set_title(title)
-    ax.set_xlabel("time")
-    ax.set_ylabel("servo (raw)")
-    ax.grid(True)
-    ax.legend(ncol=4, fontsize=9)
-    out_path = os.path.join(images_dir, name)
+    # Interpolate to common grid if possible
+    if common_t is not None:
+        bin_interp = np.column_stack([np.interp(common_t, ts, bin_seq[:, i]) for i in range(bin_seq.shape[1])])
+        rec_interp = np.column_stack([np.interp(common_t, ts_recon, recon_seq[:, i]) for i in range(recon_seq.shape[1])])
+        diff = rec_interp - bin_interp  # [K,4]
+    else:
+        bin_interp, rec_interp, diff = None, None, None
+
+    # 5) Triptych
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=False)
+    # (top) BIN
+    for c_idx, ch in enumerate(channels):
+        axes[0].plot(ts, bin_seq[:, c_idx], label=f"{ch} (BIN)")
+    axes[0].set_title(f"{title} – BIN"); axes[0].set_ylabel("servo (raw)")
+    axes[0].grid(True); axes[0].legend(ncol=4, fontsize=9)
+
+    # (mid) Recon
+    for c_idx, ch in enumerate(channels):
+        axes[1].plot(ts_recon, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
+    axes[1].set_title(f"{title} – Reconstruction"); axes[1].set_ylabel("servo (raw)")
+    axes[1].grid(True); axes[1].legend(ncol=4, fontsize=9)
+
+    # (bottom) Difference on common grid (if available)
+    if diff is not None:
+        for c_idx, ch in enumerate(channels):
+            axes[2].plot(common_t, diff[:, c_idx], label=f"{ch} (recon − BIN)")
+        axes[2].axhline(0.0, linestyle=':', linewidth=0.8)
+        axes[2].set_title("Channel Differences (aligned)"); axes[2].set_xlabel("time (s)"); axes[2].set_ylabel("Δ servo")
+        axes[2].grid(True); axes[2].legend(ncol=4, fontsize=9)
+    else:
+        axes[2].text(0.5, 0.5, "No overlap to compute differences", ha='center', va='center', transform=axes[2].transAxes)
+        axes[2].set_axis_off()
+
     plt.tight_layout()
+    out_name = f"{filename_idx:08d}-lstm_triptych.png"
+    out_path = os.path.join(images_dir, out_name)
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
-
 
 class FuzzConfig:
     def __init__(self, args, logger_instance):
@@ -1342,9 +1307,11 @@ class FuzzConfig:
         self.fuzzer_queue = []
         # Or queue.Queue (if we have multiple producers)
         # Just check if the file contains at least ap_dir and peripheral_file
-        if not self.config.get("ap_dir") or not self.config.get("peripheral_file"):
+        if not self.config.get("peripheral_file") and not self.config.get(
+            "autopilot_type"
+        ):            
             raise ValueError(
-                "Atleast SITL binary and peripheral_file are required in the config file."
+                "Atleast autopilot_type and peripheral_file are required in the config file."
             )
         # Load peripheral mapping from peripheral YAML file
         self.peripheral_file = (
@@ -1352,6 +1319,13 @@ class FuzzConfig:
             if getattr(args, "peripheral_file", None)
             else self.config.get("peripheral_file")
         )
+
+        self.autopilot_type = (
+            getattr(args, "autopilot_type", None)
+            if getattr(args, "autopilot_type", None)
+            else self.config.get("autopilot_type", "ardupilot")
+        )
+        logger.info(f"Using autopilot type: {self.autopilot_type}")
 
         self.peripheral_mapping = {}
         if self.peripheral_file and os.path.exists(self.peripheral_file):
@@ -1417,42 +1391,53 @@ class FuzzConfig:
             else self.config.get("sitl_bin", None)
         )
 
-        self.ap_dir = (
-            getattr(args, "ap_dir", None)
-            if getattr(args, "ap_dir", None)
-            else self.config.get("ap_dir", "/ardupilot")
-        )
+        self.src_dir = None
+        if self.autopilot_type == "ardupilot":
+            self.src_dir = getattr(args, "ap_dir", None) or self.config.get(
+                "ap_dir", "/ardupilot"
+            )
+        elif self.autopilot_type == "px4":
+            self.src_dir = getattr(args, "px4_dir", None) or self.config.get(
+                "px4_dir", "/px4"
+            )
+
+        if self.src_dir is None:
+            raise ValueError("Failed to obtain src_dir")
+
         # Get script directory
         self.script_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "scripts/"
         )
-        # Handle the case where we don't have a SITL binary
-        if self.sitl_bin is None:
-            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
-            vehicle_bin = f"ardu{self.vehicle}"
-            sitl_bin_path = os.path.join(
-                self.ap_dir, "build", "sitl", "bin", vehicle_bin
-            )
-            if file_exists(sitl_bin_path):
-                self.sitl_bin = sitl_bin_path
-            else:
-                raise FileNotFoundError(
-                    "SITL binary not found. Please provide a valid path."
+        
+        if self.autopilot_type == "ardupilot":
+            if self.sitl_bin is None:
+                # Check if we have the binary at src_dir + build/sitl/bin/ardu + vehicle
+                vehicle_bin = f"ardu{self.vehicle}"
+                sitl_bin_path = os.path.join(
+                    self.src_dir, "build", "sitl", "bin", vehicle_bin
                 )
+                if file_exists(sitl_bin_path):
+                    self.sitl_bin = sitl_bin_path
+                else:
+                    raise FileNotFoundError(
+                        "SITL binary not found. Please provide a valid path."
+                    )
+        elif self.autopilot_type == "px4":
+            # PX4 uses make command instead of direct binary path
+            # Check if PX4 directory exists and has Makefile
+            if not file_exists(self.src_dir):
+                raise FileNotFoundError(
+                    f"PX4 directory not found at {self.src_dir}. Please provide a valid path."
+                )
+            makefile_path = os.path.join(self.src_dir, "Makefile")
+            if not file_exists(makefile_path):
+                raise FileNotFoundError(
+                    f"PX4 Makefile not found at {makefile_path}. Please ensure PX4 is properly installed."
+                )
+            # Set a placeholder for sitl_bin to pass validation (will use make command instead)
+            self.sitl_bin = makefile_path
+            logger.info(f"PX4 directory found at: {self.src_dir}")
 
-        # Handle the case where we don't have a SITL binary
-        if self.sitl_bin is None:
-            # Check if we have the binary at ap_dir + build/sitl/bin/ardu + vehicle
-            vehicle_bin = f"ardu{self.vehicle}"
-            sitl_bin_path = os.path.join(
-                self.ap_dir, "build", "sitl", "bin", vehicle_bin
-            )
-            if file_exists(sitl_bin_path):
-                self.sitl_bin = sitl_bin_path
-            else:
-                raise FileNotFoundError(
-                    "SITL binary not found. Please provide a valid path."
-                )
         self.xml_file = (
             getattr(args, "xml", None)
             if getattr(args, "xml", None)
@@ -1491,24 +1476,27 @@ class FuzzConfig:
         )
 
         # Validate required files
-        if file_exists(self.sitl_bin) and file_exists(self.ap_dir):
-            logger.info(f"Using SITL binary: {self.sitl_bin}")
-            logger.info(f"Using Ardupilot directory: {self.ap_dir}")
-
-        # Parameter file
-        # Now we have a parameter dictionary
-        param_mapping = {
-            "copter": "copter.parm",
-            "plane": "plane-jsbsim.parm",
-            "rover": "rover.parm",
-        }
-        self.param_file = os.path.join(
-            self.ap_dir,
-            "Tools/autotest/default_params/",
-            param_mapping.get(self.vehicle, "None"),
-        )
-        if file_exists(self.param_file):
-            logger.info("Using parameter file: " + self.param_file)
+        if self.autopilot_type == "ardupilot":
+            if file_exists(self.sitl_bin) and file_exists(self.src_dir):
+                logger.info(f"Using SITL binary: {self.sitl_bin}")
+                logger.info(f"Using Ardupilot directory: {self.src_dir}")
+            # Parameter file for Ardupilot
+            # Now we have a parameter dictionary
+            param_mapping = {
+                "copter": "copter.parm",
+                "plane": "plane-jsbsim.parm",
+                "rover": "rover.parm",
+            }
+            self.param_file = os.path.join(
+                self.src_dir,
+                "Tools/autotest/default_params/",
+                param_mapping.get(self.vehicle, "None"),
+            )
+            if file_exists(self.param_file):
+                logger.info("Using parameter file: " + self.param_file)
+        elif self.autopilot_type == "px4":
+            if file_exists(self.src_dir):
+                logger.info(f"Using PX4 directory: {self.src_dir}")
 
         # Calibration settings
         self.calibration_active = False
@@ -1605,7 +1593,7 @@ class FuzzConfig:
 
         # Setup the coverage metrics
         self.coverage_class = CoverageData(
-            src_dir=self.ap_dir, fuzz_dir=self.fuzzer_temp_dir
+            src_dir=self.src_dir, fuzz_dir=self.fuzzer_temp_dir
         )
 
         self.last_scores = {
@@ -1767,7 +1755,7 @@ class FuzzConfig:
 
         # Get the directory for the script and check the git log for the version
         src_commit_hash = (
-            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.ap_dir)
+            subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=self.src_dir)
             .strip()
             .decode("utf-8")
         )
@@ -1970,6 +1958,7 @@ class FuzzConfig:
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
+            param_type="int32",
         )
         # Ensure we properly add the value to queue
         self.fuzz_msgs.append(
@@ -2038,54 +2027,201 @@ class FuzzConfig:
         self.fuzzer_stats["current_mission_time"] = time.time() - start_time
         exit(0)
 
+    def _infer_px4_param_type(self, val):
+        """
+        Simple heuristic mapping for PX4 PARAM_SET types:
+        - floats -> REAL32
+        - ints   -> choose a reasonable int bucket
+        You can override per-param by passing dicts in mapping: {value: X, type: "int32"}.
+        """
+        if isinstance(val, dict):
+            v = val.get("value")
+            t = val.get("type", "").lower()
+            if t in ("uint8","int8","uint16","int16","uint32","int32","float","double"):
+                return v, t
+            # fallthrough to infer if "type" missing/wrong
+            val = v
+
+        if isinstance(val, float):
+            return float(val), "float"
+        # ints: pick smallest viable
+        i = int(val)
+        if 0 <= i <= 255:        return i, "uint8"
+        if -128 <= i <= 127:     return i, "int8"
+        if 0 <= i <= 65535:      return i, "uint16"
+        if -32768 <= i <= 32767: return i, "int16"
+        # PX4 params are int32 for most integer params
+        return i, "int32"
+
+
+    def _readback_param_px4(self, name, expect_val, tol=1e-6, timeout=3.0):
+        """
+        Request a PARAM_VALUE and confirm within tolerance for floats (or exact for ints).
+        """
+        try:
+            msg = self.tcp_conn.show_param(name, timeout=max(1.0, timeout))
+            if msg is None:
+                return False, None
+            got = float(msg.param_value)
+            # If expected was an int, compare as int
+            if isinstance(expect_val, int):
+                return int(round(got)) == int(expect_val), got
+            # else float compare
+            return abs(got - float(expect_val)) <= tol, got
+        except Exception:
+            return False, None
+
+
+    def _apply_params_px4(self, params: dict, verify=True, reboot_if_needed=False):
+        """
+        Apply PX4 parameters via MAVLink PARAM_SET using TCPConn.set_param, verify, and optionally reboot.
+        Mapping may contain:
+        parameters:
+            MNT_MODE_IN: 4
+            MAV_1_MODE: {value: 10, type: "int32"}
+            ...
+        """
+        if not params:
+            logger.info("No PX4 parameters to apply.")
+            return
+
+        logger.info(f"Applying {len(params)} PX4 parameters...")
+        failures = []
+
+        for name, raw_val in params.items():
+            val, ptype = self._infer_px4_param_type(raw_val)
+            try:
+                self.tcp_conn.set_param(param_id=name, param_value=val, param_type=ptype)
+                logger.debug(f"PARAM_SET {name}={val} ({ptype}) sent")
+                # PX4 immediately updates and usually broadcasts on change; we force a read for certainty.
+                if verify:
+                    ok, got = self._readback_param_px4(name, val)
+                    if not ok:
+                        logger.warning(f"Verify failed: {name} expected {val}, got {got}")
+                        failures.append(name)
+                    else:
+                        logger.debug(f"Verified {name}={val}")
+            except Exception as e:
+                logger.error(f"Error setting {name}: {e}")
+                failures.append(name)
+
+        if failures:
+            logger.warning(f"PX4 param apply had {len(failures)} failures: {failures}")
+
+        # Optional reboot in case a param needs restart to take effect.
+        if reboot_if_needed and failures == []:
+            try:
+                logger.info("Rebooting PX4 to apply parameters that require restart...")
+                self.tcp_conn.reboot_and_wait_for_ack()
+            except Exception as e:
+                logger.error(f"PX4 reboot failed: {e}")
+
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
-        sitl_args = ""
-        home_location = " --home -35.362938,149.165085,585,354 "
-        if self.vehicle == "copter":
-            sitl_args = " -S --model + -w --speedup 1 -I0"
-        elif self.vehicle == "plane":
-            # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
-            sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
-        elif self.vehicle == "rover":
-            # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover"
-            sitl_args = " -S --model rover -w --speedup 1 -I0"
-        self.sitl_cmd = (
-            self.sitl_bin + home_location + sitl_args + " --defaults " + self.param_file
-        )
-        logger.info(f"Starting SITL with command: {self.sitl_cmd}")
-        if self.calibration_active:
-            assert (
-                self.fuzzing_active is False
-            ), "Cannot run calibration while fuzzing is active"
-        if self.fuzzer_param_file:
-            self.sitl_cmd += "," + self.fuzzer_param_file
-        # Handle the case where vehicle is plane and we need to ensure it lands
-        try:
-            self.sim_handle = subprocess.Popen(
-                shlex.split(self.sitl_cmd),
-                # Comment out to debug the original binary
+        if self.autopilot_type == "ardupilot":
+            logger.debug("Starting Ardupilot SITL simulation")
+            sitl_args = ""
+            home_location = " --home -35.362938,149.165085,585,354 "
+            if self.vehicle == "copter":
+                sitl_args = " -S --model + -w --speedup 1 -I0"
+            elif self.vehicle == "plane":
+                # "-w" "-S" "--home" "-35.362938,149.165085,585,354" "--model" "plane-elevrev"  "--defaults" "/Tools/autotest/default_params/plane-jsbsim.parm"
+                sitl_args = " -S --model plane-elevrev -w --speedup 1 -I0"
+            elif self.vehicle == "rover":
+                # "-w" "-S" "--home" "40.071375,-105.229789,1583,246" "--model" "rover"
+                sitl_args = " -S --model rover -w --speedup 1 -I0"
+            self.sitl_cmd = (
+                self.sitl_bin
+                + home_location
+                + sitl_args
+                + " --defaults "
+                + self.param_file
+            )
+            logger.info(f"Starting SITL with command: {self.sitl_cmd}")
+            if self.calibration_active:
+                assert (
+                    self.fuzzing_active is False
+                ), "Cannot run calibration while fuzzing is active"
+            if self.fuzzer_param_file:
+                self.sitl_cmd += "," + self.fuzzer_param_file
+            # Handle the case where vehicle is plane and we need to ensure it lands
+            try:
+                self.sim_handle = subprocess.Popen(
+                    shlex.split(self.sitl_cmd),
+                    # Comment out to debug the original binary
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=os.setsid,
+                    cwd=self.fuzzer_temp_dir,
+                )
+                init_conn = TCPConn()
+                # Reboot to ensure we have reloaded the parameters
+                init_conn.reboot_and_wait_for_ack()
+                time.sleep(2)  # Give some time for the reboot to complete
+                init_conn.cleanup(shutdown=False)
+                self.fuzzer_stats["current_mission_time"] = time.time()
+                self.tcp_conn = TCPConn()
+                self.tcp_conn.setup_threads()
+                self.sim_ready = True
+                # Start the monitoring thread
+                self.monitor_thread = threading.Thread(
+                    target=self._monitor_sim, daemon=True
+                ).start()
+            except Exception as e:
+                # this would just kill the entire script, so need to handle it gracefully
+                logger.error(f"Error starting simulation: {e}")
+        elif self.autopilot_type == "px4":
+            logger.debug("Starting PX4 SITL simulation")
+            # PX4 uses make command: make px4_sitl jmavsim
+            # Run from the PX4 directory
+            jmavsim_cmd = "./Tools/simulation/jmavsim/jmavsim_run.sh -l"
+
+            current_env = os.environ.copy()
+            current_env["HEADLESS"] = "1"
+
+            self.jmavsim_proc = subprocess.Popen(
+                shlex.split(jmavsim_cmd),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                cwd=self.src_dir,
+                env=current_env,
                 preexec_fn=os.setsid,
-                cwd=self.fuzzer_temp_dir,
             )
-            init_conn = TCPConn()
-            # Reboot to ensure we have reloaded the parameters
-            init_conn.reboot_and_wait_for_ack()
-            time.sleep(2)  # Give some time for the reboot to complete
-            init_conn.cleanup(shutdown=False)
-            self.fuzzer_stats["current_mission_time"] = time.time()
-            self.tcp_conn = TCPConn()
-            self.tcp_conn.setup_threads()
-            self.sim_ready = True
-            # Start the monitoring thread
-            self.monitor_thread = threading.Thread(
-                target=self._monitor_sim, daemon=True
-            ).start()
-        except Exception as e:
-            # this would just kill the entire script, so need to handle it gracefully
-            logger.error(f"Error starting simulation: {e}")
+            current_env["PX4_SIM_MODEL"] = "jmavsim_iris"
+            self.sitl_cmd = "./build/px4_sitl_default/bin/px4 -d"
+            logger.info(f"Starting PX4 SITL with command: {self.sitl_cmd}")
+            if self.calibration_active:
+                assert (
+                    self.fuzzing_active is False
+                ), "Cannot run calibration while fuzzing is active"
+            # Note: PX4 parameter files work differently than ArduPilot
+            try:
+                self.sim_handle = subprocess.Popen(
+                    shlex.split(self.sitl_cmd),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    preexec_fn=os.setsid,
+                    env=current_env,
+                    cwd=self.src_dir,  # Run from PX4 directory
+                )
+                time.sleep(10) # Give some time for the simulation to start
+                init_conn = TCPConn(autopilot_type="px4")
+                # Reboot to ensure we have reloaded the parameters
+                init_conn.cleanup(shutdown=False)
+                self.fuzzer_stats["current_mission_time"] = time.time()
+                self.tcp_conn = TCPConn()
+                self.tcp_conn.setup_threads()
+                self._apply_params_px4(self.peripheral_config.get("parameters", {}))
+                self.sim_ready = True
+                # Start the monitoring thread
+                self.monitor_thread = threading.Thread(
+                    target=self._monitor_sim, daemon=True
+                ).start()
+            except Exception as e:
+                # this would just kill the entire script, so need to handle it gracefully
+                logger.error(f"Error starting PX4 simulation: {e}")
+        else:
+            raise ValueError("Unknown software system specified")
 
     def _monitor_auto_mission_calibration(self):
         # In this case we need to actually set the different modes one by one and then check?
@@ -2797,7 +2933,7 @@ class FuzzConfig:
             and (self.fuzzer_stats["simulations_completed"] - self.ssl_last_train_sims)
             >= self.ssl_train_every
         ):
-            n_trained = self._ssl_finetune_head(model, device)
+            n_trained = _ssl_finetune_head(self, model, device)
             self.ssl_last_train_sims = self.fuzzer_stats["simulations_completed"]
             logger.info(
                 f"[SSL] trained head on {n_trained} windows; buf={len(self.ssl_buffer)}"
@@ -2858,53 +2994,28 @@ class FuzzConfig:
                 f"[LSTM] normal or DTW already flagged: err={lstm_err:.6e} "
                 f"p={p_anom} dtw={dtw_dist:.6e} z={z_dtw:.2f}"
             )
+        
+        # recon is a Tensor on device; get numpy in normalized space [B,T,4]
+        recon_np = recon.detach().cpu().numpy()
 
-        # --- (H) Visualization (original vs reconstruction + metrics) ---
-        try:
-            log_file_path = os.path.join(self.fuzzer_temp_dir, "logs/LASTLOG.TXT")
-            log_idx = None
-            if os.path.exists(log_file_path):
-                with open(log_file_path, "r") as f:
-                    log_idx = int(f.read().strip())
+        # figure out current BIN index (like DTW path)
+        log_file_path = os.path.join(self.fuzzer_temp_dir, "logs", "LASTLOG.TXT")
+        log_idx = None
+        if os.path.exists(log_file_path):
+            with open(log_file_path, "r") as f:
+                log_idx = int(f.read().strip())
 
-            fig_name = (
-                f"{log_idx:08d}"
-                if isinstance(log_idx, int)
-                else f"lstm_{self.fuzzer_stats['simulations_completed']:06d}"
-            )
-            save_lstm_img(
-                filename=fig_name,
-                W=Wn,  # normalized inputs [B,T,4]
-                recon=recon_np,  # normalized reconstruction [B,T,4]
-                mse_per_win=mse_per_win,
-                lstm_err_min=self.lstm_err_min,
-                lstm_err_max=self.lstm_err_max,
-                dtw_dist=dtw_dist,
-                p_anom=p_anom,
-                output_dir=self.fuzzer_temp_dir,
-                title="LSTM AE (normalized space)",
-            )
-        except Exception as e:
-            logger.warning(f"LSTM viz save failed: {e}")
-
-        try:
-            # figure out current BIN index (like DTW path)
-            log_file_path = os.path.join(self.fuzzer_temp_dir, "logs", "LASTLOG.TXT")
-            log_idx = None
-            if os.path.exists(log_file_path):
-                with open(log_file_path, "r") as f:
-                    log_idx = int(f.read().strip())
-            save_lstm_bin_overlay(
-                filename_idx=log_idx,
-                recon_norm=recon_np,  # [B,T,4] normalized
-                mean=mean,
-                std=std,
-                stride=self.lstm_stride,
-                output_dir=self.fuzzer_temp_dir,
-                title="LSTM Reconstruction vs BIN (raw units)",
-            )
-        except Exception as e:
-            logger.warning(f"LSTM BIN overlay failed: {e}")
+        save_lstm_bin_triptych(
+            filename_idx=log_idx,
+            recon_norm=recon_np,
+            mean=mean,                 # np.ndarray shape [4]
+            std=std,                   # np.ndarray shape [4]
+            stride=self.lstm_stride,
+            output_dir=self.fuzzer_temp_dir,
+            title="LSTM Reconstruction vs BIN (raw units)",
+            channels=("C1", "C2", "C3", "C4"),
+            rc_log_filter=True,
+        )
 
         self.last_scores = {
             "dtw": dtw_dist,
@@ -2927,15 +3038,6 @@ class FuzzConfig:
             self.oracle_lstm()
         # Clean up the fuzz_msgs
         self.fuzz_msgs = []
-
-    def _avg_dtw_to_golden(self, rc_series) -> float:
-        """Average normalized DTW distance of current mission vs all goldens."""
-        assert self.golden_rc_vals, "Need golden RC values for DTW scoring"
-        total = 0.0
-        for gold in self.golden_rc_vals:
-            _, dist = self.calculate_dtw(gold, rc_series)  # normalizedDistance
-            total += dist
-        return total / len(self.golden_rc_vals)
 
     def calculate_dtw(self, series1, series2):
         """Calculate the DTW distance between two time series.
@@ -3463,6 +3565,8 @@ class FuzzConfig:
 
 # Misc utilities and sanity checks
 def file_exists(file_o_dir):
+    if not file_o_dir:
+        raise FileNotFoundError(f"File or directory {file_o_dir} does not exist.")
     if os.path.exists(file_o_dir):
         return True
     else:
@@ -3483,7 +3587,7 @@ if __name__ == "__main__":
             "--peripheral", type=str, help="Peripheral to fuzz", required=False
         )
         argument_parser.add_argument(
-            "--ap_dir", type=str, help="Ardupilot directory", required=False
+            "--src_dir", type=str, help="Source directory", required=False
         )
         argument_parser.add_argument(
             "--auto_mission", type=str, help="Auto mission file", required=False
@@ -3535,8 +3639,8 @@ if __name__ == "__main__":
                 missing_args.append("--xml")
             if not args.peripheral_file:
                 missing_args.append("--peripheral_file")
-            if not args.ap_dir:
-                missing_args.append("--ap_dir")
+            if not args.src_dir:
+                missing_args.append("--src_dir")
 
             if missing_args:
                 argument_parser.error(
