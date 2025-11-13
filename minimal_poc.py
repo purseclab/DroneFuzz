@@ -349,7 +349,6 @@ class TCPConn:
 
     def _monitor_ekf_lock(self, msg):
         """Ensure we have EKF getting the position"""
-        print(f"EKF_STATUS_REPORT: {msg}")
         if (msg.flags & EKF_POS_HORIZ) or (msg.flags & EKF_POS_VERT):
             # If we have horizontal or vertical position lock
             self.ekf_ready = True
@@ -537,8 +536,6 @@ class TCPConn:
                             if (msg.seq == 1) & (msg.total > 1):
                                 self.rc_monitor = True  # 2025-11-13T16:44:17-0500: silipwn: This ideally means we are
                                 # on the right track
-                            else:
-                                logger.debug(msg)
                         except Exception as e:
                             logger.warning("I wrote something stupid {e}")
                     if msg.get_type() == "HEARTBEAT":  # type: ignore
@@ -2260,9 +2257,9 @@ class FuzzConfig:
                     stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid,
                     cwd=self.fuzzer_temp_dir,
-                    init_conn=TCPConn(),
                     # Reboot to ensure we have reloaded the parameters
                 )
+                init_conn = TCPConn()
                 init_conn.reboot_and_wait_for_ack()
                 time.sleep(2)  # Give some time for the reboot to complete
                 init_conn.cleanup(shutdown=False)
