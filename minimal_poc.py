@@ -578,7 +578,6 @@ class TCPConn:
         set_mode = mode_mapping.get(mode, None)
         if self.autopilot_type == "px4":
             set_mode = float(set_mode[-1])
-        print(f"The value of mode is {set_mode}")
         if not set_mode:
             # TODO Figure out how to properly tear down everything
             logger.error("Error: Invalid mode specified")
@@ -715,11 +714,8 @@ class TCPConn:
         current_lon = loc["lon"]
         current_rel_alt = loc["rel_alt"]
 
-        print(
-            f"Current location: lat={current_lat}, lon={current_lon}, rel_alt={current_rel_alt} meters"
-        )
         altitude = current_rel_alt + altitude
-        print(f"Target takeoff altitude: {altitude} meters (relative)")
+        logger.debug(f"Target takeoff altitude: {altitude} meters (relative)")
 
         self.conn.mav.command_long_send(
             self.conn.target_system,  # type: ignore
@@ -820,7 +816,7 @@ def get_enum(root, enum_name):
     """
     enum_elements = root.xpath(f"//enum[@name='{enum_name}']")
     if not enum_elements:
-        print(f"Enum '{enum_name}' not found")
+        logger.error(f"Enum '{enum_name}' not found")
         return None
 
     enum_values = []
@@ -2787,9 +2783,6 @@ class FuzzConfig:
         logger.info(
             f"LSTM AE pretraining on goldens: B={B}, T={T}, C={C}, H={H}, epochs={epochs}, batch={bs}"
         )
-        print(
-            f"[LSTM] Pretraining: B={B}, T={T}, C={C}, H={H}, epochs={epochs}, batch={bs}"
-        )
 
         # 5) Train (with full logging each epoch)
         for ep in range(1, epochs + 1):
@@ -2809,7 +2802,6 @@ class FuzzConfig:
                 steps += 1
             ep_loss = running / max(1, steps)
             logger.info(f"[LSTM][pretrain] epoch {ep:03d}/{epochs} loss={ep_loss:.6e}")
-            print(f"[LSTM][pretrain] epoch {ep:03d}/{epochs} loss={ep_loss:.6e}")
 
         # 6) Compute golden recon error distribution for thresholds
         with torch.no_grad():
@@ -2821,9 +2813,6 @@ class FuzzConfig:
         self.lstm_err_min = mu - 2 * sigma
         self.lstm_err_max = mu + 2 * sigma
         logger.info(
-            f"[LSTM] recon mu={mu:.6e} std={sigma:.6e} band=[{self.lstm_err_min:.6e},{self.lstm_err_max:.6e}]"
-        )
-        print(
             f"[LSTM] recon mu={mu:.6e} std={sigma:.6e} band=[{self.lstm_err_min:.6e},{self.lstm_err_max:.6e}]"
         )
 
@@ -3118,9 +3107,6 @@ class FuzzConfig:
             logger.info(
                 f"[SSL] trained head on {n_trained} windows; buf={len(self.ssl_buffer)}"
             )
-            print(
-                f"[SSL] trained head on {n_trained} windows; buf={len(self.ssl_buffer)}"
-            )
 
         # --- (F) Inference with head (probability) ---
         p_anom = None
@@ -3165,9 +3151,6 @@ class FuzzConfig:
             logger.warning(
                 f"[LSTM] anomaly: lstm_err={lstm_err:.6e} p_anom={p_anom} "
                 f"dtw={dtw_dist:.6e} z_dtw={z_dtw:.2f}"
-            )
-            print(
-                f"[LSTM] anomaly: err={lstm_err:.6e}, p={p_anom}, dtw={dtw_dist:.6e}, z={z_dtw:.2f}"
             )
         else:
             logger.debug(
