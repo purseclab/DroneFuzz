@@ -1,0 +1,90 @@
+# # autopilot_type: px4
+# # px4_dir: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/
+# # xml_file: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/src/modules/mavlink/mavlink/message_definitions/v1.0/common.xml
+# # peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/configs/mapping_px4.yaml
+# # peripheral: PX4_Gimbal
+# # supported_modes: [AUTO]
+# # vehicle: copter
+# # calibration_rounds: 50
+# # fuzz_interval: 1.0
+# # mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/missions/mission.txt
+
+
+# ap_dir: /home/shafiq-us-saleheen/fall25/ardupilot/
+# calibration_rounds: 125
+# fuzz_interval: 1.0
+# mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/missions/mission_copter.txt
+# peripheral: OpticalFlow
+# peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/configs/mapping.yaml
+# vehicle: copter
+# xml_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/xmls/ardupilotmega.xml
+# supported_modes:
+# # - ALT_HOLD
+# - GUIDED
+# - LOITER
+# - AUTO
+# - FLOWHOLD
+# - POSHOLD
+# # - RTL
+# # - LAND
+# # random_param_probability: 0.8
+# generic_params:
+# - ESRC_FLOW_THRESH 0 1
+# - ESRC_FLOW_QUAL 0 100
+# - ESRC_RNGFND_MAX 0 50
+# - EK3_FLOW_M_NSE 0.05 1.0 0.05
+# - EK3_FLOW_I_GATE 100 1000 25
+# - EK3_FLOW_DELAY 0 250 10
+# - EK3_FLOW_USE 0 2 1
+# - EK3_SRC1_VELXY 0 5 5
+# - EK3_SRC1_POSZ 0 5 5
+# - EK3_SRC2_VELXY 0 5 5
+# # - FLOW_FXSCALER -800 +800
+# # - FLOW_FYSCALER -800 +800
+# # - FLOW_ORIENT_YAW -17999 +18000
+# # - FLOW_POS_X -5 5
+# # - FLOW_POS_Y -5 5
+# # - FLOW_POS_Z -5 5
+# # - FLOW_ADDR 0 127
+# # - FLOW_HGT_OVR 0 2
+# # - VISO_POS_X -5 5
+# # - VISO_POS_Y -5 5
+# # - VISO_POS_Z -5 5
+# # - VISO_DELAY_MS 0 250
+# # - VISO_VEL_M_NSE 0.05 5
+# # - VISO_POS_M_NSE 0.1 10
+# # - VISO_YAW_M_NSE 0.05 1
+# # - VISO_QUAL_MIN -1 100
+# # - VISO_SCALE
+# # - VISO_ORIENT
+
+# ap_dir: /home/shafiq-us-saleheen/fall25/ardupilot/
+# calibration_rounds: 125
+# fuzz_interval: 1.0
+# mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/missions/mission_copter.txt
+# peripheral: Camera
+# peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/configs/mapping.yaml
+# vehicle: copter
+# xml_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus-lean_fuzzer/xmls/ardupilotmega.xml
+# supported_modes:
+# # - ALT_HOLD
+# - GUIDED
+# - LOITER
+# - AUTO
+# # - POSHOLD
+# # - RTL
+# - LAND
+# random_param_probability: 0.8
+# generic_params:
+# - CAM1_DURATION 0 5
+# - CAM1_SERVO_ON 1000 2000
+# - CAM1_SERVO_OFF 1000 2000
+# - CAM1_TRIGG_DIST 0 1000
+# - CAM1_INTRVAL_MIN 0 10
+# - CAM1_HFOV 0 360
+# - CAM1_VFOV 0 180
+# # - CAM1_RELAY_ON
+# # - CAM1_FEEDBAK_PIN
+# # - CAM1_FEEDBAK_POL
+# # - CAM1_OPTIONS
+# # - CAM1_MNT_INST

@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from contextlib import redirect_stdout
 import numpy as np
 from tqdm import tqdm
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Models import
 from dtw import dtw
@@ -87,6 +87,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.DEBUG)
 
     # Create formatters
     file_formatter = logging.Formatter(
@@ -108,80 +109,73 @@ def setup_logging(name="dronefuzz", file_dir=None):
     return logger
 
 
-class LSTMAE(nn.Module):
-    def __init__(self, seq_len, n_features, hidden_size_enc=64, hidden_size_dec=64):
-        super(LSTMAE, self).__init__()
-        self.seq_len = seq_len
-        self.n_features = n_features
-        self.hidden_size_enc = hidden_size_enc
-        self.hidden_size_dec = hidden_size_dec
+class _LSTMHead(nn.Module):
+    def __init__(self, h, hidden=None):
+        super().__init__()
+        mid = hidden or max(8, h // 2)
+        self.net = nn.Sequential(nn.Linear(h, mid), nn.ReLU(), nn.Linear(mid, 1))
 
-        # Encoder
-        self.lstm1_enc = nn.LSTM(
-            input_size=n_features, hidden_size=128, batch_first=True
+    def forward(self, z):  # z: [B,T,H] or [B,H]
+        if z.dim() == 3:
+            z = z.mean(dim=1)  # mean pool over time
+        return self.net(z).squeeze(-1)  # logits [B]
+
+
+def _ssl_finetune_head(self, model_ae, device):
+    import torch, torch.nn as nn, os
+    from torch.utils.data import DataLoader, TensorDataset
+
+    if len(self.ssl_buffer) < self.ssl_min_train:
+        logger.debug(
+            f"SSL: buffer {len(self.ssl_buffer)} < min {self.ssl_min_train}, skip finetune"
         )
-        self.dropout1_enc = nn.Dropout(0.2)
-        self.lstm2_enc = nn.LSTM(
-            input_size=128, hidden_size=hidden_size_enc, batch_first=True
+        return 0
+
+    head = _LSTMHead(h=self.lstm_hidden).to(device)
+    if os.path.exists(self.ssl_head_path):
+        head.load_state_dict(torch.load(self.ssl_head_path, map_location=device))
+        logger.info("SSL: loaded existing head weights")
+    head.train()
+
+    opt = torch.optim.Adam(head.parameters(), lr=self.ssl_head_lr)
+    loss_fn = nn.BCEWithLogitsLoss(reduction="none")
+
+    # Build tensors
+    X = np.stack([w for (w, _, _) in self.ssl_buffer])  # [N,T,C]
+    y = np.array([y for (_, y, _) in self.ssl_buffer], dtype=np.float32)
+    wt = np.array([w for (_, _, w) in self.ssl_buffer], dtype=np.float32)
+
+    Xt = torch.from_numpy(X).float().to(device)
+    yt = torch.from_numpy(y).float().to(device)
+    wt = torch.from_numpy(wt).float().to(device)
+
+    with torch.no_grad():
+        z_all, _ = model_ae.enc(Xt)  # [N,T,H]
+        z_pool = z_all.mean(dim=1)  # [N,H]
+
+    ds = TensorDataset(z_pool, yt, wt)
+    dl = DataLoader(ds, batch_size=self.ssl_head_batch, shuffle=True, drop_last=False)
+
+    total_steps = 0
+    for ep in range(self.ssl_head_epochs):
+        ep_loss = 0.0
+        for z_b, y_b, w_b in dl:
+            logits = head(z_b)  # [B]
+            loss_v = loss_fn(logits, y_b)  # [B]
+            loss = (loss_v * w_b).mean()
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            ep_loss += float(loss.item())
+            total_steps += 1
+        logger.info(
+            f"SSL head epoch {ep+1}/{self.ssl_head_epochs}: loss={ep_loss/ max(1,len(dl)):.6f}"
         )
 
-        # Decoder
-        # The decoder takes the last hidden state of the encoder (hidden_size_enc)
-        # and "repeats" it for each timestep in the sequence.
-        # This is implicitly handled by the LSTM's initial hidden state or by
-        # feeding the last encoder output repeatedly. Here, we feed a Linear
-        # layer that maps the bottleneck to the decoder's input size.
-        self.linear_dec = nn.Linear(
-            hidden_size_enc, hidden_size_dec
-        )  # Mapping bottleneck to decoder hidden size
-        self.lstm1_dec = nn.LSTM(
-            input_size=hidden_size_dec, hidden_size=128, batch_first=True
-        )
-        self.dropout1_dec = nn.Dropout(0.2)
-        self.lstm2_dec = nn.LSTM(
-            input_size=128, hidden_size=n_features, batch_first=True
-        )  # Output layer
-
-    def forward(self, x):
-        # Encoder
-        # Input shape: (batch_size, seq_len, n_features)
-        # hidden_state and cell_state are initialized to zeros by default if not provided
-        x, (hidden_state, cell_state) = self.lstm1_enc(x)
-        x = self.dropout1_enc(x)
-        x, (hidden_state, cell_state) = self.lstm2_enc(
-            x
-        )  # hidden_state[-1] contains the last hidden state for the last layer.
-
-        # Keras's RepeatVector takes the last output of the previous layer and
-        # repeats it for `seq_len` times. In PyTorch, we can use `expand` or `repeat`
-        # on the last hidden state/output to create the sequence for the decoder.
-        # We'll use the last hidden state of the second encoder LSTM as the "bottleneck".
-        # We need the hidden state for the last layer of the encoder.
-        # hidden_state shape: (num_layers * num_directions, batch, hidden_size_enc)
-        # We take the last layer's hidden state: hidden_state[-1, :, :]
-        # Then unsqueeze it to (batch, 1, hidden_size_enc) and expand to (batch, seq_len, hidden_size_enc)
-
-        # Take the hidden state from the last layer of the encoder LSTM
-        # (num_layers, batch_size, hidden_size) -> (batch_size, hidden_size)
-        bottleneck = hidden_state[-1, :, :]
-
-        # "RepeatVector" equivalent:
-        # Expand the bottleneck output to match the sequence length for the decoder
-        # (batch_size, hidden_size_enc) -> (batch_size, 1, hidden_size_enc) -> (batch_size, seq_len, hidden_size_enc)
-        bottleneck_repeated = bottleneck.unsqueeze(1).expand(-1, self.seq_len, -1)
-
-        # Apply the linear transformation before feeding to decoder LSTM
-        x = self.linear_dec(bottleneck_repeated)
-
-        # Decoder
-        # Input to decoder is (batch_size, seq_len, hidden_size_dec)
-        x, _ = self.lstm1_dec(x)
-        x = self.dropout1_dec(x)
-        x, _ = self.lstm2_dec(
-            x
-        )  # Output is (batch_size, seq_len, n_features) for TimeDistributed Dense
-
-        return x
+    os.makedirs(os.path.dirname(self.ssl_head_path), exist_ok=True)
+    torch.save(head.state_dict(), self.ssl_head_path)
+    logger.info(f"SSL head saved to {self.ssl_head_path}")
+    return len(self.ssl_buffer)
 
 
 # Mutation helpers
@@ -204,12 +198,15 @@ def flip_float_bit(f, position):
 
 def gen_int_step(min_val, max_val, increment):
     """Generate a random int value within a specified increment"""
+    if int(increment) == 0:
+        return random.choice(range(int(min_val), int(max_val) + 1, 1))
     return random.choice(range(int(min_val), int(max_val) + 1, int(increment)))
 
 
 class TCPConn:
     def __init__(self, autopilot_type="ardupilot"):
         # Python inits
+        self.autopilot_type = autopilot_type
         self.shutdown_requested = False
         self.connected = threading.Event()
         self.connected.clear()
@@ -1225,7 +1222,10 @@ class CoverageData:
     def archive_data(self, filename=None):
         """Archive the coverage data if requested"""
         # Copy the info file into the fuzz_dir with the requested filename
-        filename_extracted = f"{filename:08d}"
+        if isinstance(filename, str):
+            filename_extracted = filename
+        else:
+            filename_extracted = f"{filename:08d}"
         shutil.copy(
             f"{self.coverage_dir}/current_simulation_coverage.info",
             f"{self.coverage_dir}/anomaly-{filename_extracted}.info",
@@ -1245,6 +1245,147 @@ def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to save diff image: {e}")
 
+# --- helper: stitch overlapped windows by mean on overlaps ---
+def _stitch_overlap_mean(wins: np.ndarray, stride: int) -> np.ndarray:
+    """
+    wins: [B, T, C] windows (already in same scale).
+    Returns a single sequence [L, C] formed by overlap-averaging with given stride.
+    """
+    B, T, C = wins.shape
+    L = (B - 1) * stride + T
+    out = np.zeros((L, C), dtype=wins.dtype)
+    cnt = np.zeros((L, 1), dtype=np.float32)
+    for b in range(B):
+        s = b * stride
+        out[s:s+T] += wins[b]
+        cnt[s:s+T] += 1.0
+    cnt[cnt == 0] = 1.0
+    return out / cnt
+
+# --- new: 3-panel overlay (BIN original vs LSTM recon vs difference) ---
+def save_lstm_bin_triptych(
+    filename_idx: int | None,
+    recon_norm: np.ndarray,   # [B,T,4] normalized reconstruction
+    mean: np.ndarray,         # [4]
+    std: np.ndarray,          # [4]
+    stride: int,
+    output_dir: str,
+    title: str = "LSTM Reconstruction vs BIN (raw units)",
+    channels=("C1", "C2", "C3", "C4"),
+    rc_log_filter: bool = True,
+):
+    """
+    Produces three subplots:
+      (top)   BIN raw C1..C4
+      (mid)   LSTM reconstruction (denorm, stitched)
+      (bottom)Per-channel difference: recon - BIN, aligned on a common time grid
+    If filename_idx is None or BIN is missing, it will plot only the reconstruction.
+    """
+    import matplotlib.pyplot as plt
+    from pymavlink import mavutil
+    import os, numpy as np
+
+    images_dir = os.path.join(output_dir, "images")
+    os.makedirs(images_dir, exist_ok=True)
+
+    # 1) Denormalize and stitch [B,T,4] -> [L,4]
+    recon_denorm = recon_norm * (std[None, None, :]) + (mean[None, None, :])
+    recon_seq = _stitch_overlap_mean(recon_denorm, stride=stride)  # [L,4]
+
+    # 2) Try to read matching BIN -> ts, bin_seq [N,4]
+    ts = None
+    bin_seq = None
+    if isinstance(filename_idx, int):
+        bin_path = os.path.join(output_dir, "logs", f"{filename_idx:08d}.BIN")
+        if os.path.exists(bin_path):
+            mlog = mavutil.mavlink_connection(bin_path)
+            rc_ok = not rc_log_filter
+            times = []
+            vals = {ch: [] for ch in [f"C{i}" for i in range(1, 17)]}
+            while True:
+                msg = mlog.recv_match()
+                if msg is None:
+                    break
+                if msg.get_type() == "MSG" and rc_log_filter:
+                    if "LOG RC" in msg.Message:
+                        rc_ok = True
+                    if "STOP RC" in msg.Message:
+                        rc_ok = False
+                if msg.get_type() == "RCOU" and rc_ok:
+                    times.append(msg.TimeUS / 1e6)
+                    for i in range(1, 17):
+                        ch = f"C{i}"
+                        vals[ch].append(getattr(msg, ch) if hasattr(msg, ch) else 0)
+
+            if times:
+                ts = np.array(times, dtype=np.float64)
+                bin_seq = np.stack([np.array(vals[ch], dtype=np.float32) for ch in channels], axis=1)  # [N,4]
+
+    # 3) Build plots
+    if bin_seq is None or ts is None:
+        # Only reconstruction available
+        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+        t_rec = np.arange(recon_seq.shape[0])
+        for c_idx, ch in enumerate(channels):
+            ax.plot(t_rec, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
+        ax.set_title(title + " (no BIN available)")
+        ax.set_xlabel("sample")
+        ax.set_ylabel("servo (raw)")
+        ax.grid(True); ax.legend(ncol=4, fontsize=9)
+        out_path = os.path.join(images_dir, "lstm_triptych_recon_only.png")
+        plt.tight_layout(); plt.savefig(out_path, dpi=150); plt.close(fig)
+        return
+
+    # 4) Align recon to BIN time with a common grid and compute diff
+    L = recon_seq.shape[0]
+    ts_recon = np.linspace(ts[0], ts[-1], L)  # synthetic time for recon
+    # choose a common time grid in the overlap range
+    t0 = max(ts[0], ts_recon[0])
+    t1 = min(ts[-1], ts_recon[-1])
+    if t1 <= t0:
+        # degenerate overlap; fall back to independent axes
+        common_t = None
+    else:
+        common_t = np.linspace(t0, t1, min(len(ts), L))
+
+    # Interpolate to common grid if possible
+    if common_t is not None:
+        bin_interp = np.column_stack([np.interp(common_t, ts, bin_seq[:, i]) for i in range(bin_seq.shape[1])])
+        rec_interp = np.column_stack([np.interp(common_t, ts_recon, recon_seq[:, i]) for i in range(recon_seq.shape[1])])
+        diff = rec_interp - bin_interp  # [K,4]
+    else:
+        bin_interp, rec_interp, diff = None, None, None
+
+    # 5) Triptych
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=False)
+    # (top) BIN
+    for c_idx, ch in enumerate(channels):
+        axes[0].plot(ts, bin_seq[:, c_idx], label=f"{ch} (BIN)")
+    axes[0].set_title(f"{title} – BIN"); axes[0].set_ylabel("servo (raw)")
+    axes[0].grid(True); axes[0].legend(ncol=4, fontsize=9)
+
+    # (mid) Recon
+    for c_idx, ch in enumerate(channels):
+        axes[1].plot(ts_recon, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
+    axes[1].set_title(f"{title} – Reconstruction"); axes[1].set_ylabel("servo (raw)")
+    axes[1].grid(True); axes[1].legend(ncol=4, fontsize=9)
+
+    # (bottom) Difference on common grid (if available)
+    if diff is not None:
+        for c_idx, ch in enumerate(channels):
+            axes[2].plot(common_t, diff[:, c_idx], label=f"{ch} (recon − BIN)")
+        axes[2].axhline(0.0, linestyle=':', linewidth=0.8)
+        axes[2].set_title("Channel Differences (aligned)"); axes[2].set_xlabel("time (s)"); axes[2].set_ylabel("Δ servo")
+        axes[2].grid(True); axes[2].legend(ncol=4, fontsize=9)
+    else:
+        axes[2].text(0.5, 0.5, "No overlap to compute differences", ha='center', va='center', transform=axes[2].transAxes)
+        axes[2].set_axis_off()
+
+    plt.tight_layout()
+    out_name = f"{filename_idx:08d}-lstm_triptych.png"
+    out_path = os.path.join(images_dir, out_name)
+    plt.savefig(out_path, dpi=150)
+    plt.close(fig)
 
 class FuzzConfig:
     def __init__(self, args, logger_instance):
@@ -1275,6 +1416,7 @@ class FuzzConfig:
             "autopilot_type"
         ):
             raise ValueError(
+                "Atleast autopilot_type and peripheral_file are required in the config file."
                 "Atleast autopilot_type and peripheral_file are required in the config file."
             )
         # Load peripheral mapping from peripheral YAML file
@@ -1307,11 +1449,46 @@ class FuzzConfig:
             else self.config.get("vehicle", "copter")
         )
         # Select the model that the oracle uses
-        self.oracle_model = self.config.get("oracle_model", "dtw")
+        self.oracle_model = self.config.get("oracle_model", "lstm")
         logger.info(f"Using oracle model: {self.oracle_model}")
         if self.oracle_model not in detection_models:
-            logger.error("Unknown oracle model specified, using default: dtw")
-            self.oracle_model = "dtw"
+            logger.error("Unknown oracle model specified, using default: lstm")
+            self.oracle_model = "lstm"
+
+        # ---- SSL (semi-supervised) settings: part 1 (no paths yet) ----
+        self.ssl_buffer = []  # list of (window[T,C], y, weight)
+        self.ssl_max_buf = int(self.config.get("ssl_max_buf", 2048))
+        self.ssl_min_train = int(self.config.get("ssl_min_train", 256))
+        self.ssl_train_every = int(
+            self.config.get("ssl_train_every", 3)
+        )  # every N missions
+        self.ssl_head_lr = float(self.config.get("ssl_head_lr", 1e-4))
+        self.ssl_head_batch = int(self.config.get("ssl_head_batch", 128))
+        self.ssl_head_epochs = int(self.config.get("ssl_head_epochs", 3))
+        self.ssl_normal_z = float(
+            self.config.get("ssl_normal_z", 0.2)
+        )  # confident normal
+        self.ssl_anom_z = float(self.config.get("ssl_anom_z", 2.0))  # confident anomaly
+        self.ssl_w_normal = float(
+            self.config.get("ssl_w_normal", 0.5)
+        )  # down-weight normals
+        self.ssl_w_anom = float(
+            self.config.get("ssl_w_anom", 1.0)
+        )  # anomalies full weight
+        self.ssl_last_train_sims = -1
+
+        # LSTM AE dims (mirror sigma_calc_lstm choices)
+        self.lstm_window = int(self.config.get("lstm_window", 128))
+        self.lstm_stride = int(self.config.get("lstm_stride", 64))
+
+        if self.lstm_window <= 0:
+            logger.warning("Invalid lstm_window (%s); forcing to 128", self.lstm_window)
+            self.lstm_window = 128
+        if self.lstm_stride <= 0:
+            logger.warning("Invalid lstm_stride (%s); forcing to 64", self.lstm_stride)
+            self.lstm_stride = 64
+
+        self.lstm_hidden = int(self.config.get("lstm_hidden", 32))
 
         # Setup files - command line args override yaml config
         self.sitl_bin = (
@@ -1502,6 +1679,9 @@ class FuzzConfig:
             logger.info(
                 f"Created temporary input directory: {self.fuzzer_temp_input_dir}"
             )
+
+        self.ssl_head_path = os.path.join(self.fuzzer_temp_dir, "lstm_head.pt")
+
         # Check if we have additional parameters in the peripheral mapping
         self.generic_params = getattr(args, "generic_params", None)
         if self.generic_params is None:
@@ -1522,6 +1702,13 @@ class FuzzConfig:
         self.coverage_class = CoverageData(
             src_dir=self.src_dir, fuzz_dir=self.fuzzer_temp_dir
         )
+
+        self.last_scores = {
+            "dtw": float("nan"),
+            "z_dtw": float("nan"),
+            "lstm_err": float("nan"),
+            "p_anom": float("nan"),
+        }
 
     def _parse_numeric_value(self, value_str):
         """Parse a numeric value string, preserving int/float type.
@@ -1656,6 +1843,9 @@ class FuzzConfig:
             "dtw_threshold": [],
             "potential_crashes": 0.0,
         }
+
+        self.fuzzer_stats.setdefault("bugs_dtw", 0)
+        self.fuzzer_stats.setdefault("bugs_lstm", 0)
 
         # Get the peripheral mapping for the selected peripheral
         if self.peripheral_mapping and "sensors" in self.peripheral_mapping:
@@ -1875,6 +2065,7 @@ class FuzzConfig:
         self.tcp_conn.set_param(
             param_id=selected_param,
             param_value=random_val,
+            param_type="int32",
         )
         # Ensure we properly add the value to queue
         self.fuzz_msgs.append(
@@ -1942,6 +2133,95 @@ class FuzzConfig:
         # Update relevant stats
         self.fuzzer_stats["current_mission_time"] = time.time() - start_time
         exit(0)
+
+    def _infer_px4_param_type(self, val):
+        """
+        Simple heuristic mapping for PX4 PARAM_SET types:
+        - floats -> REAL32
+        - ints   -> choose a reasonable int bucket
+        You can override per-param by passing dicts in mapping: {value: X, type: "int32"}.
+        """
+        if isinstance(val, dict):
+            v = val.get("value")
+            t = val.get("type", "").lower()
+            if t in ("uint8","int8","uint16","int16","uint32","int32","float","double"):
+                return v, t
+            # fallthrough to infer if "type" missing/wrong
+            val = v
+
+        if isinstance(val, float):
+            return float(val), "float"
+        # ints: pick smallest viable
+        i = int(val)
+        if 0 <= i <= 255:        return i, "uint8"
+        if -128 <= i <= 127:     return i, "int8"
+        if 0 <= i <= 65535:      return i, "uint16"
+        if -32768 <= i <= 32767: return i, "int16"
+        # PX4 params are int32 for most integer params
+        return i, "int32"
+
+
+    def _readback_param_px4(self, name, expect_val, tol=1e-6, timeout=3.0):
+        """
+        Request a PARAM_VALUE and confirm within tolerance for floats (or exact for ints).
+        """
+        try:
+            msg = self.tcp_conn.show_param(name, timeout=max(1.0, timeout))
+            if msg is None:
+                return False, None
+            got = float(msg.param_value)
+            # If expected was an int, compare as int
+            if isinstance(expect_val, int):
+                return int(round(got)) == int(expect_val), got
+            # else float compare
+            return abs(got - float(expect_val)) <= tol, got
+        except Exception:
+            return False, None
+
+
+    def _apply_params_px4(self, params: dict, verify=True, reboot_if_needed=False):
+        """
+        Apply PX4 parameters via MAVLink PARAM_SET using TCPConn.set_param, verify, and optionally reboot.
+        Mapping may contain:
+        parameters:
+            MNT_MODE_IN: 4
+            MAV_1_MODE: {value: 10, type: "int32"}
+            ...
+        """
+        if not params:
+            logger.info("No PX4 parameters to apply.")
+            return
+
+        logger.info(f"Applying {len(params)} PX4 parameters...")
+        failures = []
+
+        for name, raw_val in params.items():
+            val, ptype = self._infer_px4_param_type(raw_val)
+            try:
+                self.tcp_conn.set_param(param_id=name, param_value=val, param_type=ptype)
+                logger.debug(f"PARAM_SET {name}={val} ({ptype}) sent")
+                # PX4 immediately updates and usually broadcasts on change; we force a read for certainty.
+                if verify:
+                    ok, got = self._readback_param_px4(name, val)
+                    if not ok:
+                        logger.warning(f"Verify failed: {name} expected {val}, got {got}")
+                        failures.append(name)
+                    else:
+                        logger.debug(f"Verified {name}={val}")
+            except Exception as e:
+                logger.error(f"Error setting {name}: {e}")
+                failures.append(name)
+
+        if failures:
+            logger.warning(f"PX4 param apply had {len(failures)} failures: {failures}")
+
+        # Optional reboot in case a param needs restart to take effect.
+        if reboot_if_needed and failures == []:
+            try:
+                logger.info("Rebooting PX4 to apply parameters that require restart...")
+                self.tcp_conn.reboot_and_wait_for_ack()
+            except Exception as e:
+                logger.error(f"PX4 reboot failed: {e}")
 
     def run_sim(self):
         """Run the SITL simulation with the specified vehicle and parameters."""
@@ -2278,6 +2558,12 @@ class FuzzConfig:
             fuzzing: Whether to enable fuzzing during the mission.
         """
         self.tcp_conn.set_mode("GUIDED")
+        if not self._wait_prearm_ok(timeout=180):
+            # Mark this sim as failed-but-recoverable; don't run oracle on junk
+            logger.error("PreArm check failed; aborting this mission cleanly.")
+            self.tcp_conn.rc_monitor = False
+            return  # caller will cleanup_sim(oracle=False) if you wire it that way
+
         self.tcp_conn.arm()
         # Monitor
         if self.vehicle != "rover":
@@ -2329,6 +2615,9 @@ class FuzzConfig:
         if self.auto_mission_enabled:
             self.upload_auto_mission(mission_file=self.auto_mission_path)
             # ARM to AUTO and then
+            if not self._wait_prearm_ok(timeout=180):
+                logger.error("PreArm check failed before AUTO; aborting mission.")
+                return
             self.tcp_conn.arm()
             self.tcp_conn.set_mode("AUTO")
             self.tcp_conn.apply_throttle()
@@ -2394,125 +2683,158 @@ class FuzzConfig:
         )
         logger.info("-" * 30)
 
-    def _sigma_calc_lstm(self):
-        """Calculate the LSTM thresholds based on the golden RC values."""
-        # Setup the PyTorch LSTM
-        device = torch.device("cpu")
-        # Setup model parameters
-        window_size = self.config.get("lstm_window_size", 50)  # Based on experiments
-        num_features = self.config.get("lstm_num_features", 4)  # RC motor counts
-        batch_size = self.config.get("lstm_batch_size", 32)  # Default batch size
-        epochs = self.config.get("lstm_epochs", 25)  # Default epochs
-        # Convert the golden RC values list into a numpy array
-        # First need to extract and clean up things
-        fields = ["servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw"]
-        combined_data = []
-        for iter in self.golden_rc_vals:
-            combined_data.append(np.array([[pkt[f] for f in fields] for pkt in iter]))
-        calib_data = np.concatenate(combined_data, axis=0)
-        # Create sequences for the LSTM
-        calib_data_seq = []
-        for i in range(len(calib_data) - window_size):
-            calib_data_seq.append(calib_data[i : i + window_size])
-        calib_data_seq = np.array(calib_data_seq)
-        # Scale the training data
-        scaler = MinMaxScaler()
-        calib_data_seq_reshaped = calib_data_seq.reshape(-1, num_features)
-        calib_data_seq_scaled = scaler.fit_transform(calib_data_seq_reshaped)
-        calib_data_seq_scaled = calib_data_seq_scaled.reshape(calib_data_seq.shape)
-        # Train the model
-        # Convert the array into PyTorch tensors
-        calib_data_seq_tensor = (
-            torch.from_numpy(calib_data_seq_scaled).float().to(device)
+    def _wait_prearm_ok(self, timeout=180):
+        """Block until ArduPilot reports it's ready to arm (prearm checks passed)."""
+        ok = self.wait_for_condition(
+            lambda: getattr(self.tcp_conn, "drone_ready", False), timeout=timeout
         )
-        # Split the data into training and validation sets
-        train_tensor, test_tensor = train_test_split(
-            calib_data_seq_tensor, test_size=0.2, random_state=RANDOM_SEED
-        )
-        # Create DataLoader
-        train_dataset = torch.utils.data.TensorDataset(train_tensor, train_tensor)
-        train_loader = torch.utils.data.DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True
-        )
-
-        validation_dataset = torch.utils.data.TensorDataset(test_tensor, test_tensor)
-        validation_loader = torch.utils.data.DataLoader(
-            validation_dataset, batch_size=batch_size, shuffle=False
-        )
-
-        # Model definition
-        model = LSTMAE(seq_len=window_size, n_features=num_features).to(device)
-        optimizer = optim.Adam(model.parameters())
-        criterion = nn.MSELoss()  # Mean Squared Error Loss
-
-        # Don't care about this for now
-        # try:
-        #     from torchinfo import summary
-        #
-        #     summary(
-        #         model,
-        #         input_size=(batch_size, window_size, num_features),
-        #         device=device,
-        #     )
-        # except ImportError:
-        #     logger.info(
-        #         "torchinfo not installed. Install with 'pip install torchinfo' for detailed model summary."
-        #     )
-        #     logger.info(model)  # Fallback to basic model print
-        logger.info("\nTraining PyTorch model...")
-        history = {"train_loss": [], "val_loss": []}
-
-        for epoch in range(epochs):
-            model.train()  # Set model to training mode
-            running_loss = 0.0
-            for batch_X, batch_y in train_loader:
-                optimizer.zero_grad()  # Zero the gradients
-                outputs = model(batch_X)
-                loss = criterion(outputs, batch_y)
-                loss.backward()  # Backpropagation
-                optimizer.step()  # Update weights
-                running_loss += loss.item() * batch_X.size(0)  # Accumulate batch loss
-
-            epoch_train_loss = running_loss / len(train_loader.dataset)
-            history["train_loss"].append(epoch_train_loss)
-
-            # Validation phase
-            model.eval()  # Set model to evaluation mode
-            val_loss = 0.0
-            with torch.no_grad():  # Disable gradient calculations
-                for batch_X_val, batch_y_val in validation_loader:
-                    outputs_val = model(batch_X_val)
-                    loss_val = criterion(outputs_val, batch_y_val)
-                    val_loss += loss_val.item() * batch_X_val.size(0)
-
-            epoch_val_loss = val_loss / len(validation_loader.dataset)
-            history["val_loss"].append(epoch_val_loss)
-
-            logger.info(
-                f"Epoch {epoch+1}/{epochs}, Train Loss: {epoch_train_loss:.6f}, Val Loss: {epoch_val_loss:.6f}"
+        if not ok:
+            logger.error(
+                "PreArm never cleared within %ss (drone_ready stayed False).", timeout
             )
+        return ok
 
-        # Calculate reconstruction errors on the validation set
-        model.eval()
-        with torch.no_grad():
-            test_val_pred = model(test_tensor)
+    def _series_to_matrix(
+        self, series, fields=("servo1_raw", "servo2_raw", "servo3_raw", "servo4_raw")
+    ):
+        return np.array([[pkt[f] for f in fields] for pkt in series], dtype=np.float32)
 
-        # Calculate reconstruction errors as Mean Absolute Error (MAE)
-        reconstruction_errors = torch.mean(
-            torch.abs(test_tensor - test_val_pred), dim=(1, 2)
-        )
+    def _build_windows(self, M, T=None, stride=None):
+        T = int(T or self.lstm_window)
+        stride = int(stride if stride is not None else self.lstm_stride)
+        if T <= 0:
+            raise ValueError(f"lstm_window must be > 0, got {T}")
+        if stride <= 0:
+            # fallback to full-overlap if misconfigured
+            logger.warning("lstm_stride was <= 0; defaulting to 1")
+            stride = 1
+        N, C = M.shape
+        if N < T:
+            pad = np.repeat(M[-1:], T - N, axis=0)
+            M = np.vstack([M, pad])
+            N = T
 
-        # Calculate threshold (3-sigma rule)
-        mean_error = torch.mean(reconstruction_errors).item()
-        std_error = torch.std(reconstruction_errors).item()
-        logger.debug(f"The mean is: {mean_error} and the std_dev is: {std_error}")
-        self.min_fuzz_threshold = mean_error - (2 * std_error)
-        self.max_fuzz_threshold = mean_error + (2 * std_error)
+        starts = range(0, max(1, N - T + 1), stride)
+        return np.stack([M[s : s + T] for s in starts], axis=0)
+
+    def _normalize(self, X, mean=None, std=None, eps=1e-8):
+        if mean is None or std is None:
+            mean = X.mean(axis=(0, -2), keepdims=False)
+            std = X.std(axis=(0, -2), keepdims=False)
+        return (X - mean) / (std + eps), mean, std
+
+    def _ssl_push(self, Wn, y, weight=1.0):
+        pos = 0
+        for i in range(Wn.shape[0]):
+            self.ssl_buffer.append((Wn[i], int(y), float(weight)))
+            pos += int(y)
+        if len(self.ssl_buffer) > self.ssl_max_buf:
+            self.ssl_buffer = self.ssl_buffer[-self.ssl_max_buf :]
         logger.debug(
-            "LSTM based thresholds calculated: min:{} max:{}".format(
-                self.min_fuzz_threshold, self.max_fuzz_threshold
-            )
+            f"SSL push: y={y}, added={Wn.shape[0]}, pos_ratio~={pos/max(1,Wn.shape[0]):.2f}, buffer={len(self.ssl_buffer)}"
         )
+
+    def _sigma_calc_lstm(self):
+        """
+        Train LSTM autoencoder on golden runs; set reconstruction-error band.
+        Persists model + normalization + thresholds for reuse.
+        Logs full training details every epoch.
+        """
+        import torch, torch.nn as nn
+
+        # 1) Assemble all golden matrices and windows
+        mats = [self._series_to_matrix(s) for s in self.golden_rc_vals]  # [Ni,4]
+        T = int(self.config.get("lstm_window", 128))
+        stride = int(self.config.get("lstm_stride", 64))
+        wins = [
+            self._build_windows(m, T=T, stride=stride) for m in mats
+        ]  # list [Bi,T,4]
+        X = np.concatenate(wins, axis=0)  # [B,T,4]
+
+        # 2) Normalize (fit on goldens)
+        Xn, mean, std = self._normalize(X)  # per-channel
+
+        # 3) Torch dataset
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        Xt = torch.from_numpy(Xn).float().to(device)  # [B,T,4]
+
+        # 4) Define tiny LSTM AE
+        C = Xt.shape[-1]
+        H = int(self.config.get("lstm_hidden", 32))
+
+        class LSTMAE(nn.Module):
+            def __init__(self, c=C, h=H):
+                super().__init__()
+                self.enc = nn.LSTM(
+                    input_size=c, hidden_size=h, num_layers=1, batch_first=True
+                )
+                self.dec = nn.LSTM(
+                    input_size=h, hidden_size=h, num_layers=1, batch_first=True
+                )
+                self.out = nn.Linear(h, c)
+
+            def forward(self, x):
+                z, _ = self.enc(x)  # [B,T,h]
+                y, _ = self.dec(z)  # [B,T,h]
+                return self.out(y)  # [B,T,c]
+
+        model = LSTMAE().to(device)
+        opt = torch.optim.Adam(
+            model.parameters(), lr=float(self.config.get("lstm_lr", 1e-3))
+        )
+        loss_fn = nn.MSELoss(reduction="none")
+        # Force 100 epochs (as requested); allow override through config if you want later.
+        epochs = 500
+        bs = int(self.config.get("lstm_batch", 64))
+
+        B = Xt.size(0)
+        logger.info(
+            f"LSTM AE pretraining on goldens: B={B}, T={T}, C={C}, H={H}, epochs={epochs}, batch={bs}"
+        )
+        print(
+            f"[LSTM] Pretraining: B={B}, T={T}, C={C}, H={H}, epochs={epochs}, batch={bs}"
+        )
+
+        # 5) Train (with full logging each epoch)
+        for ep in range(1, epochs + 1):
+            perm = torch.randperm(B, device=device)
+            running = 0.0
+            steps = 0
+            for i in range(0, B, bs):
+                idx = perm[i : i + bs]
+                batch = Xt[idx]
+                recon = model(batch)
+                mse = loss_fn(recon, batch).mean(dim=(1, 2))  # per-window scalar
+                loss = mse.mean()
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                running += float(loss.item())
+                steps += 1
+            ep_loss = running / max(1, steps)
+            logger.info(f"[LSTM][pretrain] epoch {ep:03d}/{epochs} loss={ep_loss:.6e}")
+            print(f"[LSTM][pretrain] epoch {ep:03d}/{epochs} loss={ep_loss:.6e}")
+
+        # 6) Compute golden recon error distribution for thresholds
+        with torch.no_grad():
+            recon = model(Xt)
+            per_win = loss_fn(recon, Xt).mean(dim=(1, 2)).detach().cpu().numpy()
+        mu, sigma = float(per_win.mean()), float(per_win.std())
+        self.lstm_err_mean = mu
+        self.lstm_err_std = sigma
+        self.lstm_err_min = mu - 2 * sigma
+        self.lstm_err_max = mu + 2 * sigma
+        logger.info(
+            f"[LSTM] recon mu={mu:.6e} std={sigma:.6e} band=[{self.lstm_err_min:.6e},{self.lstm_err_max:.6e}]"
+        )
+        print(
+            f"[LSTM] recon mu={mu:.6e} std={sigma:.6e} band=[{self.lstm_err_min:.6e},{self.lstm_err_max:.6e}]"
+        )
+
+        # 7) Persist artifacts
+        torch.save(model.state_dict(), os.path.join(self.fuzzer_temp_dir, "lstm_ae.pt"))
+        np.save(os.path.join(self.fuzzer_temp_dir, "lstm_norm_mean.npy"), mean)
+        np.save(os.path.join(self.fuzzer_temp_dir, "lstm_norm_std.npy"), std)
 
     def _sigma_calc_dtw(self):
         """Calculate the DTW thresholds based on the golden RC values."""
@@ -2533,6 +2855,8 @@ class FuzzConfig:
         # Get the threshold values for 2 sigma
         mean = np.mean(self.fuzzer_stats["dtw_threshold"])
         std_dev = np.std(self.fuzzer_stats["dtw_threshold"])
+        self.dtw_mean = float(mean)
+        self.dtw_std = float(std_dev)
         logger.debug(f"The mean is: {mean} and the std_dev is: {std_dev}")
         self.min_fuzz_threshold = mean - (2 * std_dev)
         self.max_fuzz_threshold = mean + (2 * std_dev)
@@ -2546,6 +2870,7 @@ class FuzzConfig:
         if self.oracle_model == "dtw":
             self._sigma_calc_dtw()
         if self.oracle_model == "lstm":
+            self._sigma_calc_dtw()
             self._sigma_calc_lstm()
         # Save the RC values as pickle file to later use in the current directory
         pickle_file = os.path.join(os.getcwd(), "rcou_vals.pkl")
@@ -2658,6 +2983,8 @@ class FuzzConfig:
                 logger.warning("Can't find LASTLOG.TXT file")
             logger.debug(f"Please refer to the {log_content:08d}.BIN for more details")
             self.fuzzer_stats["potential_crashes"] += 1
+            self.fuzzer_stats["bugs_dtw"] = self.fuzzer_stats.get("bugs_dtw", 0) + 1
+
             # Save inputs for later analysis
             fd, input_file = tempfile.mkstemp(
                 suffix=".txt",
@@ -2699,6 +3026,187 @@ class FuzzConfig:
             # Close fd if it is opened
             if fd:
                 os.close(fd)
+        z = (
+            (distance - self.dtw_mean) / (self.dtw_std + 1e-8)
+            if getattr(self, "dtw_mean", None) is not None
+            and getattr(self, "dtw_std", None) is not None
+            else float("nan")
+        )
+        self.last_dtw_distance = float(distance)
+
+        self.last_scores = {
+            "dtw": float(distance),
+            "z_dtw": z,
+            "lstm_err": float("nan"),
+            "p_anom": float("nan"),
+        }
+
+    def oracle_lstm(self):
+        """Semi-supervised LSTM classifier on servo data with DTW weak labels + AE recon.
+        - Uses DTW (via oracle_dtw) as weak supervisor (no DTW core changes).
+        - Trains SSL head periodically; logs every epoch.
+        - Saves viz: original vs reconstructed + metrics.
+        """
+        import torch, torch.nn as nn
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        # --- (A) Ensure up-to-date DTW score and side-effects (NO core change) ---
+        prev_crashes = self.fuzzer_stats["potential_crashes"]
+        dtw_dist = float(getattr(self, "last_dtw_distance", float("nan")))
+        z_dtw = float(self.last_scores.get("z_dtw", float("nan")))
+        dtw_already_flagged = self.fuzzer_stats["potential_crashes"] > prev_crashes
+        is_dtw_band_anom = (dtw_dist < self.min_fuzz_threshold) or (
+            dtw_dist > self.max_fuzz_threshold
+        )
+
+        # --- (B) Load AE + norm artifacts (trained in sigma_calc_lstm) ---
+        C = 4
+        H = self.lstm_hidden
+
+        class LSTMAE(nn.Module):
+            def __init__(self, c=C, h=H):
+                super().__init__()
+                self.enc = nn.LSTM(
+                    input_size=c, hidden_size=h, num_layers=1, batch_first=True
+                )
+                self.dec = nn.LSTM(
+                    input_size=h, hidden_size=h, num_layers=1, batch_first=True
+                )
+                self.out = nn.Linear(h, c)
+
+            def forward(self, x):
+                z, _ = self.enc(x)
+                y, _ = self.dec(z)
+                return self.out(y)
+
+        model = LSTMAE().to(device)
+        pt = os.path.join(self.fuzzer_temp_dir, "lstm_ae.pt")
+        mean = np.load(os.path.join(self.fuzzer_temp_dir, "lstm_norm_mean.npy"))
+        std = np.load(os.path.join(self.fuzzer_temp_dir, "lstm_norm_std.npy"))
+        model.load_state_dict(torch.load(pt, map_location=device))
+        model.eval()
+
+        # --- (C) Window current mission servo data and score AE recon ---
+        M = self._series_to_matrix(self.rcou_vals)  # [N,4]
+        W = self._build_windows(
+            M, T=self.lstm_window, stride=self.lstm_stride
+        )  # [B,T,4]
+        Wn, _, _ = self._normalize(W, mean=mean, std=std)
+        Xt = torch.from_numpy(Wn).float().to(device)
+
+        with torch.no_grad():
+            recon = model(Xt)
+            mse_per_win = ((recon - Xt) ** 2).mean(dim=(1, 2)).cpu().numpy()
+        recon_np = recon.detach().cpu().numpy()  # [B,T,4] normalized recon
+        lstm_err = float(np.mean(mse_per_win))  # mission-level AE score
+
+        # --- (D) Weak labels via DTW confidence -> build SSL buffer ---
+        if not np.isnan(z_dtw):
+            if abs(z_dtw) < self.ssl_normal_z:
+                self._ssl_push(Wn, y=0, weight=self.ssl_w_normal)  # confident normal
+            elif z_dtw > self.ssl_anom_z:
+                self._ssl_push(Wn, y=1, weight=self.ssl_w_anom)  # confident anomaly
+            # else: ignore uncertain
+
+        # --- (E) Periodic fine-tune of classifier head on AE embeddings (verbose) ---
+        if not hasattr(self, "ssl_last_train_sims"):
+            self.ssl_last_train_sims = -(10**9)
+        if (
+            len(self.ssl_buffer) >= self.ssl_min_train
+            and (self.fuzzer_stats["simulations_completed"] - self.ssl_last_train_sims)
+            >= self.ssl_train_every
+        ):
+            n_trained = _ssl_finetune_head(self, model, device)
+            self.ssl_last_train_sims = self.fuzzer_stats["simulations_completed"]
+            logger.info(
+                f"[SSL] trained head on {n_trained} windows; buf={len(self.ssl_buffer)}"
+            )
+            print(
+                f"[SSL] trained head on {n_trained} windows; buf={len(self.ssl_buffer)}"
+            )
+
+        # --- (F) Inference with head (probability) ---
+        p_anom = None
+        head = _LSTMHead(h=self.lstm_hidden).to(device)
+        if os.path.exists(self.ssl_head_path):
+            head.load_state_dict(torch.load(self.ssl_head_path, map_location=device))
+            head.eval()
+            with torch.no_grad():
+                z_all, _ = model.enc(Xt)
+                logits = head(z_all.mean(dim=1))
+                p_anom = torch.sigmoid(logits).mean().item()
+            logger.debug(f"SSL head inference ok; p_anom={p_anom:.4f}")
+        else:
+            logger.debug("SSL head not found yet; p_anom=None")
+
+        # --- (G) Thresholding & fusion ---
+        if (
+            getattr(self, "lstm_err_min", None) is None
+            or getattr(self, "lstm_err_max", None) is None
+        ):
+            logger.warning("LSTM thresholds missing; computing via sigma_calc_lstm.")
+            self._sigma_calc_lstm()
+        is_lstm_band_anom = (lstm_err < self.lstm_err_min) or (
+            lstm_err > self.lstm_err_max
+        )
+        head_thresh = float(self.config.get("ssl_head_thresh", 0.6))
+        head_ok = p_anom is not None and p_anom > head_thresh
+
+        # Independent anomaly from LSTM pipeline:
+        #   we let LSTM count a bug even if DTW didn't, by OR'ing the classifier,
+        #   OR requiring (AE band & DTW band) if classifier not ready.
+        is_anom_lstm = head_ok or (is_lstm_band_anom and is_dtw_band_anom)
+
+        if is_anom_lstm and not dtw_already_flagged:
+            self.fuzzer_stats["potential_crashes"] += 1
+            logger.info(
+                f"LSTM pipeline flags anomaly at sim at classifier = {head_ok} and {is_lstm_band_anom}!"
+            )
+            self.fuzzer_stats["bugs_lstm"] = self.fuzzer_stats.get("bugs_lstm", 0) + 1
+
+            self.coverage_class.archive_data(filename="lstm_ssl_anom")
+            logger.warning(
+                f"[LSTM] anomaly: lstm_err={lstm_err:.6e} p_anom={p_anom} "
+                f"dtw={dtw_dist:.6e} z_dtw={z_dtw:.2f}"
+            )
+            print(
+                f"[LSTM] anomaly: err={lstm_err:.6e}, p={p_anom}, dtw={dtw_dist:.6e}, z={z_dtw:.2f}"
+            )
+        else:
+            logger.debug(
+                f"[LSTM] normal or DTW already flagged: err={lstm_err:.6e} "
+                f"p={p_anom} dtw={dtw_dist:.6e} z={z_dtw:.2f}"
+            )
+        
+        # recon is a Tensor on device; get numpy in normalized space [B,T,4]
+        recon_np = recon.detach().cpu().numpy()
+
+        # figure out current BIN index (like DTW path)
+        log_file_path = os.path.join(self.fuzzer_temp_dir, "logs", "LASTLOG.TXT")
+        log_idx = None
+        if os.path.exists(log_file_path):
+            with open(log_file_path, "r") as f:
+                log_idx = int(f.read().strip())
+
+        save_lstm_bin_triptych(
+            filename_idx=log_idx,
+            recon_norm=recon_np,
+            mean=mean,                 # np.ndarray shape [4]
+            std=std,                   # np.ndarray shape [4]
+            stride=self.lstm_stride,
+            output_dir=self.fuzzer_temp_dir,
+            title="LSTM Reconstruction vs BIN (raw units)",
+            channels=("C1", "C2", "C3", "C4"),
+            rc_log_filter=True,
+        )
+
+        self.last_scores = {
+            "dtw": dtw_dist,
+            "z_dtw": z_dtw,
+            "lstm_err": float(lstm_err),
+            "p_anom": float(p_anom) if p_anom is not None else float("nan"),
+        }
 
     def oracle(self):
         """Perform anomaly detection using DTW distance calculations."""
@@ -2710,7 +3218,8 @@ class FuzzConfig:
         if self.oracle_model == "dtw":
             self.oracle_dtw()
         elif self.oracle_model == "lstm":
-            pass
+            self.oracle_dtw()
+            self.oracle_lstm()
         # Clean up the fuzz_msgs
         self.fuzz_msgs = []
 
@@ -3428,17 +3937,36 @@ if __name__ == "__main__":
 
         # Function to update tqdm with stats
         def update_tqdm_postfix():
-            dtw_min_val = getattr(cfg, "min_fuzz_threshold")
-            dtw_max_val = getattr(cfg, "max_fuzz_threshold")
+            # thresholds (band learned from DTW sigma-calc)
+            dtw_min_val = getattr(cfg, "min_fuzz_threshold", None)
+            dtw_max_val = getattr(cfg, "max_fuzz_threshold", None)
+
+            # last mission scores (DTW + LSTM)
+            s = getattr(cfg, "last_scores", {}) or {}
+
+            def fmt(x, prec):
+                try:
+                    return f"{float(x):.{prec}f}"
+                except Exception:
+                    return "NaN"
+
             pbar.set_postfix(
                 {
                     "time": f"{cfg.fuzzer_stats['last_mission_time']:.1f}s",
                     "state": f"{cfg.fuzzer_state}",
                     "sims": cfg.fuzzer_stats["simulations_completed"],
                     "msgs": cfg.fuzzer_stats["messages_sent"],
-                    "dtw_min": f"{'NaN' if dtw_min_val is None else f'{dtw_min_val:.6f}'}",
-                    "dtw_max": f"{'NaN' if dtw_max_val is None else f'{dtw_max_val:.6f}'}",
+                    # thresholds (consider renaming to dtw_lo_thr/dtw_hi_thr later)
+                    "dtw_min": "NaN" if dtw_min_val is None else f"{dtw_min_val:.6f}",
+                    "dtw_max": "NaN" if dtw_max_val is None else f"{dtw_max_val:.6f}",
+                    # live scores from last run
+                    "dtw": fmt(s.get("dtw", float("nan")), 4),
+                    "z_dtw": fmt(s.get("z_dtw", float("nan")), 2),
+                    "lstm": fmt(s.get("lstm_err", float("nan")), 5),
+                    "p_anom": fmt(s.get("p_anom", float("nan")), 2),
                     "bugs": f"{cfg.fuzzer_stats['potential_crashes']}",
+                    "bugs_dtw": cfg.fuzzer_stats.get("bugs_dtw", 0),
+                    "bugs_lstm": cfg.fuzzer_stats.get("bugs_lstm", 0),
                 }
             )
 

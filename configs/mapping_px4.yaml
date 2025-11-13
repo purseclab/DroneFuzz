@@ -1,0 +1,21 @@
+sensors:
+  PX4_Gimbal:
+    parameters:
+      # Gimbal Manager v2 in/out + route a MAVLink instance in Gimbal mode
+      MNT_MODE_IN: 4       # MAVLink gimbal v2 IN
+      MNT_MODE_OUT: 2      # MAVLink gimbal v2 OUT
+      MAV_0_MODE: 10       # Gimbal profile
+      MAV_0_FORWARD: 1     # forward manager <-> device messages
+      MAV_0_FLOW_CTRL: 0   # (optional)
+
+    msg_type:
+      - MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW
+      - MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE
+      - GIMBAL_MANAGER_SET_PITCHYAW
+      - GIMBAL_MANAGER_SET_ATTITUDE
+      - GIMBAL_DEVICE_INFORMATION
+      - GIMBAL_DEVICE_ATTITUDE_STATUS
+    frequency: [-1,-1,-1,-1,-1,-1]
+
+    # Example default for CMD (params: pitch, yaw, pitch_rate, yaw_rate, flags, gimbal_id, client)
+    default_msg: [0.0, 20.0, 0.0, 45.0, 0, 0, 0]
