@@ -77,7 +77,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
 
     # Create logger
     logger = logging.getLogger(name)
-    logger.setLevel(logging.DEBUG)
+    logger.setLevel(logging.INFO)
     logger.propagate = False
 
     # Create file handler for all logs
@@ -86,8 +86,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
 
     # Create console handler for important logs
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.WARNING)
 
     # Create formatters
     file_formatter = logging.Formatter(
