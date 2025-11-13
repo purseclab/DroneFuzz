@@ -335,7 +335,7 @@ class TCPConn:
         logger.info("Connection closed, stopping heartbeat thread.")
 
     def _handle_sys_status(self, msg):
-        print(f"SYS_STATUS: {msg}")
+        # print(f"SYS_STATUS: {msg}")
         # Basically for now, we just check enum values if the pre-arm is ready
         if msg.onboard_control_sensors_health & PREARM_CHECK:
             self.drone_ready = (
@@ -419,9 +419,10 @@ class TCPConn:
     def _monitor_status_text_px4(self, msg):
         print(f"DRONE_MSG: {msg.text}")
         # TODO: Need to verify all these messages
-        if re.search(r"Ready for takeoff!", msg.text, re.IGNORECASE):
-            logger.info("Vehicle is ready for takeoff.")
-            self.drone_ready = True
+        # if re.search(r"Ready for takeoff!", msg.text, re.IGNORECASE):
+        #     logger.info("Vehicle is ready for takeoff.")
+        #     self.drone_ready = True
+        # ^^ 2025-11-09T09:09:40-0500: silipwn: Doesn't actually work :|
         if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
             logger.info("Mission ended, vehicle is disarmed.")
             self.drone_in_air = False
@@ -694,33 +695,42 @@ class TCPConn:
         )  # type: ignore
 
     def takeoff(self, altitude):
-        # Peek at the drone_location queue to get the relative altitude
+        # Get the drone's current location
         loc = self.loc_queue.get(timeout=mavlink_timeout)
         if loc is None:
             logger.error("No location data received, skipping takeoff")
             return
-        rel_alt = loc["rel_alt"]
-        # Check if the altitude is current range
-        target_alt = rel_alt + altitude
-        print(f"Target altitude: {target_alt} meters")
+
+        current_lat = loc["lat"]
+        current_lon = loc["lon"]
+        current_rel_alt = loc["rel_alt"]
+
+        print(
+            f"Current location: lat={current_lat}, lon={current_lon}, rel_alt={current_rel_alt} meters"
+        )
+        altitude = current_rel_alt + altitude
+        print(f"Target takeoff altitude: {altitude} meters (relative)")
+
         self.conn.mav.command_long_send(
             self.conn.target_system,  # type: ignore
             self.conn.target_component,  # type: ignore
             mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
+            0,  # confirmation
+            0,  # param1: min pitch (0 for rotorcraft)
+            0,  # param2: empty
+            0,  # param3: empty
             0,
             0,
             0,
-            0,
-            0,
-            0,
-            0,
-            target_alt,
+            altitude,  # param7: altitude (relative to home)
         )  # type: ignore
-        # Check if the drone state is within the altitude range
-        logger.debug("Waiting for location to be within the altitude range")
-        while (
-            True
-        ):  # TODO: Change this to a case where we can timeout, in worst case scenario
+
+        # Wait for the drone to reach the target altitude
+        logger.debug(f"Waiting for drone to reach altitude: {altitude} meters")
+        timeout_counter = 0
+        max_timeout_iterations = 600  # 60 seconds with 0.1s sleep
+
+        while timeout_counter < max_timeout_iterations:
             loc = self.loc_queue.get(timeout=mavlink_timeout)
             if (
                 altitude - altitude_threshold
@@ -1391,7 +1401,6 @@ class FuzzConfig:
             if file_exists(self.src_dir):
                 logger.info(f"Using PX4 directory: {self.src_dir}")
 
-
         # Calibration settings
         self.calibration_active = False
         self.calibration_mode_list = list(
@@ -1944,8 +1953,8 @@ class FuzzConfig:
                     stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid,
                     cwd=self.fuzzer_temp_dir,
-                init_conn = TCPConn()
-                # Reboot to ensure we have reloaded the parameters
+                    init_conn=TCPConn(),
+                    # Reboot to ensure we have reloaded the parameters
                 )
                 init_conn.reboot_and_wait_for_ack()
                 time.sleep(2)  # Give some time for the reboot to complete
@@ -1984,7 +1993,7 @@ class FuzzConfig:
                     env=current_env,
                     cwd=self.src_dir,  # Run from PX4 directory
                 )
-                time.sleep(10) # Give some time for the simulation to start
+                time.sleep(10)  # Give some time for the simulation to start
                 # init_conn = TCPConn(autopilot_type="px4")
                 # Reboot to ensure we have reloaded the parameters
                 # init_conn.cleanup(shutdown=False)
