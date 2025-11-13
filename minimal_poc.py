@@ -40,7 +40,7 @@ import torch.optim as optim
 os.environ["MAVLINK20"] = "1"
 from pymavlink import mavutil, mavwp
 import subprocess
-from queue import Queue
+from queue import Queue, Empty
 import threading
 
 
@@ -423,7 +423,7 @@ class TCPConn:
         #     logger.info("Vehicle is ready for takeoff.")
         #     self.drone_ready = True
         # ^^ 2025-11-09T09:09:40-0500: silipwn: Doesn't actually work :|
-        if re.search(r"disarm\w*", msg.text, re.IGNORECASE):
+        if re.search(r"finished\w*", msg.text, re.IGNORECASE):
             logger.info("Mission ended, vehicle is disarmed.")
             self.drone_in_air = False
         if re.search(r"takeoff\w*", msg.text, re.IGNORECASE):
@@ -530,6 +530,20 @@ class TCPConn:
                             self.rcou_queue.put(msg.to_dict())
                     if msg.get_type() == "MISSION_REQUEST":  # type: ignore
                         self.mission_msg_queue.put(msg)
+                    if msg.get_type() == "MISSION_REQUEST_INT":  # type: ignore
+                        self.mission_msg_queue.put(msg)
+                    if msg.get_type() == "MISSION_CURRENT":
+                        # Check if we have the situation
+                        try:
+                            if msg.seq == (msg.total - 1):
+                                self.rc_monitor = False
+                            if (msg.seq == 1) & (msg.total > 1):
+                                self.rc_monitor = True  # 2025-11-13T16:44:17-0500: silipwn: This ideally means we are
+                                # on the right track
+                            else:
+                                logger.debug(msg)
+                        except Exception as e:
+                            logger.warning("I wrote something stupid {e}")
                     if msg.get_type() == "HEARTBEAT":  # type: ignore
                         self.drone_state = msg.system_status  # type: ignore
                     if msg.get_type() == "SYS_STATUS":
@@ -569,6 +583,9 @@ class TCPConn:
         # Check if the mode exists in the vehicle mapping
         mode_mapping = self.conn.mode_mapping()  # type: ignore
         set_mode = mode_mapping.get(mode, None)
+        if self.autopilot_type == "px4":
+            set_mode = float(set_mode[-1])
+        print(f"The value of mode is {set_mode}")
         if not set_mode:
             # TODO Figure out how to properly tear down everything
             logger.error("Error: Invalid mode specified")
@@ -740,7 +757,17 @@ class TCPConn:
                 logger.info(f"Drone has taken off to altitude: {loc['rel_alt']} meters")
                 self.drone_in_air = True
                 break
+            timeout_counter += 1
+            if timeout_counter % 50 == 0:  # Log progress every 5 seconds
+                logger.debug(
+                    f"Current altitude: {loc['rel_alt']} meters, target: {altitude} meters"
+                )
             time.sleep(0.1)
+
+        if timeout_counter >= max_timeout_iterations:
+            logger.warning(
+                f"Takeoff timeout: reached {loc['rel_alt']} meters, target was {altitude} meters"
+            )
 
     def go_to_waypoint(self, lat, lon, alt):
         """Navigate to a specified waypoint."""
@@ -2128,32 +2155,121 @@ class FuzzConfig:
 
     def upload_auto_mission(self, mission_file):
         """Upload a mission from a waypoint file using MAVProxy's waypoint module.
+        Based on the implementation from mavproxy_oldwp.py
+
         Args:
             mission_file: Path to the mission file (.waypoints format).
         """
+        # Load waypoints from file
         waypoints = mavwp.MAVWPLoader()
-        _ = waypoints.load(mission_file.strip('"'))
+        waypoints.target_system = self.tcp_conn.conn.target_system  # type: ignore
+        waypoints.target_component = self.tcp_conn.conn.target_component  # type: ignore
+
+        try:
+            # Remove leading and trailing quotes in filename
+            waypoints.load(mission_file.strip('"'))
+        except Exception as msg:
+            logger.error(f"Unable to load {mission_file} - {msg}")
+            return
+
+        logger.info(f"Loaded {waypoints.count()} waypoints from {mission_file}")
 
         # Clear any existing mission
         self.tcp_conn.conn.waypoint_clear_all_send()  # type: ignore
 
+        if waypoints.count() == 0:
+            logger.warning("No waypoints to upload")
+            return
+
+        # Track upload progress
+        upload_start = time.time()
+        loading_waypoints = True
+        loading_waypoint_lasttime = time.time()
+
+        # Timeout for mission requests
+        timeout = 4
+        if self.autopilot_type == "px4":
+            timeout = 3
+
         # Send waypoint count
         self.tcp_conn.conn.waypoint_count_send(waypoints.count())  # type: ignore
+        logger.info(f"Sent waypoint count: {waypoints.count()}")
 
         # Respond to mission requests
-        for _ in range(waypoints.count()):
+        requested_waypoints = set()
+        received_count = 0
+
+        while loading_waypoints and received_count < waypoints.count():
             try:
-                # Wait for mission request message
-                msg = self.tcp_conn.mission_msg_queue.get(timeout=4)
+                # Wait for mission request message (handle both MISSION_REQUEST and MISSION_REQUEST_INT)
+                msg = self.tcp_conn.mission_msg_queue.get(timeout=timeout)
 
-                logger.info(f"Received MISSION_REQUEST for sequence {msg.seq}")
+                # Check if we're still loading waypoints and within timeout
+                if not loading_waypoints:
+                    break
+                if time.time() > loading_waypoint_lasttime + 10.0:
+                    logger.error("Mission upload timeout exceeded")
+                    loading_waypoints = False
+                    break
 
-                # Send the requested waypoint
-                self.tcp_conn.conn.mav.send(waypoints.wp(msg.seq))  # type: ignore
-                logger.info(f"Sending waypoint {msg.seq}")
+                seq = msg.seq
 
+                # Validate sequence number
+                if seq >= waypoints.count():
+                    logger.error(
+                        f"Request for bad waypoint {seq} (max {waypoints.count() - 1})"
+                    )
+                    continue
+
+                # Get the waypoint
+                wp = waypoints.wp(seq)
+                if wp is None:
+                    logger.error(f"Could not get waypoint {seq}")
+                    continue
+
+                # Set target system and component
+                wp.target_system = self.tcp_conn.conn.target_system  # type: ignore
+                wp.target_component = self.tcp_conn.conn.target_component  # type: ignore
+
+                # Check if we should use MISSION_ITEM_INT
+                # For now, send as MISSION_ITEM (can be enhanced to support INT format)
+                wp_send = wp
+
+                # Send the waypoint
+                self.tcp_conn.conn.mav.send(wp_send)  # type: ignore
+                logger.info(f"Sending waypoint {seq}/{waypoints.count() - 1}")
+
+                requested_waypoints.add(seq)
+                received_count += 1
+                loading_waypoint_lasttime = time.time()
+
+                # Check if we've sent all waypoints
+                if seq == waypoints.count() - 1:
+                    loading_waypoints = False
+                    logger.info(
+                        f"Sent all {waypoints.count()} waypoints in {time.time() - upload_start:.2f}s"
+                    )
+                    break
+
+            except Empty:
+                # Queue timeout - check if overall timeout exceeded
+                if time.time() > loading_waypoint_lasttime + 10.0:
+                    logger.error("Mission upload timeout exceeded waiting for requests")
+                    loading_waypoints = False
+                    break
+                # Otherwise continue waiting
+                continue
             except Exception as e:
                 logger.error(f"Error in mission upload: {e}")
+                # Check timeout
+                if time.time() > loading_waypoint_lasttime + 10.0:
+                    logger.error("Mission upload timed out waiting for requests")
+                    break
+
+        if received_count < waypoints.count():
+            logger.warning(
+                f"Only sent {received_count} of {waypoints.count()} waypoints"
+            )
 
     def standard_guided(self, fuzzing=True):
         """Perform a standard guided mission.
