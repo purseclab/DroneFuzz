@@ -93,7 +93,7 @@ def setup_logging(name="dronefuzz", file_dir=None):
         "%(asctime)s - %(name)s - %(lineno)d - %(threadName)s - %(levelname)s - %(message)s"
     )
     console_formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        "%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s"
     )
 
     # Apply formatters
@@ -222,8 +222,8 @@ class TCPConn:
         self.autopilot_type = autopilot_type
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
         # self.internal_error = False
+        self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
         if self.autopilot_type == "ardupilot":
-            self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
             # Connection details
             with open(os.devnull, "w") as fnull:
                 with redirect_stdout(fnull):
@@ -538,6 +538,10 @@ class TCPConn:
                         except Exception as e:
                             logger.warning("I wrote something stupid {e}")
                     if msg.get_type() == "HEARTBEAT":  # type: ignore
+                        if self.autopilot_type == "px4":
+                            # Hack to get the drone ready
+                            if msg.system_status == mavutil.mavlink.MAV_STATE_STANDBY:
+                                self.drone_ready = True
                         self.drone_state = msg.system_status  # type: ignore
                     if msg.get_type() == "SYS_STATUS":
                         self._handle_sys_status(msg)
@@ -1237,6 +1241,7 @@ def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
     except subprocess.CalledProcessError as e:
         logger.error(f"Failed to save diff image: {e}")
 
+
 # --- helper: stitch overlapped windows by mean on overlaps ---
 def _stitch_overlap_mean(wins: np.ndarray, stride: int) -> np.ndarray:
     """
@@ -1249,17 +1254,18 @@ def _stitch_overlap_mean(wins: np.ndarray, stride: int) -> np.ndarray:
     cnt = np.zeros((L, 1), dtype=np.float32)
     for b in range(B):
         s = b * stride
-        out[s:s+T] += wins[b]
-        cnt[s:s+T] += 1.0
+        out[s : s + T] += wins[b]
+        cnt[s : s + T] += 1.0
     cnt[cnt == 0] = 1.0
     return out / cnt
+
 
 # --- new: 3-panel overlay (BIN original vs LSTM recon vs difference) ---
 def save_lstm_bin_triptych(
     filename_idx: int | None,
-    recon_norm: np.ndarray,   # [B,T,4] normalized reconstruction
-    mean: np.ndarray,         # [4]
-    std: np.ndarray,          # [4]
+    recon_norm: np.ndarray,  # [B,T,4] normalized reconstruction
+    mean: np.ndarray,  # [4]
+    std: np.ndarray,  # [4]
     stride: int,
     output_dir: str,
     title: str = "LSTM Reconstruction vs BIN (raw units)",
@@ -1311,7 +1317,9 @@ def save_lstm_bin_triptych(
 
             if times:
                 ts = np.array(times, dtype=np.float64)
-                bin_seq = np.stack([np.array(vals[ch], dtype=np.float32) for ch in channels], axis=1)  # [N,4]
+                bin_seq = np.stack(
+                    [np.array(vals[ch], dtype=np.float32) for ch in channels], axis=1
+                )  # [N,4]
 
     # 3) Build plots
     if bin_seq is None or ts is None:
@@ -1319,13 +1327,16 @@ def save_lstm_bin_triptych(
         fig, ax = plt.subplots(1, 1, figsize=(12, 5))
         t_rec = np.arange(recon_seq.shape[0])
         for c_idx, ch in enumerate(channels):
-            ax.plot(t_rec, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
+            ax.plot(t_rec, recon_seq[:, c_idx], "--", label=f"{ch} (recon)")
         ax.set_title(title + " (no BIN available)")
         ax.set_xlabel("sample")
         ax.set_ylabel("servo (raw)")
-        ax.grid(True); ax.legend(ncol=4, fontsize=9)
+        ax.grid(True)
+        ax.legend(ncol=4, fontsize=9)
         out_path = os.path.join(images_dir, "lstm_triptych_recon_only.png")
-        plt.tight_layout(); plt.savefig(out_path, dpi=150); plt.close(fig)
+        plt.tight_layout()
+        plt.savefig(out_path, dpi=150)
+        plt.close(fig)
         return
 
     # 4) Align recon to BIN time with a common grid and compute diff
@@ -1342,8 +1353,15 @@ def save_lstm_bin_triptych(
 
     # Interpolate to common grid if possible
     if common_t is not None:
-        bin_interp = np.column_stack([np.interp(common_t, ts, bin_seq[:, i]) for i in range(bin_seq.shape[1])])
-        rec_interp = np.column_stack([np.interp(common_t, ts_recon, recon_seq[:, i]) for i in range(recon_seq.shape[1])])
+        bin_interp = np.column_stack(
+            [np.interp(common_t, ts, bin_seq[:, i]) for i in range(bin_seq.shape[1])]
+        )
+        rec_interp = np.column_stack(
+            [
+                np.interp(common_t, ts_recon, recon_seq[:, i])
+                for i in range(recon_seq.shape[1])
+            ]
+        )
         diff = rec_interp - bin_interp  # [K,4]
     else:
         bin_interp, rec_interp, diff = None, None, None
@@ -1353,24 +1371,38 @@ def save_lstm_bin_triptych(
     # (top) BIN
     for c_idx, ch in enumerate(channels):
         axes[0].plot(ts, bin_seq[:, c_idx], label=f"{ch} (BIN)")
-    axes[0].set_title(f"{title} – BIN"); axes[0].set_ylabel("servo (raw)")
-    axes[0].grid(True); axes[0].legend(ncol=4, fontsize=9)
+    axes[0].set_title(f"{title} – BIN")
+    axes[0].set_ylabel("servo (raw)")
+    axes[0].grid(True)
+    axes[0].legend(ncol=4, fontsize=9)
 
     # (mid) Recon
     for c_idx, ch in enumerate(channels):
-        axes[1].plot(ts_recon, recon_seq[:, c_idx], '--', label=f"{ch} (recon)")
-    axes[1].set_title(f"{title} – Reconstruction"); axes[1].set_ylabel("servo (raw)")
-    axes[1].grid(True); axes[1].legend(ncol=4, fontsize=9)
+        axes[1].plot(ts_recon, recon_seq[:, c_idx], "--", label=f"{ch} (recon)")
+    axes[1].set_title(f"{title} – Reconstruction")
+    axes[1].set_ylabel("servo (raw)")
+    axes[1].grid(True)
+    axes[1].legend(ncol=4, fontsize=9)
 
     # (bottom) Difference on common grid (if available)
     if diff is not None:
         for c_idx, ch in enumerate(channels):
             axes[2].plot(common_t, diff[:, c_idx], label=f"{ch} (recon − BIN)")
-        axes[2].axhline(0.0, linestyle=':', linewidth=0.8)
-        axes[2].set_title("Channel Differences (aligned)"); axes[2].set_xlabel("time (s)"); axes[2].set_ylabel("Δ servo")
-        axes[2].grid(True); axes[2].legend(ncol=4, fontsize=9)
+        axes[2].axhline(0.0, linestyle=":", linewidth=0.8)
+        axes[2].set_title("Channel Differences (aligned)")
+        axes[2].set_xlabel("time (s)")
+        axes[2].set_ylabel("Δ servo")
+        axes[2].grid(True)
+        axes[2].legend(ncol=4, fontsize=9)
     else:
-        axes[2].text(0.5, 0.5, "No overlap to compute differences", ha='center', va='center', transform=axes[2].transAxes)
+        axes[2].text(
+            0.5,
+            0.5,
+            "No overlap to compute differences",
+            ha="center",
+            va="center",
+            transform=axes[2].transAxes,
+        )
         axes[2].set_axis_off()
 
     plt.tight_layout()
@@ -1378,6 +1410,7 @@ def save_lstm_bin_triptych(
     out_path = os.path.join(images_dir, out_name)
     plt.savefig(out_path, dpi=150)
     plt.close(fig)
+
 
 class FuzzConfig:
     def __init__(self, args, logger_instance):
@@ -2136,7 +2169,16 @@ class FuzzConfig:
         if isinstance(val, dict):
             v = val.get("value")
             t = val.get("type", "").lower()
-            if t in ("uint8","int8","uint16","int16","uint32","int32","float","double"):
+            if t in (
+                "uint8",
+                "int8",
+                "uint16",
+                "int16",
+                "uint32",
+                "int32",
+                "float",
+                "double",
+            ):
                 return v, t
             # fallthrough to infer if "type" missing/wrong
             val = v
@@ -2145,13 +2187,16 @@ class FuzzConfig:
             return float(val), "float"
         # ints: pick smallest viable
         i = int(val)
-        if 0 <= i <= 255:        return i, "uint8"
-        if -128 <= i <= 127:     return i, "int8"
-        if 0 <= i <= 65535:      return i, "uint16"
-        if -32768 <= i <= 32767: return i, "int16"
+        if 0 <= i <= 255:
+            return i, "uint8"
+        if -128 <= i <= 127:
+            return i, "int8"
+        if 0 <= i <= 65535:
+            return i, "uint16"
+        if -32768 <= i <= 32767:
+            return i, "int16"
         # PX4 params are int32 for most integer params
         return i, "int32"
-
 
     def _readback_param_px4(self, name, expect_val, tol=1e-6, timeout=3.0):
         """
@@ -2169,7 +2214,6 @@ class FuzzConfig:
             return abs(got - float(expect_val)) <= tol, got
         except Exception:
             return False, None
-
 
     def _apply_params_px4(self, params: dict, verify=True, reboot_if_needed=False):
         """
@@ -2190,13 +2234,17 @@ class FuzzConfig:
         for name, raw_val in params.items():
             val, ptype = self._infer_px4_param_type(raw_val)
             try:
-                self.tcp_conn.set_param(param_id=name, param_value=val, param_type=ptype)
+                self.tcp_conn.set_param(
+                    param_id=name, param_value=val, param_type=ptype
+                )
                 logger.debug(f"PARAM_SET {name}={val} ({ptype}) sent")
                 # PX4 immediately updates and usually broadcasts on change; we force a read for certainty.
                 if verify:
                     ok, got = self._readback_param_px4(name, val)
                     if not ok:
-                        logger.warning(f"Verify failed: {name} expected {val}, got {got}")
+                        logger.warning(
+                            f"Verify failed: {name} expected {val}, got {got}"
+                        )
                         failures.append(name)
                     else:
                         logger.debug(f"Verified {name}={val}")
@@ -3157,7 +3205,7 @@ class FuzzConfig:
                 f"[LSTM] normal or DTW already flagged: err={lstm_err:.6e} "
                 f"p={p_anom} dtw={dtw_dist:.6e} z={z_dtw:.2f}"
             )
-        
+
         # recon is a Tensor on device; get numpy in normalized space [B,T,4]
         recon_np = recon.detach().cpu().numpy()
 
@@ -3171,8 +3219,8 @@ class FuzzConfig:
         save_lstm_bin_triptych(
             filename_idx=log_idx,
             recon_norm=recon_np,
-            mean=mean,                 # np.ndarray shape [4]
-            std=std,                   # np.ndarray shape [4]
+            mean=mean,  # np.ndarray shape [4]
+            std=std,  # np.ndarray shape [4]
             stride=self.lstm_stride,
             output_dir=self.fuzzer_temp_dir,
             title="LSTM Reconstruction vs BIN (raw units)",
