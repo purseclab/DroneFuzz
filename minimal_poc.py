@@ -18,6 +18,7 @@ import datetime
 import pickle
 import shutil
 import shlex
+import glob
 from lxml import etree
 from enum import Enum
 import heapq
@@ -463,6 +464,14 @@ class TCPConn:
             self.rc_monitor = False
             self.drone_ready = False
             self.gps_ready = False
+        if re.search(r"Landing detected", msg.text):
+            logger.info("Landing triggered")
+            logger.debug("Disabling all flags")
+            self.st_msg_send("STOP RC")
+            self.drone_in_air = False
+            self.rc_monitor = False
+            self.drone_ready = False
+            self.gps_ready = False
 
     def monitor_comms(self):
         while self.connected.is_set() and not self.shutdown_requested:
@@ -580,11 +589,11 @@ class TCPConn:
         # Check if the mode exists in the vehicle mapping
         mode_mapping = self.conn.mode_mapping()  # type: ignore
         set_mode = mode_mapping.get(mode, None)
-        if self.autopilot_type == "px4":
-            set_mode = float(set_mode[-1])
         if not set_mode:
             # TODO Figure out how to properly tear down everything
             logger.error("Error: Invalid mode specified")
+        if self.autopilot_type == "px4":
+            set_mode = float(set_mode[-1])
         self.conn.mav.command_long_send(
             self.conn.target_system,  # type: ignore
             self.conn.target_component,  # type: ignore
@@ -1466,7 +1475,12 @@ class FuzzConfig:
 
         # Allow configuring the modes via config
         # Current fallbacks are ['GUIDED', 'AUTO'], I think these are the most common
-        self.supported_modes = self.config.get("supported_modes") or ["GUIDED", "AUTO"]
+        self.supported_modes = self.config.get("supported_modes")
+        if not self.supported_modes:
+            if self.autopilot_type == "ardupilot":
+                self.supported_modes = ["GUIDED", "AUTO"]
+            elif self.autopilot_type == "px4":
+                self.supported_modes = ["MISSION"]
 
         self.vehicle = (
             getattr(args, "vehicle", None)
@@ -2382,11 +2396,17 @@ class FuzzConfig:
                     logger.debug(f"Changing mode to: {mode[mode_ctr]}")
                     prev_state = mode[mode_ctr]
                     mode_ctr += 1
-                elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
+                elif mode_ctr >= MAX_MODE_CHANGES and (
+                    prev_state != "AUTO" or prev_state != "MISSION"
+                ):
                     logger.debug("Reached mode change limit, not changing mode anymore")
-                    self.tcp_conn.set_mode("AUTO")
-                    prev_state = "AUTO"
-                    logger.debug("Resetting Setting mode to AUTO")
+                    if self.autopilot_type == "ardupilot":
+                        self.tcp_conn.set_mode("AUTO")
+                        prev_state = "AUTO"
+                    elif self.autopilot_type == "px4":
+                        self.tcp_conn.set_mode("MISSION")
+                        prev_state = "MISSION"
+                    logger.debug("Resetting Setting mode to AUTO/MISSION")
                 if random.random() < 0.1:  # Randomly set a parameter
                     self.random_param_set()
                 if self.error_sleep(3):
@@ -2428,11 +2448,17 @@ class FuzzConfig:
                     mode_state.append(mode)
                     mode_ctr += 1
                     prev_state = mode
-                elif mode_ctr >= MAX_MODE_CHANGES and prev_state != "AUTO":
+                elif mode_ctr >= MAX_MODE_CHANGES and (
+                    prev_state != "AUTO" or prev_state != "MISSION"
+                ):
                     logger.debug("Reached mode change limit, not changing mode anymore")
-                    self.tcp_conn.set_mode("AUTO")
-                    prev_state = "AUTO"
-                    logger.debug("Resetting Setting mode to AUTO")
+                    if self.autopilot_type == "ardupilot":
+                        self.tcp_conn.set_mode("AUTO")
+                        prev_state = "AUTO"
+                    elif self.autopilot_type == "px4":
+                        self.tcp_conn.set_mode("MISSION")
+                        prev_state = "MISSION"
+                    logger.debug("Resetting Setting mode to AUTO/MISSION")
                 if random.random() < self.random_param_prob:  # Randomly set a parameter
                     self.random_param_set()
                 if self.error_sleep(3):
@@ -3013,14 +3039,48 @@ class FuzzConfig:
                 f"DTW distance {distance} exceeds {self.min_fuzz_threshold} or is way below threshold {self.max_fuzz_threshold}, potential anomaly detected! at simulation {self.fuzzer_stats['simulations_completed']}"
             )
             # Try to open the LASTLOG.TXT
-            log_file_path = os.path.join(self.fuzzer_temp_dir, "logs/LASTLOG.TXT")
-            log_content = "N/A"
-            try:
-                with open(log_file_path, "r") as log_file:
-                    log_content = int(log_file.read().strip())
-            except FileNotFoundError:
-                logger.warning("Can't find LASTLOG.TXT file")
-            logger.debug(f"Please refer to the {log_content:08d}.BIN for more details")
+            if self.autopilot_type == "ardupilot":
+                log_file_path = os.path.join(self.fuzzer_temp_dir, "logs/LASTLOG.TXT")
+                log_content = "N/A"
+                try:
+                    with open(log_file_path, "r") as log_file:
+                        log_content = int(log_file.read().strip())
+                except FileNotFoundError:
+                    logger.warning("Can't find LASTLOG.TXT file")
+                logger.debug(
+                    f"Please refer to the {log_content:08d}.BIN for more details"
+                )
+            elif self.autopilot_type == "px4":
+                # Get today's date
+                date = datetime.datetime.now().strftime("%Y-%m-%d")
+                log_file_dir = os.path.join(
+                    self.src_dir, "build/px4_sitl_default/rootfs/log", date
+                )
+                # Find the latest file in the log_file_dir
+                if not os.path.isdir(log_file_dir):
+                    logger.warning(
+                        "PX4 log directory %s does not exist; skipping latest log lookup",
+                        log_file_dir,
+                    )
+                    latest_log = None
+                else:
+                    glob_pattern_px4 = os.path.join(log_file_dir, "*.ulg")
+                    files = [
+                        f for f in glob.glob(glob_pattern_px4) if os.path.isfile(f)
+                    ]
+                    if not files:
+                        logger.warning(
+                            "No PX4 .ulg logs found under %s; skipping latest log lookup",
+                            log_file_dir,
+                        )
+                        latest_log = None
+                    else:
+                        latest_log = max(files, key=os.path.getmtime)
+
+                logger.debug(
+                    f"Potential log is {latest_log} in the ROOTFS for PX4 SITL"
+                )
+
             self.fuzzer_stats["potential_crashes"] += 1
             self.fuzzer_stats["bugs_dtw"] = self.fuzzer_stats.get("bugs_dtw", 0) + 1
 
@@ -3031,7 +3091,10 @@ class FuzzConfig:
                 dir=self.fuzzer_temp_input_dir,
             )
             # Save the coverage data
-            self.coverage_class.archive_data(filename=log_content)
+            if self.autopilot_type == "ardupilot":
+                self.coverage_class.archive_data(filename=log_content)
+            else:
+                logger.info("CoverageData not saved")
             # Create an image for later analysis
             save_diff_img(
                 filename=log_content,
