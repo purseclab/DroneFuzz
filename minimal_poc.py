@@ -2659,8 +2659,14 @@ class FuzzConfig:
                 logger.error("PreArm check failed before AUTO; aborting mission.")
                 return
             self.tcp_conn.arm()
-            self.tcp_conn.set_mode("AUTO")
-            self.tcp_conn.apply_throttle()
+            if self.autopilot_type == "ardupilot":
+                self.tcp_conn.set_mode("AUTO")
+                self.tcp_conn.apply_throttle()
+            elif self.autopilot_type == "px4":
+                self.tcp_conn.set_mode("MISSION")
+                logger.debug("No need for anything")
+            else:
+                logger.warning("What type of drone is this??")
             self.monitor_auto_mission()
         else:
             logger.info("Using standard triangle mission")
