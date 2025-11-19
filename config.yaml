@@ -1,13 +1,24 @@
-# # autopilot_type: px4
-# # px4_dir: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/
-# # xml_file: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/src/modules/mavlink/mavlink/message_definitions/v1.0/common.xml
-# # peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/configs/mapping_px4.yaml
-# # peripheral: PX4_Gimbal
-# # supported_modes: [AUTO]
-# # vehicle: copter
-# # calibration_rounds: 50
-# # fuzz_interval: 1.0
-# # mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/missions/mission.txt
+# autopilot_type: px4
+# px4_dir: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/
+# xml_file: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/src/modules/mavlink/mavlink/message_definitions/v1.0/common.xml
+# peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/configs/mapping_px4.yaml
+# peripheral: PX4_Gimbal
+# supported_modes: [MISSION]
+# vehicle: copter
+# calibration_rounds: 20
+# fuzz_interval: 1.0
+# mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/missions/mission_px4.txt
+
+# autopilot_type: px4
+# peripheral_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/configs/mapping_px4.yaml
+# px4_dir: /home/shafiq-us-saleheen/fall25/PX4-Autopilot
+# xml_file: /home/shafiq-us-saleheen/fall25/PX4-Autopilot/src/modules/mavlink/mavlink/message_definitions/v1.0/common.xml
+# peripheral: PX4_Camera
+# vehicle: copter
+# supported_modes: [MISSION]
+# calibration_rounds: 20            # fewer while you’re iterating
+# fuzz_interval: 1.0                # seconds between fuzzed messages
+# mission_file: /home/shafiq-us-saleheen/fall25/PGFUZZplusplus/missions/mission_px4.txt
 
 
 # ap_dir: /home/shafiq-us-saleheen/fall25/ardupilot/

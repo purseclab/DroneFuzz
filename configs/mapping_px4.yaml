@@ -19,3 +19,36 @@ sensors:
 
     # Example default for CMD (params: pitch, yaw, pitch_rate, yaw_rate, flags, gimbal_id, client)
     default_msg: [0.0, 20.0, 0.0, 45.0, 0, 0, 0]
+
+  PX4_Camera:
+    # PX4-side MAVLink port we’ll use to talk to the camera/companion
+    parameters:
+      # These assume TELEM2 is used for the camera/companion
+      MAV_2_CONFIG: 102       # "TELEM2" (value can differ by board; adjust if needed)
+      MAV_2_MODE: 2           # Onboard mode (companion / camera)
+      MAV_2_FORWARD: 1        # Enable MAVLink forwarding on this port
+      # Optionally baud etc. if your SITL param set needs it:
+      # MAV_2_BAUD: 921600
+
+    # Camera protocol v2 mission commands we want to fuzz
+    msg_type:
+      - MAV_CMD_IMAGE_START_CAPTURE
+      - MAV_CMD_IMAGE_STOP_CAPTURE
+      - MAV_CMD_VIDEO_START_CAPTURE
+      - MAV_CMD_VIDEO_STOP_CAPTURE
+      - MAV_CMD_SET_CAMERA_MODE
+      - MAV_CMD_SET_CAMERA_ZOOM
+      - MAV_CMD_SET_CAMERA_FOCUS
+      - MAV_CMD_CAMERA_TRACK_POINT
+      - MAV_CMD_CAMERA_TRACK_RECTANGLE
+      - MAV_CMD_CAMERA_STOP_TRACKING
+      - MAV_CMD_REQUEST_MESSAGE
+      - MAV_CMD_STORAGE_FORMAT
+      - MAV_CMD_SET_MESSAGE_INTERVAL
+
+    # Non-periodic fuzzing: let the fuzzer send messages on its own schedule
+    frequency: [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+
+    # (Optional) safe-ish seed message used during calibration (one example)
+    # Here: request CAMERA_INFORMATION (msg id 259) from “all” cameras
+    calibration_msg: [259, 0, 0, 0, 0, 0, 0]
