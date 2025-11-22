@@ -58,6 +58,7 @@ PREARM_CHECK = 0x10000000
 EKF_POS_HORIZ = 0x8
 EKF_POS_VERT = 0x10
 MAX_MODE_CHANGES = 3
+FAILURE_MODE_CHANGES = 5
 
 # Global error queue
 error_queue = Queue()
@@ -224,6 +225,9 @@ class TCPConn:
         # 2025-06-18T13:35:06-0400: silipwn: Not sure if we actually are using this, so disabling for now
         # self.internal_error = False
         self.drone_state = mavutil.mavlink.MAV_STATE_UNINIT  # Initial state
+        self.mode_change_failure_count = 0
+        # Flag set when a set_mode command receives a COMMAND_ACK (success/failure)
+        self.last_mode_set_success = False
         if self.autopilot_type == "ardupilot":
             # Connection details
             with open(os.devnull, "w") as fnull:
@@ -487,6 +491,17 @@ class TCPConn:
                         elif self.autopilot_type == "px4":
                             self._monitor_status_text_px4(msg)
                     if msg.get_type() == "COMMAND_ACK":
+                        # Track result for mode changes so callers can wait for acknowledgement
+                        if msg.command == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+                            if msg.result is mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
+                                self.last_mode_set_success = True
+                                # reset failure counter on success
+                                self.mode_change_failure_count = 0
+                                logger.debug("Mode change acknowledged (accepted)")
+                            else:
+                                self.last_mode_set_success = False
+                                logger.debug("Mode change acknowledged (rejected)")
+
                         if msg.result is not mavutil.mavlink.MAV_RESULT_ACCEPTED:  # type: ignore
                             # Only create an error if the command was a arming/land/takeoff/auto
                             # Upload mission for rest of the commands just warn
@@ -495,7 +510,6 @@ class TCPConn:
                                 mavutil.mavlink.MAV_CMD_NAV_LAND,
                                 mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,
                                 mavutil.mavlink.MAV_CMD_MISSION_START,
-                                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
                             ]:
                                 e = f"Command failed: {msg.command} with result: {msg.result}"
                                 error_queue.put(
@@ -511,6 +525,25 @@ class TCPConn:
                             logger.debug(
                                 f"Command failed: {msg.command} with result: {msg.result}"
                             )
+                            if msg.command == mavutil.mavlink.MAV_CMD_DO_SET_MODE:
+                                logger.debug(
+                                    f"Command set mode: {msg.command} with result: {msg.result}"
+                                )
+                                self.mode_change_failure_count += 1
+                                if (
+                                    self.mode_change_failure_count
+                                    >= FAILURE_MODE_CHANGES
+                                ):
+                                    e = f"Exceeded maximum mode changes: {FAILURE_MODE_CHANGES}"
+                                    error_queue.put(
+                                        {
+                                            "type": "fuzzer_error",
+                                            "error": e,
+                                            "component": "monitor_comms",
+                                            "timestamp": time.time(),
+                                        }
+                                    )
+                                    self.shutdown_requested = True
                     if msg.get_type() == "GLOBAL_POSITION_INT":
                         # Update the drone's GPS location state
                         drone_loc_state = {}
@@ -541,11 +574,11 @@ class TCPConn:
                         try:
                             if msg.seq == (msg.total - 1):
                                 self.rc_monitor = False
-                            if (msg.seq == 1) & (msg.total > 1):
+                            if (msg.seq == 1) and (msg.total > 1):
                                 self.rc_monitor = True  # 2025-11-13T16:44:17-0500: silipwn: This ideally means we are
                                 # on the right track
                         except Exception as e:
-                            logger.warning("I wrote something stupid {e}")
+                            logger.warning(f"I wrote something stupid {e}")
                     if msg.get_type() == "HEARTBEAT":  # type: ignore
                         if self.autopilot_type == "px4":
                             # Hack to get the drone ready
@@ -592,23 +625,49 @@ class TCPConn:
         if not set_mode:
             # TODO Figure out how to properly tear down everything
             logger.error("Error: Invalid mode specified")
+        # PX4 expects the custom mode as a float in the 3rd param
         if self.autopilot_type == "px4":
             set_mode = float(set_mode[-1])
-        self.conn.mav.command_long_send(
-            self.conn.target_system,  # type: ignore
-            self.conn.target_component,  # type: ignore
-            mavutil.mavlink.MAV_CMD_DO_SET_MODE,
-            0,
-            1,  # Base mode: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
-            set_mode,
-            0,
-            0,
-            0,
-            0,
-            0,
-        )  # type: ignore
-        # self.conn.set_mode(set_mode)
-        logger.info("Setting mode to: " + mode)
+
+        # Try up to 3 times for PX4 since COMMAND_ACKs are handled in the stream
+        max_attempts = 3 if self.autopilot_type == "px4" else 1
+        # reset the ack flag before trying
+        self.last_mode_set_success = False
+
+        for attempt in range(1, max_attempts + 1):
+            self.conn.mav.command_long_send(
+                self.conn.target_system,  # type: ignore
+                self.conn.target_component,  # type: ignore
+                mavutil.mavlink.MAV_CMD_DO_SET_MODE,
+                0,
+                1,  # Base mode: MAV_MODE_FLAG_CUSTOM_MODE_ENABLED
+                set_mode,
+                0,
+                0,
+                0,
+                0,
+                0,
+            )  # type: ignore
+
+            logger.info(f"Setting mode to: {mode} (attempt {attempt}/{max_attempts})")
+
+            # If there is an external monitor setting `last_mode_set_success` on COMMAND_ACK,
+            # wait a short time for it to be updated.
+            wait_start = time.time()
+            wait_timeout = 2.0
+            while time.time() - wait_start < wait_timeout:
+                if self.last_mode_set_success:
+                    logger.info(
+                        f"Mode change acknowledged for {mode} on attempt {attempt}"
+                    )
+                    break
+                time.sleep(0.2)
+
+            if self.last_mode_set_success:
+                break
+
+        if not self.last_mode_set_success:
+            logger.warning(f"Failed to set mode '{mode}' after {max_attempts} attempts")
 
     def set_param(self, param_id, param_value, param_type="uint8"):
         """
@@ -1239,8 +1298,9 @@ class CoverageData:
 
 def save_diff_img(filename, fuzz_enum_mode, script_dir, output_dir):
     # Run the script and save the diff image
-    if filename == 0 or filename == "N/A":
-        raise Exception("Filename is not valid, cannot save diff image.")
+    if not filename:
+        logger.warning("Filename is not valid, cannot save diff image.")
+        return
     output_filename = os.path.join(output_dir, f"{filename}.png")
     plot_script = os.path.join(script_dir, "plot_servo_values.py")
     cmd = f"python3 {plot_script} {fuzz_enum_mode:08d}.BIN {filename:08d}.BIN --rc-log-filter --output {output_filename}"
@@ -2338,7 +2398,7 @@ class FuzzConfig:
             current_env = os.environ.copy()
             current_env["HEADLESS"] = "1"
             current_env["PX4_SIM_MODEL"] = "jmavsim_iris"
-            self.sitl_cmd = f"./build/px4_sitl_default/bin/px4 -d"
+            self.sitl_cmd = "./build/px4_sitl_default/bin/px4 -d"
             logger.info(f"Starting PX4 SITL with command: {self.sitl_cmd}")
             if self.calibration_active:
                 assert (
@@ -2397,7 +2457,7 @@ class FuzzConfig:
                     prev_state = mode[mode_ctr]
                     mode_ctr += 1
                 elif mode_ctr >= MAX_MODE_CHANGES and (
-                    prev_state != "AUTO" or prev_state != "MISSION"
+                    prev_state != "AUTO" and prev_state != "MISSION"
                 ):
                     logger.debug("Reached mode change limit, not changing mode anymore")
                     if self.autopilot_type == "ardupilot":
@@ -2449,7 +2509,7 @@ class FuzzConfig:
                     mode_ctr += 1
                     prev_state = mode
                 elif mode_ctr >= MAX_MODE_CHANGES and (
-                    prev_state != "AUTO" or prev_state != "MISSION"
+                    prev_state != "AUTO" and prev_state != "MISSION"
                 ):
                     logger.debug("Reached mode change limit, not changing mode anymore")
                     if self.autopilot_type == "ardupilot":
@@ -3038,10 +3098,10 @@ class FuzzConfig:
             logger.info(
                 f"DTW distance {distance} exceeds {self.min_fuzz_threshold} or is way below threshold {self.max_fuzz_threshold}, potential anomaly detected! at simulation {self.fuzzer_stats['simulations_completed']}"
             )
+            log_content = None
             # Try to open the LASTLOG.TXT
             if self.autopilot_type == "ardupilot":
                 log_file_path = os.path.join(self.fuzzer_temp_dir, "logs/LASTLOG.TXT")
-                log_content = "N/A"
                 try:
                     with open(log_file_path, "r") as log_file:
                         log_content = int(log_file.read().strip())
@@ -3112,7 +3172,7 @@ class FuzzConfig:
         else:
             # Check if the distance is less than values in queue
             if self.fuzzer_queue:
-                if distance >= self.fuzzer_queue[0].priority:
+                if distance >= -self.fuzzer_queue[0].priority:
                     logger.info(
                         "Distance is greater than the first item in the queue, adding to queue"
                     )
@@ -4078,6 +4138,7 @@ if __name__ == "__main__":
             ):
                 if cfg.error_sleep(1):
                     logger.error("Potential error encountered during waiting")
+                    raise Exception("Error encountered during fuzzing")
                 pbar.refresh()  # Keep progress bar visible during waiting
 
             if cfg.tcp_conn.drone_ready and cfg.vehicle == "plane":
