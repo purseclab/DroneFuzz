@@ -287,12 +287,30 @@ class TCPConn:
 
     def wait_for_connection(self):
         # Check if we reconnected and received a heartbeat
-        try:
-            self.conn.wait_heartbeat()  # type: ignore
-            self.connected.set()
-            logger.info("Connected to the vehicle and received heartbeat.")
-        except Exception as e:
-            raise ConnectionError("Failed to connect to the vehicle: " + str(e))
+        max_retries = 2  # retry up to 2 times when encountering a peer-reset style error
+        attempts = 0
+        while True:
+            try:
+                self.conn.wait_heartbeat()  # type: ignore
+                self.connected.set()
+                logger.info("Connected to the vehicle and received heartbeat.")
+                return
+            except Exception as e:
+                attempts += 1
+                err_str = str(e)
+                # Detect peer reset / connection reset by peer errors; keep the check broad
+                peer_reset = isinstance(e, ConnectionResetError) or (
+                    "peer reset" in err_str.lower()
+                    or "connection reset by peer" in err_str.lower()
+                )
+                if peer_reset and attempts <= max_retries:
+                    logger.warning(
+                        f"Peer reset encountered while waiting for heartbeat; retrying ({attempts}/{max_retries})..."
+                    )
+                    time.sleep(1)
+                    continue
+                # Not a retriable error or we've exhausted retries
+                raise ConnectionError("Failed to connect to the vehicle: " + err_str)
 
     def reboot_and_wait_for_ack(self):
         """Reboot the vehicle by sending a command to reboot."""
@@ -874,6 +892,8 @@ class TCPConn:
                 self.loc_queue.get()
             if rcou_list:
                 logger.info(f"Received {len(rcou_list)} RC channel updates.")
+                self.conn.close() # type: ignore
+                self.connected.clear()
             return rcou_list
         if self.conn:
             self.conn.close()  # type: ignore
@@ -2380,6 +2400,7 @@ class FuzzConfig:
                 init_conn.reboot_and_wait_for_ack()
                 time.sleep(2)  # Give some time for the reboot to complete
                 init_conn.cleanup(shutdown=False)
+                time.sleep(6)
                 self.fuzzer_stats["current_mission_time"] = time.time()
                 self.tcp_conn = TCPConn()
                 self.tcp_conn.setup_threads()
@@ -2408,8 +2429,8 @@ class FuzzConfig:
             try:
                 self.sim_handle = subprocess.Popen(
                     shlex.split(self.sitl_cmd),
-                    # stdout=subprocess.DEVNULL,
-                    # stderr=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                     preexec_fn=os.setsid,
                     env=current_env,
                     cwd=self.src_dir,  # Run from PX4 directory
